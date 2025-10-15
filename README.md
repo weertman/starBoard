@@ -107,28 +107,8 @@ This is optional—CPU works, just slower.
 
 **Within the archive:**
 
-archive/
-├── gallery/
-│   ├── gallery_metadata.csv
-│   ├── <gallery_id>/
-│   │   ├── 01_15_25/                # Encounter folder (MM_DD_YY[_...])
-│   │   │   └── *.jpg | *.png | ...  # Images
-│   │   └── 03_02_25_A/             # Additional encounters allowed
-│
-├── queries/
-│   ├── queries_metadata.csv
-│   ├── <query_id>/
-│   │   ├── 12_05_24/
-│   │   │   └── *.jpg | *.png | ...  # Images
-│   │   └── _second_order_labels.csv  # Created by the app when labeling pairs
-│
-├── logs/
-│   └── first_order.csv             # Only if STARBOARD_DUMP_RANK_CSV is set
-│
-├── reports/
-│   └── past_matches_master.csv     # Created by the Past Matches export
-│
-└── starboard.log                   # Rotating app log
+# Project Directory Structure\n\n## File Storage Layout\n\n### Archive Structure\n\n```\narchive/\n├── gallery/\n│   ├── gallery_metadata.csv\n│   ├── <gallery_id>/\n│   │   ├── 01_15_25/                # Encounter folder (MM_DD_YY[_...])\n│   │   │   └── *.jpg | *.png | ...  # Images\n│   │   └── 03_02_25_A/             # Additional encounters allowed\n│\n├── queries/\n│   ├── queries_metadata.csv\n│   ├── <query_id>/\n│   │   ├── 12_05_24/\n│   │   │   └── *.jpg | *.png | ...  # Images\n│   │   └── _second_order_labels.csv  # Created by the app when labeling pairs\n│\n├── logs/\n│   └── first_order.csv             # Only if STARBOARD_DUMP_RANK_CSV is set\n│\n├── reports/\n│   └── past_matches_master.csv     # Created by the Past Matches export\n│\n└── starboard.log                   # Rotating app log\n```\n
+
 ### Encounter folders
 
 Image folders must be named like `MM_DD_YY` with an optional suffix (e.g., `01_15_25`, `01_15_25_A`). The app validates this format.
