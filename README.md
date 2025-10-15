@@ -108,23 +108,24 @@ This is optional—CPU works, just slower.
 **Within the archive:**
 
 archive/
-gallery/
-gallery_metadata.csv
-<gallery_id>/
-01_15_25/ # encounter folder (MM_DD_YY[...])
-.jpg|.png|...
-03_02_25_A/ # more encounters allowed
-queries/
-queries_metadata.csv
-<query_id>/
-12_05_24/
-.jpg|.png|...
-<query_id>/second_order_labels.csv # created by the app when you label pairs
-logs/
-first_order<query><timestamp>.csv # only if STARBOARD_DUMP_RANK_CSV is set
-reports/
-past_matches_master.csv # created by the Past Matches export
-starboard.log # rotating app log
+├─ gallery/
+│  ├─ gallery_metadata.csv
+│  ├─ <gallery_id>/
+│  │  ├─ 01_15_25/                # encounter folder (MM_DD_YY[...])
+│  │  │  └─ *.jpg|*.png|...       # images
+│  │  └─ 03_02_25_A/              # more encounters allowed
+├─ queries/
+│  ├─ queries_metadata.csv
+│  ├─ <query_id>/
+│  │  ├─ 12_05_24/
+│  │  │  └─ *.jpg|*.png|...
+│  │  └─ _second_order_labels.csv # created by the app when you label pairs
+├─ logs/
+│  └─ first_order_<query>_<timestamp>.csv  # only if STARBOARD_DUMP_RANK_CSV is set
+├─ reports/
+│  └─ past_matches_master.csv      # created by the Past Matches export
+└─ starboard.log                   # rotating app log
+
 
 markdown
 Always show details
