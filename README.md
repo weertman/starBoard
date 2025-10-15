@@ -111,28 +111,24 @@ archive/
 ├── gallery/
 │   ├── gallery_metadata.csv
 │   ├── <gallery_id>/
-│   │   ├── 01_15_25/                # encounter folder (MM_DD_YY[_...])
-│   │   │   └── *.jpg | *.png | ...  # images
-│   │   └── 03_02_25_A/              # additional encounters allowed
+│   │   ├── 01_15_25/                # Encounter folder (MM_DD_YY[...])
+│   │   │   └── *.jpg | *.png | ...  # Images
+│   │   └── 03_02_25_A/             # Additional encounters allowed
 │
 ├── queries/
 │   ├── queries_metadata.csv
 │   ├── <query_id>/
 │   │   ├── 12_05_24/
-│   │   │   └── *.jpg | *.png | ...
-│   │   └── _second_order_labels.csv  # created by the app when you label pairs
+│   │   │   └── *.jpg | *.png | ...  # Images
+│   │   └── second_order_labels.csv  # Created by the app when labeling pairs
 │
 ├── logs/
-│   └── first_order_<query>_<timestamp>.csv  # only if STARBOARD_DUMP_RANK_CSV is set
+│   └── first_order<query><timestamp>.csv  # Only if STARBOARD_DUMP_RANK_CSV is set
 │
 ├── reports/
-│   └── past_matches_master.csv      # created by the Past Matches export
+│   └── past_matches_master.csv      # Created by the Past Matches export
 │
-└── starboard.log                   # rotating app log
-markdown
-Always show details
-
-Copy code
+└── starboard.log                   # Rotating app log
 
 ### Encounter folders
 
