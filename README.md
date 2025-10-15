@@ -1,3 +1,5 @@
+# starBoard
+
 A lightweight, Qt‑based desktop app for organizing a Gallery of IDs, loading Queries, and ranking likely matches using a mix of metadata (numeric, categorical, set codes) plus text embeddings. It also lets you label pairs (“yes/maybe/no”) and export past matches.
 
 ---
