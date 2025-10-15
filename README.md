@@ -111,7 +111,7 @@ archive/
 ├── gallery/
 │   ├── gallery_metadata.csv
 │   ├── <gallery_id>/
-│   │   ├── 01_15_25/                # Encounter folder (MM_DD_YY[...])
+│   │   ├── 01_15_25/                # Encounter folder (MM_DD_YY[_...])
 │   │   │   └── *.jpg | *.png | ...  # Images
 │   │   └── 03_02_25_A/             # Additional encounters allowed
 │
@@ -120,16 +120,15 @@ archive/
 │   ├── <query_id>/
 │   │   ├── 12_05_24/
 │   │   │   └── *.jpg | *.png | ...  # Images
-│   │   └── second_order_labels.csv  # Created by the app when labeling pairs
+│   │   └── _second_order_labels.csv  # Created by the app when labeling pairs
 │
 ├── logs/
-│   └── first_order<query><timestamp>.csv  # Only if STARBOARD_DUMP_RANK_CSV is set
+│   └── first_order.csv             # Only if STARBOARD_DUMP_RANK_CSV is set
 │
 ├── reports/
-│   └── past_matches_master.csv      # Created by the Past Matches export
+│   └── past_matches_master.csv     # Created by the Past Matches export
 │
 └── starboard.log                   # Rotating app log
-
 ### Encounter folders
 
 Image folders must be named like `MM_DD_YY` with an optional suffix (e.g., `01_15_25`, `01_15_25_A`). The app validates this format.
