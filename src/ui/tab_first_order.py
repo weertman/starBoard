@@ -8,7 +8,7 @@ import subprocess
 from typing import Dict, List, Set, Tuple, Optional
 from datetime import date as _date
 
-from PySide6.QtCore import Qt, QEvent, QTimer, Signal, QDate
+from PySide6.QtCore import Qt, QEvent, QTimer, Signal, QDate, QFileSystemWatcher
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton,
     QGroupBox, QCheckBox, QScrollArea, QSizePolicy, QSpinBox, QDoubleSpinBox, QGridLayout,
@@ -522,6 +522,21 @@ class TabFirstOrder(QWidget):
         self._refresh_query_ids()
         self.cmb_query.currentIndexChanged.connect(self._on_query_changed)
 
+        # --- Auto-reload First-order on metadata saves (watch CSVs) ---
+        self._meta_watcher = QFileSystemWatcher(self)
+        try:
+            # Ensure the write CSVs exist so we can watch them
+            from src.data.csv_io import ensure_header
+            g_csv, g_header = ap.metadata_csv_for("Gallery")
+            q_csv, q_header = ap.metadata_csv_for("Queries")
+            ensure_header(g_csv, g_header)
+            ensure_header(q_csv, q_header)
+            self._meta_watcher.addPath(str(g_csv))
+            self._meta_watcher.addPath(str(q_csv))
+            self._meta_watcher.fileChanged.connect(self._on_metadata_csv_changed)
+        except Exception:
+            pass
+
     # ---------------- Qt events ----------------
     def eventFilter(self, obj, ev):
         if obj is self.scroll.viewport() and ev.type() == QEvent.Resize:
@@ -842,6 +857,25 @@ class TabFirstOrder(QWidget):
             self._pinned.append(gid)
         self.lbl_pinned.setText(f"Pinned: {len(self._pinned)}")
         self._save_pins()
+
+    def _on_metadata_csv_changed(self, _path: str):
+        # Debounce: in case of multiple appends in quick succession
+        if getattr(self, "_meta_debounce", None) is None:
+            self._meta_debounce = QTimer(self)
+            self._meta_debounce.setSingleShot(True)
+            self._meta_debounce.timeout.connect(self._rebuild_after_metadata_change)
+        self._meta_debounce.start(200)
+
+    def _rebuild_after_metadata_change(self):
+        try:
+            # Same semantics as pressing “Rebuild index” followed by refreshing the UI
+            self.engine.rebuild()
+            self._dates_initialized = False
+            # Re-populate IDs (preserve selection if possible) and refresh results
+            self._refresh_query_ids()
+            self._refresh_results()
+        except Exception:
+            pass
 
     # ---- offsets helpers ----
     def _collect_numeric_offsets(self) -> Dict[str, float]:

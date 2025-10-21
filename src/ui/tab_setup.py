@@ -1,18 +1,20 @@
+# src/ui/tab_setup.py
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 import logging
 
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt, QDate, QPoint, QEvent, QPointF, QSize, Signal, QObject, QThreadPool, QRunnable, QTimer
+from PySide6.QtGui import QPixmap, QCursor, QImage, QImageReader
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QPushButton, QComboBox, QLabel,
     QFileDialog, QListWidget, QListWidgetItem, QLineEdit, QDateEdit,
-    QMessageBox, QCheckBox, QPlainTextEdit, QScrollArea, QSizePolicy
+    QMessageBox, QCheckBox, QPlainTextEdit, QScrollArea, QSizePolicy,
+    QScrollBar, QTabWidget
 )
 
-from PySide6.QtGui import QPixmap
-
+from src.ui.collapsible import CollapsibleSection  # existing utility for collapsible panels
 from src.data import archive_paths as ap
 from src.data.csv_io import (
     append_row, read_rows_multi, last_row_per_id, normalize_id_value
@@ -24,6 +26,7 @@ from .metadata_form import MetadataForm
 
 logger = logging.getLogger("starBoard.ui.setup")
 
+
 # ---------- helpers ----------
 
 def qdate_to_ymd(q) -> Tuple[int, int, int]:
@@ -32,11 +35,14 @@ def qdate_to_ymd(q) -> Tuple[int, int, int]:
         q = q.date()
     return q.year(), q.month(), q.day()
 
+
 def info(msg: str, parent: Optional[QWidget] = None) -> None:
     QMessageBox.information(parent, "starBoard", msg)
 
+
 def warn(msg: str, parent: Optional[QWidget] = None) -> None:
     QMessageBox.warning(parent, "starBoard", msg)
+
 
 def _csv_paths_for_read(target: str) -> List[Path]:
     """
@@ -55,37 +61,92 @@ def _csv_paths_for_read(target: str) -> List[Path]:
         ]
         return [p for p in candidates if p.exists()]
 
-# ---------- minimal image viewer for editing mode ----------
+
+# ---------- interactive image viewer (now supports mouse pan + wheel zoom) ----------
+
+
+# ---------- interactive image viewer (async loader, mouse pan + wheel zoom) ----------
+
 class ImageViewer(QWidget):
-    """A minimal image viewer with Prev/Next and Zoom/Fit controls.
-    Designed to be lightweight and embedded beside the metadata form.
     """
+    Lightweight image viewer dedicated to the *Metadata Editing Mode*.
+
+    Improvements over the previous version:
+      - Non-blocking image decoding with a private QThreadPool (max 2 threads).
+      - On-demand prefetch of previous/next images.
+      - Small LRU cache of decoded QImages (CPU-only), conversion to QPixmap happens on the GUI thread.
+      - Mouse wheel zoom anchored at the cursor; click-and-drag to pan.
+      - 'Fit to window' toggle and zoom buttons.
+
+    NOTE: We intentionally keep the implementation CPU-only and cap the pool to two threads,
+    per requirements. No OpenGL or GPU-specific paths are used.
+    """
+    class _TaskSignals(QObject):
+        finished = Signal(str, object)  # path, QImage (or None on failure)
+
+    class _LoadTask(QRunnable):
+        def __init__(self, path:str, signals:'ImageViewer._TaskSignals'):
+            super().__init__()
+            self.path = path
+            self.signals = signals
+
+        def run(self):
+            img = None
+            try:
+                reader = QImageReader(self.path)
+                reader.setAutoTransform(True)  # honor EXIF orientation
+                # Decode the image. If it fails, img will remain None.
+                qimg = reader.read()
+                if not qimg.isNull():
+                    img = qimg
+            except Exception:
+                img = None
+            # deliver back to the GUI thread
+            self.signals.finished.emit(self.path, img)
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("ImageViewer")
         self._images: List[Path] = []
         self._idx: int = -1
-        self._scale: float = 1.0
         self._fit: bool = True
+        self._scale: float = 1.0
 
+        # async loader state
+        self._pool = QThreadPool(self)
+        self._pool.setMaxThreadCount(2)  # up to two threads max
+        from collections import OrderedDict
+        self._cache = OrderedDict()  # key: str(path) -> QImage
+        self._cache_cap = 12
+        self._inflight: Dict[str, ImageViewer._TaskSignals] = {}
+
+        # pan/zoom state
+        self._dragging = False
+        self._last_mouse_pos = QPoint()
+        self._last_pixmap_size = None  # QSize of last rendered pixmap, for scroll anchoring
+
+        # toolbar
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(6)
 
-        # Controls
-        ctrl = QHBoxLayout()
+        bar = QHBoxLayout()
         self.btn_prev = QPushButton("◀ Prev")
         self.btn_next = QPushButton("Next ▶")
-        self.btn_zoom_out = QPushButton("− Zoom")
+        self.btn_zoom_out = QPushButton("– Zoom")
         self.btn_zoom_in = QPushButton("+ Zoom")
         self.btn_fit = QCheckBox("Fit to window")
         self.btn_fit.setChecked(True)
-
-        for w in (self.btn_prev, self.btn_next, self.btn_zoom_out, self.btn_zoom_in, self.btn_fit):
-            ctrl.addWidget(w)
-        ctrl.addStretch(1)
         self.lbl_counter = QLabel("0/0")
-        ctrl.addWidget(self.lbl_counter)
-        outer.addLayout(ctrl)
+        bar.addWidget(self.btn_prev)
+        bar.addWidget(self.btn_next)
+        bar.addSpacing(12)
+        bar.addWidget(self.btn_zoom_out)
+        bar.addWidget(self.btn_zoom_in)
+        bar.addSpacing(12)
+        bar.addWidget(self.btn_fit)
+        bar.addStretch(1)
+        bar.addWidget(self.lbl_counter)
+        outer.addLayout(bar)
 
         # Scroller + label
         self.scroll = QScrollArea(self)
@@ -95,6 +156,9 @@ class ImageViewer(QWidget):
         self.scroll.setMinimumSize(320, 240)
         self.scroll.setWidget(self.label)
         outer.addWidget(self.scroll, 1)
+
+        # Install event filter on the viewport for mouse pan/zoom
+        self.scroll.viewport().installEventFilter(self)
 
         # Connections
         self.btn_prev.clicked.connect(self.prev_image)
@@ -106,80 +170,224 @@ class ImageViewer(QWidget):
         self._update_ui()
 
     # ----- public API -----
+    def clear(self):
+        self._images = []
+        self._idx = -1
+        self._scale = 1.0
+        self.btn_fit.setChecked(True)
+        self._fit = True
+        self.label.setText('No image')
+        self._update_ui()
+
     def set_images(self, paths: List[Path]):
         self._images = [Path(p) for p in paths if Path(p).exists()]
         self._idx = 0 if self._images else -1
         self._scale = 1.0
         self.btn_fit.setChecked(True)
         self._fit = True
-        self._update_ui()
-        self._render_current()
-
-    def clear(self):
-        self._images = []
-        self._idx = -1
-        self._scale = 1.0
-        self.label.setText("No image")
+        self._render_current_async(prefetch=True)
         self._update_ui()
 
-    # ----- internal helpers -----
+    def set_index(self, idx: int):
+        if 0 <= idx < len(self._images):
+            self._idx = idx
+            self._render_current_async(prefetch=True)
+            self._update_ui()
+
+    # ----- cache / loader helpers -----
+    def _touch_cache(self, key: str, img: QImage):
+        from collections import OrderedDict
+        # move-to-end behavior
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        else:
+            self._cache[key] = img
+            while len(self._cache) > self._cache_cap:
+                self._cache.popitem(last=False)
+
+    def _get_cached(self, key: str):
+        if key in self._cache:
+            img = self._cache[key]
+            # touch
+            self._cache.move_to_end(key)
+            return img
+        return None
+
+    def _request_image(self, path: Path):
+        key = str(path)
+        cached = self._get_cached(key)
+        if cached is not None:
+            return cached
+        # Already loading?
+        if key in self._inflight:
+            return None
+
+        sig = ImageViewer._TaskSignals()
+        sig.finished.connect(self._on_loader_finished)
+        task = ImageViewer._LoadTask(str(path), sig)
+        self._inflight[key] = sig
+        self._pool.start(task)
+        return None
+
+    def _on_loader_finished(self, path: str, img: object):
+        # task finished in background; register & refresh if relevant
+        self._inflight.pop(path, None)
+        if isinstance(img, QImage) and not img.isNull():
+            self._touch_cache(path, img)
+        # If the finished image is the one we need (or neighbor), trigger re-render
+        if self._idx >= 0 and self._idx < len(self._images):
+            cur = str(self._images[self._idx])
+            if path == cur:
+                self._render_current_async(prefetch=True)
+        # No else: neighbor images will be used when navigated to.
+
+    # ----- UI helpers -----
     def _update_ui(self):
         n = len(self._images)
         self.lbl_counter.setText(f"{self._idx+1 if self._idx>=0 else 0}/{n}")
         has = (self._idx >= 0) and (self._idx < n)
         self.btn_prev.setEnabled(self._idx > 0)
-        self.btn_next.setEnabled(self._idx+1 < n)
+        self.btn_next.setEnabled(self._idx + 1 < n)
         self.btn_zoom_in.setEnabled(has and not self._fit)
         self.btn_zoom_out.setEnabled(has and not self._fit)
 
     def _on_fit_toggled(self, checked: bool):
         self._fit = checked
-        self._render_current()
+        if checked:
+            # Reset pan state when switching to fit
+            self._dragging = False
+            self.scroll.viewport().unsetCursor()
+            # reset scale when switching to fit
+            self._scale = 1.0
+        self._render_current_async(prefetch=True)
         self._update_ui()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
         if self._fit:
-            self._render_current()
+            self._render_current_async(prefetch=False)
 
-    def _set_scale(self, value: float):
-        self._scale = max(0.05, min(10.0, value))
-        self._render_current()
-        self._update_ui()
-
+    # ----- navigation -----
     def prev_image(self):
         if self._idx > 0:
             self._idx -= 1
-            self._render_current()
+            self._render_current_async(prefetch=True)
             self._update_ui()
 
     def next_image(self):
         if self._idx + 1 < len(self._images):
             self._idx += 1
-            self._render_current()
+            self._render_current_async(prefetch=True)
             self._update_ui()
 
-    def _render_current(self):
+    # ----- events -----
+    def eventFilter(self, obj, ev):
+        if obj is self.scroll.viewport():
+            et = ev.type()
+            if et == QEvent.Wheel and not self._fit and (0 <= self._idx < len(self._images)):
+                # Zoom around cursor
+                delta = ev.angleDelta().y()
+                if delta == 0:
+                    return True
+                old_scale = self._scale
+                factor = 1.25 if delta > 0 else 1.0 / 1.25
+                new_scale = max(0.05, min(10.0, old_scale * factor))
+
+                # Cursor position relative to viewport
+                vp_pos = ev.position().toPoint()
+                hbar: QScrollBar = self.scroll.horizontalScrollBar()
+                vbar: QScrollBar = self.scroll.verticalScrollBar()
+
+                # Content coords under cursor before zoom
+                content_x = hbar.value() + vp_pos.x()
+                content_y = vbar.value() + vp_pos.y()
+                content_w = max(1, self.label.width())
+                content_h = max(1, self.label.height())
+                rel_x = content_x / content_w
+                rel_y = content_y / content_h
+
+                # Apply zoom
+                self._scale = new_scale
+                self._render_current_async(prefetch=False)
+
+                # Keep the same content point under cursor
+                new_w = max(1, self.label.width())
+                new_h = max(1, self.label.height())
+                hbar.setValue(int(rel_x * new_w - vp_pos.x()))
+                vbar.setValue(int(rel_y * new_h - vp_pos.y()))
+                return True
+
+            if et == QEvent.MouseButtonPress and (0 <= self._idx < len(self._images)):
+                if ev.button() == Qt.LeftButton:
+                    self._dragging = True
+                    self._last_mouse_pos = ev.pos()
+                    self.scroll.viewport().setCursor(QCursor(Qt.ClosedHandCursor))
+                    return True
+
+            if et == QEvent.MouseMove and self._dragging:
+                pos = ev.pos()
+                dx = pos.x() - self._last_mouse_pos.x()
+                dy = pos.y() - self._last_mouse_pos.y()
+                self._last_mouse_pos = pos
+                self.scroll.horizontalScrollBar().setValue(self.scroll.horizontalScrollBar().value() - dx)
+                self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().value() - dy)
+                return True
+
+            if et == QEvent.MouseButtonRelease and self._dragging:
+                self._dragging = False
+                self.scroll.viewport().unsetCursor()
+                return True
+        return super().eventFilter(obj, ev)
+
+    # ----- rendering -----
+    def _set_scale(self, value: float):
+        self._scale = max(0.05, min(10.0, value))
+        self._render_current_async(prefetch=False)
+        self._update_ui()
+
+    def _render_current_async(self, prefetch: bool):
         if not (0 <= self._idx < len(self._images)):
-            # nothing to show
             self.label.setText("No image")
             return
 
-        pm = QPixmap(str(self._images[self._idx]))
-        if pm.isNull():
-            self.label.setText("Unable to load image.")
-            return
+        cur_path = self._images[self._idx]
+        # request/obtain the original image (decoded)
+        img = self._request_image(cur_path)
 
-        if self._fit:
-            avail = self.scroll.viewport().size()
-            scaled = pm.scaled(avail, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        if img is None:
+            # show a quick placeholder while loading
+            self.label.setText("Loading…")
         else:
-            w = int(pm.width() * self._scale)
-            h = int(pm.height() * self._scale)
-            scaled = pm.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            # compute target size
+            view_size = self.scroll.viewport().size()
+            iw, ih = img.width(), img.height()
+            if iw <= 0 or ih <= 0:
+                self.label.setText("Unable to load image.")
+                return
 
-        self.label.setPixmap(scaled)
-        self.label.resize(scaled.size())
+            if self._fit:
+                if view_size.width() > 0 and view_size.height() > 0:
+                    ratio = min(view_size.width() / iw, view_size.height() / ih)
+                else:
+                    ratio = 1.0
+            else:
+                ratio = self._scale
+
+            w = max(1, int(iw * ratio))
+            h = max(1, int(ih * ratio))
+
+            # scale in GUI thread (CPU), no GPU-specific path
+            scaled_img = img.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pm = QPixmap.fromImage(scaled_img)
+            self.label.setPixmap(pm)
+            self.label.resize(pm.size())
+
+        # prefetch neighbors
+        if prefetch:
+            for j in (self._idx - 1, self._idx + 1):
+                if 0 <= j < len(self._images):
+                    self._request_image(self._images[j])
+
 
 # ---------- main tab ----------
 
@@ -191,7 +399,11 @@ class TabSetup(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("TabSetup")
-        self._edit_loaded_once = False  # don't prompt at startup
+
+        # state for edit-mode prompts & carry-over
+        self._edit_loaded_once = False
+        self._last_edit_id: str = ""
+        self._carry_over: Dict[str, str] = {}
 
         # Scroll container
         outer = QVBoxLayout(self)
@@ -208,26 +420,32 @@ class TabSetup(QWidget):
         lay = QVBoxLayout(content)
         lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(12)
-        self._content_layout = lay
 
-        # Panels
-        self.gb_single = self._build_single_upload_group()
-        self.gb_batch = self._build_batch_upload_group()
-        self.gb_edit  = self._build_editing_group()
+        # Build inner groups (title-less QGroupBox used for visual framing)
+        gb_single = self._build_single_upload_group()   # title-less
+        gb_batch  = self._build_batch_upload_group()    # title-less
+        gb_edit   = self._build_editing_group()         # title-less
 
-        for gb in (self.gb_single, self.gb_batch, self.gb_edit):
-            gb.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-            lay.addWidget(gb)
+        # Wrap each group with an expandable panel (collapsed by default)
+        sec_single = CollapsibleSection("Single Upload", start_collapsed=True)
+        sec_single.setContent(gb_single)
+        sec_batch = CollapsibleSection("Batch Upload IDs", start_collapsed=True)
+        sec_batch.setContent(gb_batch)
+        sec_edit = CollapsibleSection("Metadata Editing Mode", start_collapsed=True)
+        sec_edit.setContent(gb_edit)
+
+        for sec in (sec_single, sec_batch, sec_edit):
+            sec.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+            lay.addWidget(sec)
         lay.addStretch(1)
 
         scroll.setWidget(content)
         outer.addWidget(scroll)
-
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     # -------------------- Single Upload --------------------
     def _build_single_upload_group(self) -> QGroupBox:
-        gb = QGroupBox("Single Upload")
+        gb = QGroupBox("")  # title provided by CollapsibleSection
         lay = QVBoxLayout(gb)
 
         # File picker
@@ -274,15 +492,13 @@ class TabSetup(QWidget):
         self.date_encounter = QDateEdit()
         self.date_encounter.setCalendarPopup(True)
         self.date_encounter.setDate(QDate.currentDate())
-        self.date_encounter.dateChanged.connect(lambda _:
-            self._update_encounter_preview())
+        self.date_encounter.dateChanged.connect(lambda _: self._update_encounter_preview())
         row2.addWidget(self.date_encounter)
 
         row2.addWidget(QLabel("Suffix (optional):"))
         self.edit_suffix = QLineEdit()
-        self.edit_suffix.setPlaceholderText("e.g., 'pm2'")
-        self.edit_suffix.textChanged.connect(lambda _:
-            self._update_encounter_preview())
+        self.edit_suffix.setPlaceholderText("e.g. 'pm2'")
+        self.edit_suffix.textChanged.connect(lambda _: self._update_encounter_preview())
         row2.addWidget(self.edit_suffix)
 
         row2.addWidget(QLabel("Encounter preview:"))
@@ -315,7 +531,6 @@ class TabSetup(QWidget):
         return gb
 
     def _on_metadata_only_toggled(self, checked: bool) -> None:
-        # Disable encounter controls when metadata-only is selected
         self._set_encounter_controls_enabled(not checked)
 
     def _set_encounter_controls_enabled(self, enabled: bool) -> None:
@@ -361,7 +576,6 @@ class TabSetup(QWidget):
         logger.debug("Encounter preview set to %s", name)
 
     def _populate_metadata_from_csv(self, target: str, id_val: str):
-        # Load prior values for this ID from CSV(s) if present
         id_col = ap.id_column_name(target)
         csv_paths = _csv_paths_for_read(target)
         rows = read_rows_multi(csv_paths)
@@ -416,6 +630,8 @@ class TabSetup(QWidget):
             logger.info("Metadata-only save: target=%s id=%s (no images)", target, id_val)
             self._log_single(f"Metadata saved for {target} ID '{id_val}' (no images).")
 
+        # Notify First‑order so it reflects new metadata immediately
+        self._notify_first_order_refresh()
         self._refresh_id_list_single()
 
     def _log_single(self, msg: str):
@@ -424,7 +640,7 @@ class TabSetup(QWidget):
 
     # -------------------- Batch Upload IDs --------------------
     def _build_batch_upload_group(self) -> QGroupBox:
-        gb = QGroupBox("Batch Upload IDs")
+        gb = QGroupBox("")  # title provided by CollapsibleSection
         lay = QVBoxLayout(gb)
 
         # Pick base folder to scan
@@ -452,7 +668,7 @@ class TabSetup(QWidget):
         row2.addWidget(self.date_batch)
         row2.addWidget(QLabel("Suffix (optional):"))
         self.edit_suffix_batch = QLineEdit()
-        self.edit_suffix_batch.setPlaceholderText("e.g., 'am2'")
+        self.edit_suffix_batch.setPlaceholderText("e.g. 'am2'")
         row2.addWidget(self.edit_suffix_batch)
         lay.addLayout(row2)
 
@@ -513,6 +729,8 @@ class TabSetup(QWidget):
                 self._log_batch("Errors:\n - " + "\n - ".join(rep.errors))
 
         info("Batch complete.", self)
+        # First‑order refresh: new IDs/rows may be available
+        self._notify_first_order_refresh()
 
     def _log_batch(self, msg: str):
         logger.info(msg)
@@ -520,7 +738,7 @@ class TabSetup(QWidget):
 
     # -------------------- Metadata Editing Mode --------------------
     def _build_editing_group(self) -> QGroupBox:
-        gb = QGroupBox("Metadata Editing Mode")
+        gb = QGroupBox("")  # title provided by CollapsibleSection
         lay = QVBoxLayout(gb)
 
         row = QHBoxLayout()
@@ -550,7 +768,7 @@ class TabSetup(QWidget):
         lay.addLayout(split)
 
         row2 = QHBoxLayout()
-        self.btn_save_edit = QPushButton("Save edits")
+        self.btn_save_edit = QPushButton("Save & Carry Over")  # renamed
         self.btn_save_edit.clicked.connect(self._on_save_edits)
         row2.addStretch(1)
         self.btn_save_edit.setDefault(True)
@@ -569,32 +787,88 @@ class TabSetup(QWidget):
         self.cmb_id_edit.addItems(ids)
         self.cmb_id_edit.blockSignals(False)
         self.btn_save_edit.setEnabled(bool(ids))
+        # reset last_edit_id baseline to current (or "")
+        self._last_edit_id = self.cmb_id_edit.currentText() if ids else ""
         self._on_edit_id_changed()
+
+    def _apply_carry_over_to_form(self, form: MetadataForm, carry: Dict[str, str]) -> None:
+        """For any empty field in the current form, apply a non-empty value from carry-over."""
+        try:
+            id_col = form._id_col()               # uses MetadataForm internals
+            for col, val in carry.items():
+                if col == id_col:
+                    continue
+                w = form.widgets.get(col)
+                if not w:
+                    continue
+                # read current
+                current = ""
+                if hasattr(w, "text"):
+                    current = w.text()
+                elif hasattr(w, "toPlainText"):
+                    try:
+                        current = w.toPlainText()
+                    except Exception:
+                        current = ""
+                if not (current or "").strip() and (val or "").strip():
+                    # write
+                    if hasattr(w, "setText"):
+                        w.setText(val)
+                    elif hasattr(w, "setPlainText"):
+                        w.setPlainText(val)
+        except Exception as e:
+            logger.debug("carry_over apply skipped due to: %s", e)
 
     def _on_edit_id_changed(self):
         target = self.cmb_target_edit.currentText()
         next_id = self.cmb_id_edit.currentText()
+
+        # nothing selected
         if not next_id:
             self.meta_form_edit.populate({})
             if hasattr(self, 'viewer_edit'):
                 self.viewer_edit.clear()
+            self._last_edit_id = ""
             return
 
-        # Only prompt after first successful load
+        # If user has unsaved edits, offer Save & Carry Over / Discard / Cancel
         if self._edit_loaded_once and self.meta_form_edit.is_dirty():
-            res = QMessageBox.question(
-                self, "Save before changing?", "Save before changing?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if res == QMessageBox.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("Save & carry over?")
+            box.setText("You have unsaved edits. Save and carry them over to the next ID?")
+            btn_save = box.addButton("Save & Carry Over", QMessageBox.AcceptRole)
+            btn_discard = box.addButton("Discard", QMessageBox.DestructiveRole)
+            btn_cancel = box.addButton("Cancel", QMessageBox.RejectRole)
+            box.setDefaultButton(btn_save)
+            box.exec()
+
+            clicked = box.clickedButton()
+            if clicked is btn_cancel:
+                # revert selection to previous one
+                self.cmb_id_edit.blockSignals(True)
+                if self._last_edit_id:
+                    idx = self.cmb_id_edit.findText(self._last_edit_id)
+                    if idx >= 0:
+                        self.cmb_id_edit.setCurrentIndex(idx)
+                self.cmb_id_edit.blockSignals(False)
+                return
+            elif clicked is btn_save:
                 self._on_save_edits()
+            else:
+                # Discard: keep working buffer but don't change it
+                pass
 
         # Load values
         self.meta_form_edit.set_id_value(next_id)
         self._populate_metadata_from_csv_edit(target, next_id)
+        # Apply carry-over defaults (only to empty fields)
+        if self._carry_over:
+            self._apply_carry_over_to_form(self.meta_form_edit, self._carry_over)
+
         # Update image viewer for this ID
         self.viewer_edit.set_images(self._gather_images_for_id(target, next_id))
 
+        self._last_edit_id = next_id
         if not self._edit_loaded_once:
             self._edit_loaded_once = True
 
@@ -619,7 +893,6 @@ class TabSetup(QWidget):
         seen = set()
         for base in candidates:
             if base.exists() and base.is_dir():
-                # Sort encounters lexicographically so recent ones (YYYY-MM-DD*) come last
                 for p in sorted(base.rglob("*")):
                     if p.is_file() and p.suffix.lower() in exts:
                         rp = p.resolve()
@@ -638,5 +911,45 @@ class TabSetup(QWidget):
         row = self.meta_form_edit.collect_row()
         row[ap.id_column_name(target)] = id_val
         append_row(csv_path, header, row)
+
+        # Update carry-over buffer: keep only non-empty, non-ID fields
+        id_col = ap.id_column_name(target)
+        self._carry_over = {k: v for k, v in row.items() if k != id_col and (v or "").strip()}
+
         logger.info("Saved edits for target=%s id=%s", target, id_val)
-        info("Edits saved.", self)
+        info("Edits saved. Carry-over is active for the next ID.", self)
+
+        # First‑order should reflect edits immediately
+        self._notify_first_order_refresh()
+
+    # -------------------- cross-tab refresh --------------------
+    def _notify_first_order_refresh(self) -> None:
+        """
+        Best-effort: find a TabFirstOrder in the same QTabWidget and tell it to rebuild/refresh.
+        Works without importing TabFirstOrder directly.
+        """
+        try:
+            tabs = None
+            for w in self.window().findChildren(QTabWidget):
+                tabs = w
+                break
+            if not tabs:
+                return
+            for i in range(tabs.count()):
+                wid = tabs.widget(i)
+                if wid.__class__.__name__ == "TabFirstOrder":
+                    # gentle rebuild + refresh
+                    if hasattr(wid, "engine") and hasattr(wid.engine, "rebuild"):
+                        try:
+                            wid.engine.rebuild()
+                        except Exception:
+                            pass
+                    for name in ("_refresh_query_ids", "_refresh_results"):
+                        if hasattr(wid, name):
+                            try:
+                                getattr(wid, name)()
+                            except Exception:
+                                pass
+                    break
+        except Exception as e:
+            logger.debug("notify_first_order_refresh skipped: %s", e)

@@ -46,6 +46,29 @@ class MetadataForm(QWidget):
                 w.setPlainText(values.get(col, ""))
         self._loaded_snapshot = self.collect_row_dict()
 
+    def apply_values(self, values: Dict[str, str]) -> None:
+        """
+        Set current widget values for provided fields without touching the
+        internal 'loaded snapshot'. This keeps is_dirty() = True so the user
+        can save carried-over values on the new ID.
+        """
+        header = self._header()
+        id_col = self._id_col()
+        for col in header:
+            if col == id_col:
+                continue
+            if col not in values:
+                continue
+            w = self.widgets.get(col)
+            val = values.get(col, "")
+            try:
+                if hasattr(w, "setText"):
+                    w.setText(val)  # QLineEdit
+                elif hasattr(w, "setPlainText"):
+                    w.setPlainText(val)  # QTextEdit
+            except Exception:
+                pass
+
     def collect_row(self) -> Dict[str, str]:
         return self.collect_row_dict()
 
