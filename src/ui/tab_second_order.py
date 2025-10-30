@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from src.data.id_registry import list_ids
 from src.data.image_index import list_image_files
 from src.data import archive_paths as ap
+from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from src.ui.annotator_view_second import AnnotatorViewSecond
 from src.data.compare_labels import get_label_for_pair, save_label_for_pair
 from src.data.merge_yes import is_query_silent
@@ -92,6 +93,11 @@ class TabSecondOrder(QWidget):
         row2.addSpacing(8); row2.addWidget(self.btn_open_q)
         row2.addSpacing(4); row2.addWidget(self.btn_open_g)
 
+        self.btn_best_q = QPushButton("Set Best (Query)")
+        self.btn_best_g = QPushButton("Set Best (Gallery)")
+        row2.addSpacing(12); row2.addWidget(self.btn_best_q)
+        row2.addSpacing(4); row2.addWidget(self.btn_best_g)
+
         outer.addLayout(row2)
 
         # ---- Twin viewers ----
@@ -137,6 +143,8 @@ class TabSecondOrder(QWidget):
         self.btn_save_decision.clicked.connect(self._on_save_decision)
         self.btn_open_q.clicked.connect(lambda: self._open_id_folder("Queries", self.cmb_query.currentText()))
         self.btn_open_g.clicked.connect(lambda: self._open_id_folder("Gallery", self.cmb_gallery.currentText()))
+        self.btn_best_q.clicked.connect(self._on_set_best_query)
+        self.btn_best_g.clicked.connect(self._on_set_best_gallery)
 
         # ---- Populate IDs ----
         self._refresh_ids()
@@ -181,6 +189,7 @@ class TabSecondOrder(QWidget):
     def _on_query_changed(self) -> None:
         qid = self.cmb_query.currentText()
         files = list_image_files("Queries", qid) if qid else []
+        files = reorder_files_with_best("Queries", qid, files) if qid else files
         self.view_q.set_files(files)
         self._load_recommended_from_pins(qid)
         self._load_decision_ui()
@@ -189,9 +198,29 @@ class TabSecondOrder(QWidget):
     def _on_gallery_changed(self) -> None:
         gid = self.cmb_gallery.currentText()
         files = list_image_files("Gallery", gid) if gid else []
+        files = reorder_files_with_best("Gallery", gid, files) if gid else files
         self.view_g.set_files(files)
         self._load_decision_ui()
         self._refresh_meta_bar()
+
+    def _on_set_best_query(self) -> None:
+        qid = self.cmb_query.currentText()
+        if not qid or not self.view_q.strip.files:
+            return
+        idx = max(0, min(self.view_q.strip.idx, len(self.view_q.strip.files) - 1))
+        save_best_for_id("Queries", qid, self.view_q.strip.files[idx])
+        # Reload with best rolled to front
+        files = reorder_files_with_best("Queries", qid, list(self.view_q.strip.files))
+        self.view_q.set_files(files)
+
+    def _on_set_best_gallery(self) -> None:
+        gid = self.cmb_gallery.currentText()
+        if not gid or not self.view_g.strip.files:
+            return
+        idx = max(0, min(self.view_g.strip.idx, len(self.view_g.strip.files) - 1))
+        save_best_for_id("Gallery", gid, self.view_g.strip.files[idx])
+        files = reorder_files_with_best("Gallery", gid, list(self.view_g.strip.files))
+        self.view_g.set_files(files)
 
     def _on_recommended_changed(self) -> None:
         gid = self.cmb_recommended.currentText()

@@ -597,7 +597,7 @@ class TabSetup(QWidget):
             id_val = self.cmb_id.currentText()
 
         # Validate ID
-        v = validate_id(target, id_val)
+        v = validate_id(target)
         if not v.ok:
             warn(v.message, self)
             return

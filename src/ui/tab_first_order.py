@@ -29,7 +29,7 @@ from src.data.observation_dates import last_observation_for_all
 from src.data.merge_yes import is_query_silent
 from .image_strip import ImageStrip
 from .lineup_card import LineupCard
-
+from src.data.best_photo import reorder_files_with_best, save_best_for_id
 
 # ---- Field groupings for the checkbox panel
 FIELD_GROUPS = [
@@ -432,11 +432,14 @@ class TabFirstOrder(QWidget):
         qf_l = QHBoxLayout(q_footer)
         qf_l.setContentsMargins(0, 0, 0, 0)
         self.btn_open_query = QPushButton("Open Folder")
+        self.btn_best_query = QPushButton("Set Best (Query)")
         self.btn_open_query.clicked.connect(self._open_query_folder)
+        self.btn_best_query.clicked.connect(self._on_set_best_query)
         self.btn_meta_query = QPushButton("View Metadata")
         self.btn_meta_query.clicked.connect(self._show_query_metadata)
         qf_l.addStretch(1)
         qf_l.addWidget(self.btn_open_query)
+        qf_l.addWidget(self.btn_best_query)
         qf_l.addWidget(self.btn_meta_query)
 
         self.query_vsplit = QSplitter(Qt.Vertical)
@@ -700,6 +703,7 @@ class TabFirstOrder(QWidget):
         self._current_query = qid or ""
         self.lbl_query_id.setText(qid or "—")
         files = list_image_files("Queries", qid) if qid else []
+        files = reorder_files_with_best("Queries", qid, files) if qid else files
         self.query_strip.set_files(files)
         # Query changed: make sure gallery cards adhere to this query view's height
         QTimer.singleShot(0, self._sync_card_min_height_from_query)
@@ -715,6 +719,15 @@ class TabFirstOrder(QWidget):
         self._pinned = self._load_pins(self._current_query) if self._current_query else []
         self.lbl_pinned.setText(f"Pinned: {len(self._pinned)}")
         self._refresh_results()
+
+    def _on_set_best_query(self):
+        qid = self._current_query
+        if not qid or not self.query_strip.files:
+            return
+        idx = max(0, min(self.query_strip.idx, len(self.query_strip.files) - 1))
+        save_best_for_id("Queries", qid, self.query_strip.files[idx])
+        files = reorder_files_with_best("Queries", qid, list(self.query_strip.files))
+        self.query_strip.set_files(files)
 
     def _auto_excluded_for_same_day(self, qid: str) -> Set[str]:
         """

@@ -39,12 +39,7 @@ class TextEmbeddingBGEScorer:
         if not text.strip():
             return None
         try:
-            # Try to load from Queries store; embed+upsert only if missing
-            q_store = load_vectors_for_field("Queries", self.name, expected_model_id=self.model_id)
-            v = q_store.get(qid)
-            if v is None:
-                v = upsert_single_query_vector(qid, self.name, text, model_id=self.model_id)
-            return v
+            return upsert_single_query_vector(qid, self.name, text, model_id=self.model_id)
         except Exception as e:
             if not self._warned_once:
                 _log.warning("TextEmbeddingBGEScorer disabled for field=%s due to: %s", self.name, e)
@@ -61,4 +56,6 @@ class TextEmbeddingBGEScorer:
             return 0.0, False
         # cosine in [-1,1] -> [0,1]; vectors are normalized by encode(normalize_embeddings=True)
         s = float(np.dot(q_state, g))
+        # numerica lguard
+        s = 1.0 if s >1.0 else (-1.0 if s < -1.0 else s)
         return 0.5 * (s + 1.0), True

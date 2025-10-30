@@ -12,6 +12,7 @@ import platform, subprocess, os
 from src.ui.image_strip import ImageStrip
 from src.data.image_index import list_image_files
 from src.data.compare_labels import get_label_for_pair, save_label_for_pair
+from src.data.best_photo import reorder_files_with_best, save_best_for_id
 
 Color = tuple[int, int, int]
 Stop = tuple[float, Color]
@@ -129,7 +130,8 @@ class LineupCard(QFrame):
         self.split.setHandleWidth(6)
 
         # top: image strip
-        files = list_image_files("Gallery", gallery_id)  # FIX: must pass target + id. :contentReference[oaicite:3]{index=3}
+        files = list_image_files("Gallery", gallery_id)
+        files = reorder_files_with_best("Gallery", gallery_id, files)
         self.strip = ImageStrip(files=files, long_edge=512)
         topw = _QW(); tl = _QVL(topw); tl.setContentsMargins(0, 0, 0, 0); tl.setSpacing(4)
         tl.addWidget(self.strip, 1)
@@ -148,9 +150,12 @@ class LineupCard(QFrame):
         self.btn_save_decision = QPushButton("Save")
 
         self.btn_open = QPushButton("Open Folder")
+        self.btn_best = QPushButton("Best")
         self.btn_open.clicked.connect(self._open_folder)
+        self.btn_best.clicked.connect(self._on_set_best_gallery)
 
         footer.addWidget(self.btn_pin)
+        footer.addWidget(self.btn_best)
         footer.addSpacing(8)
         footer.addWidget(self.lbl_decision)
         footer.addWidget(self.cmb_verdict)
@@ -286,3 +291,17 @@ class LineupCard(QFrame):
                 1000,
                 lambda: (self.btn_save_decision.setText(old), self.btn_save_decision.setEnabled(True))
             )
+
+    def _on_set_best_gallery(self) -> None:
+        """Persist current image in this card as 'best' for its gallery ID and roll order."""
+        try:
+            files = self.strip.files or []
+            if not files:
+                return
+            idx = max(0, min(self.strip.idx, len(files) - 1))
+            save_best_for_id("Gallery", self.gallery_id, files[idx])
+            new_files = reorder_files_with_best("Gallery", self.gallery_id, files)
+            self.strip.set_files(new_files)
+        except Exception:
+            # Never break the UI
+            pass
