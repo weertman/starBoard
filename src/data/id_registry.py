@@ -42,6 +42,8 @@ except Exception:  # pragma: no cover
 
 log = logging.getLogger("starBoard.data.id_registry")
 
+# Never treat these system folders as real IDs
+RESERVED_ID_NAMES: Set[str] = {"_embeddings" , }
 
 def _csv_ids(target: str) -> Set[str]:
     """
@@ -70,8 +72,13 @@ def _folder_ids(target: str) -> Set[str]:
         if not root or not root.exists():
             continue
         for p in root.iterdir():
-            if p.is_dir():
-                ids.add(p.name)
+            if not p.is_dir():
+                continue
+            name = p.name
+            # Exclude system folders (e.g., the embedding store lives under "_embeddings")
+            if name in RESERVED_ID_NAMES:
+                continue
+            ids.add(name)
     ids.discard("")
     return ids
 
@@ -95,7 +102,8 @@ def list_ids(target: str, *, exclude_silent: bool = False) -> List[str]:
     # Collect candidates
     folder = _folder_ids(target)
     csv = _csv_ids(target)
-    ids = set(folder) | set(csv)
+    # Guard against reserved names leaking in from either source
+    ids = {x for x in (set(folder) | set(csv)) if x not in RESERVED_ID_NAMES}
 
     if target.lower().startswith("q") and exclude_silent:
         before = len(ids)
@@ -114,7 +122,7 @@ def id_exists(target: str, id_str: str) -> bool:
     True if the ID exists as a folder under any plausible root or appears
     in any plausible metadata CSV for the target.
     """
-    if not id_str:
+    if not id_str or id_str in RESERVED_ID_NAMES:
         return False
     # Folder existence in any root
     for root in roots_for_read(target):

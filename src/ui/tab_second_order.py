@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton,
     QSplitter, QLineEdit, QScrollArea, QSizePolicy, QFrame
 )
-
+from datetime import date as _date
 from src.data.id_registry import list_ids
 from src.data.image_index import list_image_files
 from src.data import archive_paths as ap
@@ -24,7 +24,7 @@ from src.search.engine import FirstOrderSearchEngine, ALL_FIELDS
 from src.ui.lineup_card import (
     DEFAULT_CMAP, FIELD_COLORMAPS, _interp_color, _css_color, _text_color_for_bg
 )
-
+from src.data.archive_paths import last_observation_for_all
 
 class TabSecondOrder(QWidget):
     """
@@ -151,7 +151,14 @@ class TabSecondOrder(QWidget):
 
     # ----- helpers -----
     def _refresh_ids(self) -> None:
-        qs = [qid for qid in list_ids("Queries") if not is_query_silent(qid)]
+        qs_raw = [qid for qid in list_ids("Queries") if not is_query_silent(qid)]
+        last_obs = last_observation_for_all("Queries")
+
+        def _date_alpha_key(qid: str):
+            d = last_obs.get(qid)
+            return (d is None, d or _date.max, qid.lower())
+        qs = sorted(qs_raw, key=_date_alpha_key)
+
         gs = list_ids("Gallery")
         self.cmb_query.blockSignals(True); self.cmb_gallery.blockSignals(True)
         self.cmb_query.clear(); self.cmb_gallery.clear()

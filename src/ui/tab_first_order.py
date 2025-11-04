@@ -30,6 +30,7 @@ from src.data.merge_yes import is_query_silent
 from .image_strip import ImageStrip
 from .lineup_card import LineupCard
 from src.data.best_photo import reorder_files_with_best, save_best_for_id
+from src.data.archive_paths import last_observation_for_all
 
 # ---- Field groupings for the checkbox panel
 FIELD_GROUPS = [
@@ -588,6 +589,11 @@ class TabFirstOrder(QWidget):
         self._ensure_date_controls_bounds(last_obs)
         ids = self._apply_query_date_filter(ids, last_obs)
 
+        # Sort key: (no_date_last, oldest_to_newest, alpha_id)
+        def _date_alpha_key(qid: str):
+            d = last_obs.get(qid)
+            return (d is None, d or _date.max, qid.lower())
+
         # Move queries that already have a positive match ("yes") to the bottom
         unmatched: List[str] = []
         matched: List[str] = []
@@ -598,7 +604,7 @@ class TabFirstOrder(QWidget):
             except Exception:
                 has_yes = False
             (matched if has_yes else unmatched).append(qid)
-        ordered = sorted(unmatched) + sorted(matched)
+        ordered = sorted(unmatched, key=_date_alpha_key) + sorted(matched, key=_date_alpha_key)
 
         self.cmb_query.blockSignals(True)
         self.cmb_query.clear()

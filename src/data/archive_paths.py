@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional
 import os
+from datetime import date
+import re
 
 # Column headers (enforced order)
 GALLERY_HEADER: List[str] = [
@@ -41,6 +43,7 @@ QUERIES_HEADER: List[str] = [
     "Other_descriptions",
 ]
 
+_MMDDYY = re.compile(r"^(\d{2})_(\d{2})_(\d{2})(?:_|$)")
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -118,3 +121,48 @@ def root_for(target: str) -> Path:
 
 def id_column_name(target: str) -> str:
     return "gallery_id" if target.lower() == "gallery" else "query_id"
+
+def _parse_mmddyy(s: str) -> Optional[date]:
+    m = _MMDDYY.match(s or "")
+    if not m:
+        return None
+    mm, dd, yy = map(int, (m.group(1), m.group(2), m.group(3)))
+    yy = 2000 + yy
+    try:
+        return date(yy, mm, dd)
+    except Exception:
+        return None
+
+def last_observation_date(target: str, id_str: str) -> Optional[date]:
+    """Return the most recent parsed MM_DD_YY date from encounter subfolders of <target>/<id_str>."""
+    latest: Optional[date] = None
+    for root in roots_for_read(target):
+        base = root / id_str
+        if not base.exists():
+            continue
+        for child in base.iterdir():
+            if child.is_dir():
+                d = _parse_mmddyy(child.name)
+                if d and (latest is None or d > latest):
+                    latest = d
+    return latest
+
+def last_observation_for_all(target: str) -> Dict[str, Optional[date]]:
+    """
+    Scan all IDs under all plausible roots for *target* ("Gallery" or "Queries")
+    and return a mapping {id_str -> last_observation_date(...)}.
+    """
+    out: Dict[str, Optional[date]] = {}
+    seen: set[str] = set()
+    for root in roots_for_read(target):
+        if not root.exists():
+            continue
+        for p in root.iterdir():
+            if not p.is_dir():
+                continue
+            _id = p.name
+            if _id in seen:
+                continue
+            seen.add(_id)
+            out[_id] = last_observation_date(target, _id)
+    return out

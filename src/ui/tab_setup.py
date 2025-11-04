@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
 import logging
-
+from datetime import date as _date
 from PySide6.QtCore import Qt, QDate, QPoint, QEvent, QPointF, QSize, Signal, QObject, QThreadPool, QRunnable, QTimer
 from PySide6.QtGui import QPixmap, QCursor, QImage, QImageReader
 from PySide6.QtWidgets import (
@@ -22,6 +22,7 @@ from src.data.csv_io import (
 from src.data.id_registry import list_ids, id_exists
 from src.data.ingest import ensure_encounter_name, place_images, discover_ids_and_images
 from src.data.validators import validate_id
+from src.data.archive_paths import last_observation_for_all
 from .metadata_form import MetadataForm
 
 logger = logging.getLogger("starBoard.ui.setup")
@@ -554,6 +555,10 @@ class TabSetup(QWidget):
         self.cmb_id.blockSignals(True)
         self.cmb_id.clear()
         ids = list_ids(target)
+        if target == "Queries":
+            last_obs = last_observation_for_all("Queries")
+            ids = sorted(ids,
+                         key=lambda qid: ((last_obs.get(qid) is None), (last_obs.get(qid) or _date.max), qid.lower()))
         self.cmb_id.addItems(["➕ New ID…"] + ids)
         self.cmb_id.blockSignals(False)
         logger.info("Refreshed ID list for target=%s (n=%d)", target, len(ids))
