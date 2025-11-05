@@ -23,6 +23,7 @@ from src.data.id_registry import list_ids, id_exists
 from src.data.ingest import ensure_encounter_name, place_images, discover_ids_and_images
 from src.data.validators import validate_id
 from src.data.archive_paths import last_observation_for_all
+from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from .metadata_form import MetadataForm
 
 logger = logging.getLogger("starBoard.ui.setup")
@@ -195,6 +196,16 @@ class ImageViewer(QWidget):
             self._render_current_async(prefetch=True)
             self._update_ui()
 
+    def current_index(self) -> int:
+        """Return the current zero-based index, or -1 when empty."""
+        return self._idx
+
+    def current_path(self):
+        """Return the current image Path (or None if empty)."""
+        if 0 <= self._idx < len(self._images):
+            return self._images[self._idx]
+        return None
+
     # ----- cache / loader helpers -----
     def _touch_cache(self, key: str, img: QImage):
         from collections import OrderedDict
@@ -281,6 +292,11 @@ class ImageViewer(QWidget):
             self._render_current_async(prefetch=True)
             self._update_ui()
 
+    def current_path(self) -> Optional[Path]:
+        """Return absolute Path of the image currently shown, or None if empty."""
+        if 0 <= self._idx < len(self._images):
+            return self._images[self._idx]
+        return None
     # ----- events -----
     def eventFilter(self, obj, ev):
         if obj is self.scroll.viewport():
@@ -746,6 +762,7 @@ class TabSetup(QWidget):
         gb = QGroupBox("")  # title provided by CollapsibleSection
         lay = QVBoxLayout(gb)
 
+        # --- top row: target + ID ---
         row = QHBoxLayout()
         row.addWidget(QLabel("Archive:"))
         self.cmb_target_edit = QComboBox()
@@ -759,12 +776,14 @@ class TabSetup(QWidget):
         row.addWidget(self.cmb_id_edit, 1)
         lay.addLayout(row)
 
-        # Split pane: metadata form (left) + image viewer (right)
+        # --- split: form (left) + image viewer (right) ---
         self.meta_form_edit = MetadataForm()
         self.meta_form_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+
         self.viewer_edit = ImageViewer()
         self.viewer_edit.setObjectName("edit_image_viewer")
         self.viewer_edit.setMinimumSize(320, 240)
+
         split = QHBoxLayout()
         split.setContentsMargins(0, 0, 0, 0)
         split.setSpacing(12)
@@ -772,10 +791,20 @@ class TabSetup(QWidget):
         split.addWidget(self.viewer_edit, 3)
         lay.addLayout(split)
 
+        # --- bottom row: Set Best + Save ---
         row2 = QHBoxLayout()
-        self.btn_save_edit = QPushButton("Save & Carry Over")  # renamed
-        self.btn_save_edit.clicked.connect(self._on_save_edits)
+
+        # NEW: 'Set Best' pin action for the current image/ID
+        self.btn_set_best_edit = QPushButton("Set Best")
+        self.btn_set_best_edit.setToolTip("Mark the currently shown image as the 'best' for this ID")
+        self.btn_set_best_edit.clicked.connect(self._on_set_best_clicked)
+        self.btn_set_best_edit.setEnabled(False)  # enabled when an image is present
+        row2.addWidget(self.btn_set_best_edit)
+
         row2.addStretch(1)
+
+        self.btn_save_edit = QPushButton("Save & Carry Over")
+        self.btn_save_edit.clicked.connect(self._on_save_edits)
         self.btn_save_edit.setDefault(True)
         row2.addWidget(self.btn_save_edit)
         lay.addLayout(row2)
@@ -834,6 +863,8 @@ class TabSetup(QWidget):
             if hasattr(self, 'viewer_edit'):
                 self.viewer_edit.clear()
             self._last_edit_id = ""
+            if hasattr(self, 'btn_set_best_edit'):
+                self.btn_set_best_edit.setEnabled(False)
             return
 
         # If user has unsaved edits, offer Save & Carry Over / Discard / Cancel
@@ -866,16 +897,86 @@ class TabSetup(QWidget):
         # Load values
         self.meta_form_edit.set_id_value(next_id)
         self._populate_metadata_from_csv_edit(target, next_id)
+
         # Apply carry-over defaults (only to empty fields)
         if self._carry_over:
             self._apply_carry_over_to_form(self.meta_form_edit, self._carry_over)
 
-        # Update image viewer for this ID
-        self.viewer_edit.set_images(self._gather_images_for_id(target, next_id))
+        # Update image viewer for this ID — with BEST-first reordering
+        from src.data.best_photo import reorder_files_with_best  # local import to avoid touching module imports
+        files = self._gather_images_for_id(target, next_id)
+        try:
+            files = reorder_files_with_best(target, next_id, files)
+        except Exception:
+            # any I/O problem should not break the UI
+            pass
+        self.viewer_edit.set_images(files)
+
+        # Enable/disable the Set Best button based on availability
+        if hasattr(self, 'btn_set_best_edit'):
+            self.btn_set_best_edit.setEnabled(bool(files))
 
         self._last_edit_id = next_id
         if not self._edit_loaded_once:
             self._edit_loaded_once = True
+
+    def _on_set_best_edit(self):
+        target = self.cmb_target_edit.currentText()
+        id_val = self.cmb_id_edit.currentText()
+        if not id_val:
+            warn("No ID selected.", self)
+            return
+        cur = self.viewer_edit.current_path()
+        if not cur:
+            warn("There is no image to pin for this ID.", self)
+            return
+        try:
+            # Persist sidecar
+            save_best_for_id(target, id_val, cur)
+            # Reload ordered images (pinned first) and show first
+            files = self._gather_images_for_id(target, id_val)
+            files = reorder_files_with_best(target, id_val, files)
+            self.viewer_edit.set_images(files)
+            self.viewer_edit.set_images(files)
+            self.viewer_edit.set_index(0)
+            info("Saved 'best' photo for this ID.", self)
+        except Exception as e:
+            warn(f"Couldn't save 'best' photo: {e}", self)
+
+    def _on_set_best_clicked(self) -> None:
+        """Mark the currently shown image as the 'best' for this ID and refresh the viewer."""
+        target = self.cmb_target_edit.currentText() or ""
+        id_val = self.cmb_id_edit.currentText() or ""
+        if not id_val:
+            return
+
+        # Get the current image from the Metadata tab's viewer
+        cur = None
+        try:
+            cur = self.viewer_edit.current_path()
+        except Exception:
+            # Fallback for older ImageViewer without accessors
+            try:
+                if getattr(self.viewer_edit, "_images", None):
+                    idx = getattr(self.viewer_edit, "_idx", -1)
+                    if 0 <= idx < len(self.viewer_edit._images):
+                        cur = self.viewer_edit._images[idx]
+            except Exception:
+                cur = None
+
+        if not cur:
+            return
+
+        # Persist and then reorder currently loaded list to put best first
+        try:
+            from src.data.best_photo import save_best_for_id, reorder_files_with_best
+            save_best_for_id(target, id_val, cur)
+            files = list(getattr(self.viewer_edit, "_images", []))
+            files = reorder_files_with_best(target, id_val, files)
+            self.viewer_edit.set_images(files)
+        except Exception:
+            # No user-facing error; this feature is best-effort and should never break the app
+            pass
 
     def _populate_metadata_from_csv_edit(self, target: str, id_val: str):
         id_col = ap.id_column_name(target)
