@@ -816,6 +816,17 @@ class TabSetup(QWidget):
         target = self.cmb_target_edit.currentText()
         self.meta_form_edit.set_target(target)
         ids = list_ids(target)
+        if target == "Queries":
+            last_obs = last_observation_for_all("Queries")
+            ids = sorted(
+                ids,
+                key=lambda qid: (
+                    (last_obs.get(qid) is None),
+                    (last_obs.get(qid) or _date.max),
+                    qid.lower(),
+                )
+            )
+
         self.cmb_id_edit.blockSignals(True)
         self.cmb_id_edit.clear()
         self.cmb_id_edit.addItems(ids)
