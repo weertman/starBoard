@@ -786,30 +786,41 @@ class TabFirstOrder(QWidget):
             numeric_offsets=self._collect_numeric_offsets(),
         )
 
-        # ---- Apply exclusions (manual + automatic same-day) ----
-        auto_ids = self._auto_excluded_for_same_day(qid)
-        excluded_ids = set(self._excluded_ids) | set(auto_ids)
+        # ---- Manual exclusions still EXCLUDE; auto same-day YES now DEMOTES ----
+        demote_ids = set(self._auto_excluded_for_same_day(qid))  # keep logic; change handling
+        excluded_ids = set(self._excluded_ids)  # manual-only
         excluded_locs = set(self._excluded_locations)
 
-        filtered = []
+        kept, demoted = [], []
         for it in results:
+            # Manual ID exclusion => drop
             if it.gallery_id in excluded_ids:
                 continue
-            g_row = self.engine._gallery_rows_by_id.get(it.gallery_id, {})
+            # Manual location exclusion => drop
+            g_row = self.engine._gallery_rows_by_id.get(it.gallery_id, {})  # safe default
             loc = (g_row.get("Last location", "") or "").strip()
             if loc and loc in excluded_locs:
                 continue
-            filtered.append(it)
+            # Auto same-day YES => demote to the end; otherwise keep in place
+            (demoted if it.gallery_id in demote_ids else kept).append(it)
 
-        # Build cards (with robust constructor call & rich tooltips)
+        ordered = kept + demoted  # preserve relative order within each bucket
+
+        # ---- Build cards (with robust constructor call & rich tooltips) ----
         cards: List[LineupCard] = []
         q_row = self.engine._queries_rows_by_id.get(qid, {})
-        for it in filtered:
+        for it in ordered:
             g_row = self.engine._gallery_rows_by_id.get(it.gallery_id, {})
             tooltips = {
-                f: self._tooltip_for_field(f, q_row.get(f, ""), g_row.get(f, ""), it.field_breakdown.get(f, 0.0))
+                f: self._tooltip_for_field(
+                    f,
+                    q_row.get(f, ""),
+                    g_row.get(f, ""),
+                    it.field_breakdown.get(f, 0.0),
+                )
                 for f in it.field_breakdown.keys()
             }
+
             # Try the new signature first (with query_id for decision UI)
             card = None
             try:
@@ -819,7 +830,7 @@ class TabFirstOrder(QWidget):
                     it.k_contrib,
                     it.field_breakdown,
                     field_tooltips=tooltips,
-                    query_id=self._current_query,   # enables decision combo + save
+                    query_id=self._current_query,  # enables decision combo + save
                 )
             except TypeError:
                 try:
