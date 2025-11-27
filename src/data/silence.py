@@ -97,12 +97,39 @@ def all_flag_paths_for_query(query_id: str) -> List[Path]:
 
 def is_silent_query(query_id: str) -> bool:
     """
-    True if a silence flag file exists in any plausible Query root for this ID.
+    Return True if the Query ID is marked 'silent' either by the modern
+    batch-based marker (<query>/_starboard_silent.json with non-empty 'batches')
+    OR by the legacy/manual flag file (<query>/_SILENT.flag).
+
+    Robust to malformed JSON: treat as silent (fail-closed).
     """
-    for p in all_flag_paths_for_query(query_id):
+    qid = normalize_id_value(query_id)
+
+    # 1) Modern batch-based marker (_starboard_silent.json) across all plausible roots
+    STARBOARD_MARKER = "_starboard_silent.json"
+    try:
+        for root in roots_for_read("Queries"):
+            p = root / qid / STARBOARD_MARKER
+            if p.exists():
+                try:
+                    obj = json.loads(p.read_text(encoding="utf-8"))
+                    batches = obj.get("batches") or []
+                    if len(batches) > 0:
+                        return True
+                except Exception:
+                    # Malformed marker -> consider it silent to be safe
+                    return True
+    except Exception:
+        # If enumeration fails, proceed to legacy flag check
+        pass
+
+    # 2) Legacy/manual flag (_SILENT.flag)
+    for p in all_flag_paths_for_query(qid):
         if p.exists():
             return True
+
     return False
+
 
 
 def load_silence_info(query_id: str) -> SilenceInfo:

@@ -216,6 +216,73 @@ class ImageStrip(QWidget):
         if reset_view:
             self.fit(); self._hires_loaded = False
 
+    def get_view_state(self) -> dict:
+        """
+        Snapshot the current viewing state in coordinates that are resolution-agnostic.
+        Returns a dict with:
+          - idx: current image index within `self.files`
+          - rotation: current rotation in degrees
+          - scale: user zoom factor (1.0 = as loaded by `fit()`)
+          - nx, ny: normalized center (0..1) within the image
+        """
+        state = {
+            "idx": int(getattr(self, "idx", 0)),
+            "rotation": float(getattr(self, "_rotation", 0.0)),
+            "scale": float(getattr(self, "_scale", 1.0)),
+            "nx": 0.5,
+            "ny": 0.5,
+        }
+        try:
+            rect = self.pix_item.boundingRect()
+            center_scene = self.view.mapToScene(self.view.viewport().rect().center())
+            center_item = self.pix_item.mapFromScene(center_scene)
+            nx = 0.5 if rect.width() <= 0 else (center_item.x() - rect.left()) / rect.width()
+            ny = 0.5 if rect.height() <= 0 else (center_item.y() - rect.top()) / rect.height()
+            state["nx"] = float(nx)
+            state["ny"] = float(ny)
+        except Exception:
+            pass
+        return state
+
+    def set_view_state(self, state: dict) -> None:
+        """
+        Restore a viewing state saved by `get_view_state`. Missing keys are ignored.
+        Safe to call immediately after `set_files()`.
+        """
+        if not self.files:
+            return
+
+        # 1) index
+        idx = int(state.get("idx", getattr(self, "idx", 0)))
+        self.idx = max(0, min(idx, len(self.files) - 1))
+
+        # Ensure pixmap exists
+        self._show_current(reset_view=True)
+
+        # 2) rotation + normalized center
+        nx = float(state.get("nx", 0.5))
+        ny = float(state.get("ny", 0.5))
+        self.pix_item.setTransformOriginPoint(self.pix_item.boundingRect().center())
+        self._rotation = float(state.get("rotation", getattr(self, "_rotation", 0.0)))
+        self.pix_item.setRotation(self._rotation)
+
+        # 3) zoom (user scale on top of fit)
+        target_scale = float(state.get("scale", getattr(self, "_scale", 1.0)))
+        try:
+            if target_scale > 0 and abs(target_scale - self._scale) > 1e-6:
+                s = target_scale / float(self._scale or 1.0)
+                if 0 < s < 1e6:
+                    self.view.scale(s, s)
+                    self._scale *= s
+        except Exception:
+            pass
+
+        # 4) center to the same point
+        rect = self.pix_item.boundingRect()
+        cx = rect.left() + nx * rect.width()
+        cy = rect.top() + ny * rect.height()
+        self.view.centerOn(self.pix_item.mapToScene(QPointF(cx, cy)))
+
     def _upgrade_to_fullres(self):
         if not self.files: return
         p = self.files[self.idx]

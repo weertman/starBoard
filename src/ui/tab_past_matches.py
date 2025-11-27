@@ -257,7 +257,7 @@ class TabPastMatches(QWidget):
     def _current_gallery(self) -> str:
         return self.cmb_gallery.currentText() or ""
 
-    def _update_merge_preview(self):
+    def _update_merge_preview(self, _index: int = -1) -> None:
         gid = self._current_gallery()
         if not gid:
             self.lbl_count.setText("—")
@@ -267,16 +267,16 @@ class TabPastMatches(QWidget):
         self.lbl_count.setText(f"YES queries for {gid}: <b>{len(qids)}</b>")
         self.btn_merge.setEnabled(len(qids) > 0)
 
-    def _on_merge(self):
+    def _on_merge(self, checked: bool = False) -> None:
         gid = self._current_gallery()
         if not gid:
             return
         qids = list_mergeable_queries_for_gallery(gid, require_encounters=True)
         if not qids:
-            QMessageBox.information(self, "starBoard", f"No merge‑able YES queries for gallery '{gid}'.")
+            QMessageBox.information(self, "starBoard", f"No merge-able YES queries for gallery '{gid}'.")
             return
 
-        # Dry‑run to show counts
+        # Dry-run to show counts
         dry = merge_yeses_for_gallery(gid, dry_run=True)
         n_q = dry.num_queries
         n_dirs = dry.num_encounter_dirs
@@ -297,13 +297,19 @@ class TabPastMatches(QWidget):
 
         rep = merge_yeses_for_gallery(gid, dry_run=False)
         if rep.errors:
-            QMessageBox.warning(self, "starBoard",
-                                f"Merged with errors.\nCreated: {rep.num_encounter_dirs} encounter folder(s)\n"
-                                f"Errors:\n - " + "\n - ".join(rep.errors))
+            QMessageBox.warning(
+                self,
+                "starBoard",
+                f"Merged with errors.\nCreated: {rep.num_encounter_dirs} encounter folder(s)\n"
+                f"Errors:\n - " + "\n - ".join(rep.errors)
+            )
         else:
-            QMessageBox.information(self, "starBoard",
-                                    f"Merge complete.\nCreated: {rep.num_encounter_dirs} encounter folder(s)\n"
-                                    f"Batch: {rep.batch_id}")
+            QMessageBox.information(
+                self,
+                "starBoard",
+                f"Merge complete.\nCreated: {rep.num_encounter_dirs} encounter folder(s)\n"
+                f"Batch: {rep.batch_id}"
+            )
         # Refresh both panels (lists change after merge)
         self._refresh_merge_gallery_list()
         self._refresh_revert_gallery_list()
@@ -320,7 +326,7 @@ class TabPastMatches(QWidget):
             self.cmb_gallery_rev.setCurrentIndex(idx)
         self._refresh_batch_list()
 
-    def _on_revert_gallery_changed(self):
+    def _on_revert_gallery_changed(self, _index: int = -1) -> None:
         self._refresh_batch_list()
 
     def _refresh_batch_list(self):
@@ -340,25 +346,34 @@ class TabPastMatches(QWidget):
             self.cmb_batch.addItem(label, bid)
         self.btn_revert_sel.setEnabled(self.cmb_batch.count() > 0)
 
-    def _on_revert_selected_batch(self):
+    def _on_revert_selected_batch(self, checked: bool = False) -> None:
         gid = self.cmb_gallery_rev.currentText()
         if not gid or self.cmb_batch.count() == 0:
             return
+
         bid = self.cmb_batch.currentData()
         rep = revert_merge_batch_for_gallery(gid, bid)
         if not rep.batch_id:
             QMessageBox.information(self, "starBoard", "Nothing to revert for this gallery.")
             return
+
         if rep.errors:
-            QMessageBox.warning(self, "starBoard",
-                                f"Reverted batch {rep.batch_id} with errors.\n"
-                                f"Removed encounter dirs: {rep.num_encounter_dirs}\n"
-                                "Errors:\n - " + "\n - ".join(rep.errors))
+            QMessageBox.warning(
+                self,
+                "starBoard",
+                f"Reverted batch {rep.batch_id} with errors.\n"
+                f"Removed encounter dirs: {rep.num_encounter_dirs}\n"
+                "Errors:\n - " + "\n - ".join(rep.errors)
+            )
         else:
-            QMessageBox.information(self, "starBoard",
-                                    f"Reverted batch {rep.batch_id}.\n"
-                                    f"Removed encounter dirs: {rep.num_encounter_dirs}\n"
-                                    f"Unsilenced queries: {rep.num_queries}")
+            QMessageBox.information(
+                self,
+                "starBoard",
+                f"Reverted batch {rep.batch_id}.\n"
+                f"Removed encounter dirs: {rep.num_encounter_dirs}\n"
+                f"Unsilenced queries: {rep.num_queries}"
+            )
+
         # Refresh both panels (lists change after revert)
         self._refresh_merge_gallery_list()
         self._refresh_revert_gallery_list()

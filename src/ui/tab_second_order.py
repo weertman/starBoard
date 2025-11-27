@@ -151,25 +151,135 @@ class TabSecondOrder(QWidget):
 
     # ----- helpers -----
     def _refresh_ids(self) -> None:
-        qs_raw = [qid for qid in list_ids("Queries") if not is_query_silent(qid)]
+        # Remember prior selections so we can restore them if still present
+        prev_q = self.cmb_query.currentText()
+        prev_g = self.cmb_gallery.currentText()
+
+        # Include *all* queries; we'll demote silent/past-match ones instead of hiding them
+        qs_all = list_ids("Queries")  # includes silent
+        silent = {qid for qid in qs_all if is_query_silent(qid)}
+
         last_obs = last_observation_for_all("Queries")
 
         def _date_alpha_key(qid: str):
             d = last_obs.get(qid)
+            # Keep items with a date first (ascending by date), then no-date,
+            # then case-insensitive alphabetical.
             return (d is None, d or _date.max, qid.lower())
-        qs = sorted(qs_raw, key=_date_alpha_key)
+
+        # Active queries first, then silent/merged queries, each internally date+alpha sorted
+        active = sorted([q for q in qs_all if q not in silent], key=_date_alpha_key)
+        demoted = sorted([q for q in qs_all if q in silent], key=_date_alpha_key)
+        qs = active + demoted
 
         gs = list_ids("Gallery")
-        self.cmb_query.blockSignals(True); self.cmb_gallery.blockSignals(True)
-        self.cmb_query.clear(); self.cmb_gallery.clear()
-        self.cmb_query.addItems(qs); self.cmb_gallery.addItems(gs)
-        self.cmb_query.blockSignals(False); self.cmb_gallery.blockSignals(False)
 
-        if qs: self.cmb_query.setCurrentIndex(0)
-        if gs: self.cmb_gallery.setCurrentIndex(0)
+        # Repopulate with signals blocked to avoid spurious slot executions
+        self.cmb_query.blockSignals(True)
+        self.cmb_gallery.blockSignals(True)
+        try:
+            self.cmb_query.clear()
+            self.cmb_gallery.clear()
 
+            if qs:
+                self.cmb_query.addItems(qs)
+            if gs:
+                self.cmb_gallery.addItems(gs)
+
+            # Try to restore selections; otherwise default to first item
+            if qs:
+                i = self.cmb_query.findText(prev_q) if prev_q else -1
+                self.cmb_query.setCurrentIndex(i if i >= 0 else 0)
+
+            if gs:
+                j = self.cmb_gallery.findText(prev_g) if prev_g else -1
+                self.cmb_gallery.setCurrentIndex(j if j >= 0 else 0)
+
+        finally:
+            self.cmb_query.blockSignals(False)
+            self.cmb_gallery.blockSignals(False)
+
+        # Drive dependent UI exactly once per control
         self._on_query_changed()
         self._on_gallery_changed()
+
+    def add_first_order_sync(self, first_order: "TabFirstOrder") -> None:
+        """
+        Inject a small one-click bridge that pulls the currently selected
+        First‑order Query *ID*, *image*, and *view* (pan/zoom/rotation)
+        into this Second‑order tab's Query viewer.
+
+        This is 'surgical': it does not alter existing row wiring — it simply
+        inserts a tiny toolbar row with a button and stores a weak reference.
+        """
+        self._first_order_ref = first_order
+
+        # Add a thin row under the existing Row 1 (IDs + Recommendations).
+        # We do this at runtime so we don't need to modify __init__.
+        lay = self.layout()
+        if lay is None:
+            return
+
+        bar = QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.setSpacing(6)
+
+        self.btn_use_first = QPushButton("Use First‑order Selection")
+        self.btn_use_first.setToolTip(
+            "Copy the current First‑order Query, selected image, and view here."
+        )
+        self.btn_use_first.clicked.connect(self._use_first_order_selection)
+
+        bar.addStretch(1)
+        bar.addWidget(self.btn_use_first)
+
+        # Insert just after the top controls row (index 1 is right after the first addLayout)
+        idx = min(1, lay.count())
+        lay.insertLayout(idx, bar)
+
+    def _use_first_order_selection(self) -> None:
+        fo = getattr(self, "_first_order_ref", None)
+        if fo is None:
+            return
+
+        try:
+            payload = fo.export_current_query_selection() or {}
+        except Exception:
+            payload = {}
+
+        qid = (payload.get("query_id") or "").strip()
+        img_str = payload.get("image_path") or ""
+        view_state = payload.get("view_state") or {}
+
+        if not qid:
+            return  # no selection in First‑order
+
+        # 1) Switch our Query combo to that ID without firing redundant signals
+        i = self.cmb_query.findText(qid)
+        if i >= 0:
+            self.cmb_query.blockSignals(True)
+            self.cmb_query.setCurrentIndex(i)
+            self.cmb_query.blockSignals(False)
+        # Ensure the viewer is refreshed (uses the tab's existing pipeline/order)
+        self._on_query_changed()
+
+        # 2) Align the current image + view
+        try:
+            target_path = Path(img_str) if img_str else None
+            files = list(self.view_q.strip.files or [])
+            idx = 0
+            if target_path:
+                # Normalize for cross‑platform case differences
+                for j, p in enumerate(files):
+                    if Path(p) == target_path:
+                        idx = j
+                        break
+            # Override idx in the view state and apply
+            vs = dict(view_state)
+            vs["idx"] = idx
+            self.view_q.strip.set_view_state(vs)
+        except Exception:
+            pass
 
     def _pins_path(self, qid: str) -> Path:
         return ap.queries_root(prefer_new=True) / qid / "_pins_first_order.json"
@@ -192,6 +302,8 @@ class TabSecondOrder(QWidget):
             self.cmb_recommended.addItem("—")
         finally:
             self.cmb_recommended.blockSignals(False)
+
+
 
     def _on_query_changed(self) -> None:
         qid = self.cmb_query.currentText()

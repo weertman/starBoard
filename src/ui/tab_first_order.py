@@ -578,11 +578,10 @@ class TabFirstOrder(QWidget):
         # Any time the Query pane's vertical split changes, propagate the new min height.
         self._sync_card_min_height_from_query()
 
-
     def _refresh_query_ids(self):
         prev_sel = self.cmb_query.currentText()
-        ids = list_ids("Queries")
-        ids = [qid for qid in ids if not is_query_silent(qid)]
+        # Use central registry with unified silence logic
+        ids = list_ids("Queries", exclude_silent=True)
 
         # date bounds init and filter
         last_obs = last_observation_for_all("Queries")
@@ -625,6 +624,28 @@ class TabFirstOrder(QWidget):
             self.lbl_query_id.setText("—")
             self.query_strip.set_files([])
             self._set_cards([])
+
+    def export_current_query_selection(self) -> Dict[str, object]:
+        """
+        Return the currently selected *Query* context so other tabs can
+        re-create the same image and view.
+
+        Dict keys:
+          - query_id: str
+          - image_path: str (absolute path of the selected query image)
+          - view_state: dict from ImageStrip.get_view_state()
+        """
+        qid = (self._current_query or "").strip()
+        files = list(getattr(self, "query_strip", None).files or []) if hasattr(self, "query_strip") else []
+        idx = int(getattr(getattr(self, "query_strip", None), "idx", 0)) if hasattr(self, "query_strip") else 0
+        img = files[idx] if (files and 0 <= idx < len(files)) else None
+        view_state = getattr(self.query_strip, "get_view_state", lambda: {})() if files else {}
+
+        return {
+            "query_id": qid,
+            "image_path": str(img) if img else "",
+            "view_state": view_state,
+        }
 
     def _on_query_panel_resized(self, *_):
         """When the main left/right splitter moves, update gallery min width."""
@@ -968,6 +989,166 @@ class TabFirstOrder(QWidget):
         # When the underlying Query pixmap changes size, re-sync + refit cards.
         self._sync_card_min_height_from_query()
         self._fit_cards_to_viewport()
+
+    # ---------------- Gallery navigation (Next/Prev result buttons) ----------------
+    def add_gallery_nav_toolbar(self) -> None:
+        """
+        Install a tiny navigation toolbar (Prev / Next result) under the gallery
+        scroll area on the right side of the First‑order tab.
+
+        This is intentionally 'surgical':
+        - We DO NOT change how cards are created or sized.
+        - We simply wrap the existing QScrollArea in a lightweight QWidget
+          with a vertical layout and add two buttons below it.
+        - The original scroll bar remains fully usable.
+        """
+        # Avoid double‑installation if called more than once.
+        if getattr(self, "_gallery_nav_installed", False):
+            return
+
+        scroll = getattr(self, "scroll", None)
+        hsplit = getattr(self, "hsplit", None)
+        if scroll is None or hsplit is None:
+            # Something is unexpected; fail silently rather than breaking the tab.
+            return
+
+        # Wrapper that will host the existing scroll area + the new buttons.
+        wrapper = _QW()
+        vlay = _QVL(wrapper)
+        vlay.setContentsMargins(0, 0, 0, 0)
+        vlay.setSpacing(4)
+
+        # Insert the wrapper into the splitter at the same index where the
+        # gallery scroll area currently lives.
+        idx = hsplit.indexOf(scroll)
+        if idx < 0:
+            # Fallback: if the scroll area is not in the splitter for some reason,
+            # just add the wrapper at the end.
+            hsplit.addWidget(wrapper)
+        else:
+            # Insert wrapper before the scroll, then reparent the scroll into it.
+            hsplit.insertWidget(idx, wrapper)
+
+        # Reparent the existing scroll area into the wrapper.
+        vlay.addWidget(scroll, 1)
+
+        # --- Buttons row ---
+        row = QHBoxLayout()
+        row.setContentsMargins(4, 0, 4, 0)
+        row.setSpacing(6)
+
+        self.btn_gallery_prev = QPushButton("◀ Prev result")
+        self.btn_gallery_next = QPushButton("Next result ▶")
+
+        self.btn_gallery_prev.setToolTip(
+            "Scroll to the previous gallery identity and center it in view."
+        )
+        self.btn_gallery_next.setToolTip(
+            "Scroll to the next gallery identity and center it in view."
+        )
+
+        row.addStretch(1)
+        row.addWidget(self.btn_gallery_prev)
+        row.addWidget(self.btn_gallery_next)
+        vlay.addLayout(row)
+
+        # Wire up behavior.
+        self.btn_gallery_prev.clicked.connect(self._on_gallery_prev_clicked)
+        self.btn_gallery_next.clicked.connect(self._on_gallery_next_clicked)
+
+        self._gallery_nav_installed = True
+
+    # ---- coordinate helpers ----
+    def _current_gallery_card_index(self) -> int:
+        """
+        Return the index of the card whose horizontal center is closest to the
+        current viewport center. If there are no cards, return -1.
+
+        All coordinates are in the cards_container / scroll‑contents space, so
+        they are directly comparable to the scroll bar value.
+        """
+        if not self._cards or not hasattr(self, "scroll"):
+            return -1
+
+        viewport = self.scroll.viewport()
+        hbar = self.scroll.horizontalScrollBar()
+        if viewport is None or hbar is None:
+            return -1
+
+        view_center_x = float(hbar.value()) + float(viewport.width()) / 2.0
+
+        best_idx = -1
+        best_dist = float("inf")
+
+        for i, card in enumerate(self._cards):
+            rect = card.geometry()
+            if rect.isNull():
+                continue
+            center_x = float(rect.x()) + float(rect.width()) / 2.0
+            d = abs(center_x - view_center_x)
+            if d < best_dist:
+                best_dist = d
+                best_idx = i
+
+        return best_idx
+
+    def _scroll_to_gallery_card(self, idx: int) -> None:
+        """
+        Scroll horizontally so that card `idx` is centered in the gallery
+        viewport as much as the scroll range allows.
+        """
+        if not (0 <= idx < len(self._cards)):
+            return
+        if not hasattr(self, "scroll"):
+            return
+
+        card = self._cards[idx]
+        rect = card.geometry()
+        if rect.isNull():
+            return
+
+        viewport = self.scroll.viewport()
+        hbar = self.scroll.horizontalScrollBar()
+        if viewport is None or hbar is None:
+            return
+
+        target_center_x = float(rect.x()) + float(rect.width()) / 2.0
+        new_value = target_center_x - float(viewport.width()) / 2.0
+
+        # Clamp to valid scroll range.
+        new_int = int(round(new_value))
+        new_int = max(hbar.minimum(), min(hbar.maximum(), new_int))
+        hbar.setValue(new_int)
+
+    # ---- button handlers ----
+    def _on_gallery_prev_clicked(self) -> None:
+        """
+        Jump to the previous gallery card (if any) and center it.
+        """
+        if not self._cards:
+            return
+        cur = self._current_gallery_card_index()
+        if cur < 0:
+            # Nothing visible yet; treat as first card.
+            target = 0
+        else:
+            target = max(0, cur - 1)
+        self._scroll_to_gallery_card(target)
+
+    def _on_gallery_next_clicked(self) -> None:
+        """
+        Jump to the next gallery card (if any) and center it.
+        """
+        if not self._cards:
+            return
+        cur = self._current_gallery_card_index()
+        if cur < 0:
+            # Nothing visible yet; treat as first card.
+            target = 0
+        else:
+            target = min(len(self._cards) - 1, cur + 1)
+        self._scroll_to_gallery_card(target)
+
 
 
     # ---- field tooltips with raw values ----

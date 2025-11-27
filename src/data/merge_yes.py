@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Tuple, Iterable, Optional, Set
+from typing import List, Dict, Iterable, Optional, Set
 from datetime import datetime
 import shutil, uuid, json, csv, logging
 
-from .archive_paths import gallery_root, queries_root
+from .archive_paths import gallery_root, queries_root, roots_for_read
+from .csv_io import normalize_id_value
 from .id_registry import list_ids
 from .compare_labels import load_latest_map_for_query
 from .validators import validate_mmddyy_string
@@ -21,6 +22,16 @@ _HIST_HEADER = [
     "batch_id", "timestamp_utc", "operation", "gallery_id", "query_id",
     "src_rel", "dest_rel", "kind", "status", "note"
 ]
+
+# Back-compat shim: delegate to the central silence logic if available
+try:
+    from .silence import is_silent_query as _is_silent_query  # modern consolidated logic
+    from .silence import load_silence_info, clear_silent_query  # for legacy cleanup on revert
+except Exception:  # pragma: no cover
+    _is_silent_query = None
+    load_silence_info = None
+    clear_silent_query = None
+
 
 @dataclass
 class MergePlanItem:
@@ -38,11 +49,14 @@ class MergeReport:
     errors: List[str]
     dry_run: bool = False
 
+
 def _history_path(gallery_id: str) -> Path:
     return gallery_root() / gallery_id / HISTORY_CSV_NAME
 
+
 def _ensure_parent(p: Path) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
+
 
 def _ensure_unique_dir(dest: Path) -> Path:
     """Return a unique directory path by suffixing ' (n)' if needed."""
@@ -57,23 +71,31 @@ def _ensure_unique_dir(dest: Path) -> Path:
             return cand
         n += 1
 
+
 def _list_encounter_dirs(query_id: str) -> List[Path]:
-    """Immediate child directories of a query folder that look like MM_DD_YY*."""
-    qroot = queries_root(prefer_new=True) / query_id
-    if not qroot.exists():
-        return []
+    """Immediate child directories under any query root that look like MM_DD_YY*."""
     out: List[Path] = []
-    for child in sorted(p for p in qroot.iterdir() if p.is_dir()):
-        name = child.name
-        if validate_mmddyy_string(name).ok:
-            out.append(child)
+    seen: set[str] = set()
+    for root in roots_for_read("Queries"):
+        qroot = root / query_id
+        if not qroot.exists():
+            continue
+        for child in sorted(p for p in qroot.iterdir() if p.is_dir()):
+            name = child.name
+            if validate_mmddyy_string(name).ok:
+                key = str(child.resolve()) if child.exists() else str(child)
+                if key not in seen:
+                    out.append(child)
+                    seen.add(key)
     return out
+
 
 def _read_rows(path: Path) -> List[Dict[str, str]]:
     if not path.exists():
         return []
     with path.open("r", newline="", encoding="utf-8-sig") as f:
         return list(csv.DictReader(f))
+
 
 def _append_rows(path: Path, rows: Iterable[Dict[str, str]]) -> None:
     _ensure_parent(path)
@@ -85,21 +107,40 @@ def _append_rows(path: Path, rows: Iterable[Dict[str, str]]) -> None:
         for r in rows:
             w.writerow({k: r.get(k, "") for k in _HIST_HEADER})
 
+
 def _silent_path(query_id: str) -> Path:
     return queries_root(prefer_new=True) / query_id / SILENT_MARKER_FILENAME
 
+def _silent_paths_all(query_id: str) -> list[Path]:
+    """All plausible locations of the batch-based silent marker for this query."""
+    qid = normalize_id_value(query_id)
+    paths: list[Path] = []
+    seen: set[str] = set()
+    # prefer the write root first for determinism, then every readable root
+    for root in [queries_root(prefer_new=True)] + list(roots_for_read("Queries")):
+        p = root / qid / SILENT_MARKER_FILENAME
+        k = str(p)
+        if k not in seen:
+            paths.append(p)
+            seen.add(k)
+    return paths
+
+# ---------------------------- PUBLIC API (back-compat) ----------------------------
+
 def is_query_silent(query_id: str) -> bool:
-    """True if the query has any active silent batches."""
-    p = _silent_path(query_id)
-    if not p.exists():
-        return False
+    """
+    Compatibility wrapper: delegate to the canonical silence checker
+    so all call sites share the same logic (modern + legacy markers).
+    """
     try:
-        obj = json.loads(p.read_text(encoding="utf-8"))
-        batches = obj.get("batches") or []
-        return len(batches) > 0
+        from .silence import is_silent_query
+        return is_silent_query(query_id)
     except Exception:
-        # On malformed file, treat as silent to be safe
-        return True
+        # Fail open (visible) if silence machinery is unavailable
+        return False
+
+
+# ---------------------------- batch marker helpers ----------------------------
 
 def _add_silent_batch(query_id: str, batch_id: str) -> None:
     p = _silent_path(query_id)
@@ -114,35 +155,40 @@ def _add_silent_batch(query_id: str, batch_id: str) -> None:
         batches.append(batch_id)
     _ensure_parent(p)
     p.write_text(json.dumps({"batches": batches}, indent=2), encoding="utf-8")
+# :contentReference[oaicite:9]{index=9}
+
 
 def _remove_silent_batch(query_id: str, batch_id: str) -> None:
-    p = _silent_path(query_id)
-    if not p.exists():
-        return
-    try:
-        obj = json.loads(p.read_text(encoding="utf-8"))
-        batches = [str(x) for x in (obj.get("batches") or []) if str(x) != batch_id]
-        if batches:
-            p.write_text(json.dumps({"batches": batches}, indent=2), encoding="utf-8")
-        else:
-            p.unlink(missing_ok=True)
-    except Exception:
-        # If anything is wrong, best effort: delete file (unsilence)
+    """Remove batch_id from the modern silent marker across all plausible roots."""
+    for p in _silent_paths_all(query_id):
+        if not p.exists():
+            continue
         try:
-            p.unlink(missing_ok=True)
+            obj = json.loads(p.read_text(encoding="utf-8"))
+            batches = [str(x) for x in (obj.get("batches") or []) if str(x) != batch_id]
+            if batches:
+                p.write_text(json.dumps({"batches": batches}, indent=2), encoding="utf-8")
+            else:
+                p.unlink(missing_ok=True)
         except Exception:
-            pass
+            # best-effort unsilence if the file is malformed
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-# ---------- discovery helpers (existing + new) ----------
+
+# ---------------------------- discovery helpers ----------------------------
 
 def list_yes_queries_for_gallery(gallery_id: str) -> List[str]:
     """All query_ids that currently have verdict=='yes' against gallery_id."""
+    gid_norm = normalize_id_value(gallery_id)
     qs = list_ids("Queries")
     out: List[str] = []
     for qid in qs:
         try:
             latest = load_latest_map_for_query(qid)
-            row = latest.get(gallery_id)
+            row = latest.get(gid_norm) or latest.get(gallery_id)
             v = (row or {}).get("verdict", "") or ""
             if v.strip().lower() == "yes":
                 out.append(qid)
@@ -163,6 +209,8 @@ def list_mergeable_queries_for_gallery(gallery_id: str, *, require_encounters: b
         if _list_encounter_dirs(qid):
             out.append(qid)
     return out
+# :contentReference[oaicite:12]{index=12}
+
 
 def list_galleries_with_merge_candidates(*, require_encounters: bool = True) -> List[str]:
     """
@@ -174,6 +222,8 @@ def list_galleries_with_merge_candidates(*, require_encounters: bool = True) -> 
         if list_mergeable_queries_for_gallery(gid, require_encounters=require_encounters):
             out.append(gid)
     return sorted(out)
+# :contentReference[oaicite:13]{index=13}
+
 
 def list_galleries_with_history() -> List[str]:
     """All galleries that have at least one merge history row."""
@@ -183,42 +233,71 @@ def list_galleries_with_history() -> List[str]:
         if any(r.get("operation") == "merge" for r in rows):
             out.append(gid)
     return sorted(out)
+# :contentReference[oaicite:14]{index=14}
+
+
+# src/data/merge_yes.py
 
 def list_batches_for_gallery(gallery_id: str) -> List[Dict[str, str]]:
     """
-    Return a list of batches (most recent last) with summary fields:
-    {batch_id, timestamp_utc, num_dirs, num_queries}.
+    Return a list of *active* merge batches (most recent last) with summary
+    fields: {batch_id, timestamp_utc, num_dirs, num_queries}.
+
+    A batch is considered active only if the last history row for that
+    batch_id has operation == "merge" (i.e. it has not been fully reverted).
     """
     rows = _read_rows(_history_path(gallery_id))
+
+    # 1) Track the last operation we saw for each batch_id.
+    last_op: Dict[str, str] = {}
+    for r in rows:
+        bid = (r.get("batch_id") or "").strip()
+        if not bid:
+            continue
+        last_op[bid] = r.get("operation", "")
+
+    # 2) Aggregate stats for batches whose *current* state is "merged".
     by_batch: Dict[str, Dict[str, str]] = {}
-    # Keep in file order (append-only), so we can preserve chronological order.
     for r in rows:
         if r.get("operation") != "merge":
             continue
-        bid = r.get("batch_id") or ""
+        bid = (r.get("batch_id") or "").strip()
         if not bid:
             continue
-        entry = by_batch.setdefault(bid, {"batch_id": bid, "timestamp_utc": r.get("timestamp_utc", "") or "",
-                                          "num_dirs": "0", "num_queries": "0"})
-        # Count created directories
+        if last_op.get(bid) != "merge":
+            # This batch was later reverted; don't offer it in the UI.
+            continue
+
+        entry = by_batch.setdefault(
+            bid,
+            {
+                "batch_id": bid,
+                "timestamp_utc": r.get("timestamp_utc", "") or "",
+                "num_dirs": "0",
+                "num_queries": "0",
+            },
+        )
         if r.get("kind") == "dir" and r.get("status") == "created":
             entry["num_dirs"] = str(int(entry["num_dirs"]) + 1)
-        # Count silenced queries
         if r.get("kind") == "silence_marker" and r.get("status") == "created":
             entry["num_queries"] = str(int(entry["num_queries"]) + 1)
-    # Preserve chronological order as in file
-    ordered = [by_batch[bid] for bid in [r.get("batch_id","") for r in rows if r.get("operation")=="merge"] if bid in by_batch]
-    # Deduplicate while preserving order
-    seen: Set[str] = set()
-    result: List[Dict[str, str]] = []
-    for e in ordered:
-        if e["batch_id"] in seen:
-            continue
-        seen.add(e["batch_id"])
-        result.append(e)
-    return result
 
-# ---------- planning & execution ----------
+    # 3) Preserve chronological order, but only for active batches.
+    ordered_ids: List[str] = []
+    for r in rows:
+        if r.get("operation") != "merge":
+            continue
+        bid = (r.get("batch_id") or "").strip()
+        if not bid or last_op.get(bid) != "merge":
+            continue
+        if bid not in ordered_ids:
+            ordered_ids.append(bid)
+
+    return [by_batch[bid] for bid in ordered_ids]
+
+
+
+# ---------------------------- planning & execution ----------------------------
 
 def _build_plan(gallery_id: str, query_ids: List[str]) -> List[MergePlanItem]:
     """Plan copying of encounter dirs (prefix MM_DD_YY*) from each query to gallery."""
@@ -229,6 +308,8 @@ def _build_plan(gallery_id: str, query_ids: List[str]) -> List[MergePlanItem]:
             dest_dir = _ensure_unique_dir(dest_base / enc.name)
             plan.append(MergePlanItem(query_id=qid, src_dir=enc, dest_dir=dest_dir))
     return plan
+# :contentReference[oaicite:16]{index=16}
+
 
 def merge_yeses_for_gallery(gallery_id: str, *, dry_run: bool = False) -> MergeReport:
     """Copy all encounter folders for YES queries into the gallery, with history + silence markers."""
@@ -297,6 +378,8 @@ def merge_yeses_for_gallery(gallery_id: str, *, dry_run: bool = False) -> MergeR
         errors=errors,
         dry_run=dry_run
     )
+# :contentReference[oaicite:17]{index=17}
+
 
 def _last_merge_batch_id(rows: List[Dict[str, str]]) -> Optional[str]:
     # last row with operation='merge' gives the most recent batch
@@ -304,6 +387,7 @@ def _last_merge_batch_id(rows: List[Dict[str, str]]) -> Optional[str]:
     if not merges:
         return None
     return merges[-1].get("batch_id") or None
+
 
 def revert_merge_batch_for_gallery(gallery_id: str, batch_id: str) -> MergeReport:
     """Revert the specified merge batch for this gallery."""
@@ -360,7 +444,7 @@ def revert_merge_batch_for_gallery(gallery_id: str, batch_id: str) -> MergeRepor
                 "kind": "dir", "status": "error", "note": str(e)
             })
 
-    # Remove silent markers for this batch (or delete file if empty)
+    # Remove modern silent markers for this batch
     for qid in sorted(affected_queries):
         try:
             _remove_silent_batch(qid, batch_id)
@@ -372,6 +456,20 @@ def revert_merge_batch_for_gallery(gallery_id: str, batch_id: str) -> MergeRepor
             })
         except Exception as e:
             errors.append(f"failed to remove silent marker for {qid}: {e}")
+
+        # NEW: Always attempt to clear legacy _SILENT.flag for queries silenced by this batch
+        try:
+            from .silence import clear_silent_query
+            if clear_silent_query(qid):
+                hist_rows.append({
+                    "batch_id": batch_id, "timestamp_utc": now, "operation": "revert",
+                    "gallery_id": gallery_id, "query_id": qid,
+                    "src_rel": f"{qid}/_SILENT.flag", "dest_rel": "",
+                    "kind": "silence_flag", "status": "removed", "note": "legacy flag"
+                })
+        except Exception:
+            # never break revert on cleanup failures
+            pass
 
     _append_rows(_history_path(gallery_id), hist_rows)
 
