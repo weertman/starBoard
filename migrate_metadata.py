@@ -5,7 +5,7 @@ Migration script: Convert V1 metadata schema to V2.
 This script:
 1. Reads old V1 CSV files (gallery_metadata.csv, queries_metadata.csv)
 2. Maps fields to the new V2 schema
-3. Parses free-text description fields to extract structured data
+3. Parses structured key=value annotation format from stripe_descriptions
 4. Creates backup of old files
 5. Writes new V2 CSV files
 
@@ -64,159 +64,178 @@ V2_QUERIES_HEADER = [
 
 
 # =============================================================================
-# COLOR EXTRACTION
+# STRIPE DESCRIPTIONS PARSING (key=value format)
 # =============================================================================
+# Format: "thickness=thick, color=grey/mauve green, intensity=strong, order=strong"
 
-# Common color terms to look for
-COLOR_TERMS = [
-    # Basic colors
-    "white", "yellow", "orange", "peach", "pink", "red", "maroon", "burgundy",
-    "purple", "mauve", "brown", "tan", "black", "lavender", "rose",
-    # Compound colors (order matters - longer matches first)
-    "burnt orange", "bright orange", "rusty orange", "light brown", "light purple",
-    "dark purple", "dark brown", "dark orange", "white yellow", "yellow white",
-    "white-yellow", "yellow-white", "brown orange", "brown-orange", "purple maroon",
-    "purple-maroon", "pink maroon", "pink-maroon", "burgundy mauve", "burgundy-mauve",
-    "mauve burgundy", "mauve-burgundy", "brown mauve", "brown-mauve", "mauve brown",
-    "mauve-brown", "maroon purple", "maroon-purple", "maroon pink", "maroon-pink",
-    "peach brown", "peach-brown", "light peach", "dark maroon", "deep maroon",
-    "faint mauve", "pale yellow", "cherry", "black cherry",
-]
-
-# Build regex pattern for colors (longer matches first)
-COLOR_PATTERN = re.compile(
-    r'\b(' + '|'.join(re.escape(c) for c in sorted(COLOR_TERMS, key=len, reverse=True)) + r')\b',
-    re.IGNORECASE
-)
-
-
-def extract_colors(text: str) -> List[str]:
-    """Extract color terms from text."""
-    if not text:
-        return []
-    matches = COLOR_PATTERN.findall(text.lower())
-    # Deduplicate while preserving order
-    seen = set()
-    result = []
-    for m in matches:
-        if m not in seen:
-            seen.add(m)
-            result.append(m)
+def parse_stripe_key_value(text: str) -> Dict[str, str]:
+    """
+    Parse stripe_descriptions in key=value format.
+    
+    Example input: "thickness=thick, color=grey/mauve green, intensity=strong, order=strong"
+    Returns: {"thickness": "thick", "color": "grey/mauve green", "intensity": "strong", "order": "strong"}
+    """
+    result: Dict[str, str] = {}
+    if not text or not text.strip():
+        return result
+    
+    # Split on comma, then parse key=value pairs
+    # Handle spaces around commas and equals
+    parts = [p.strip() for p in text.split(",")]
+    
+    for part in parts:
+        if "=" not in part:
+            continue
+        key, _, val = part.partition("=")
+        key = key.strip().lower()
+        val = val.strip()
+        if key and val:
+            result[key] = val
+    
     return result
 
 
-def extract_primary_color(text: str) -> str:
-    """Extract the first/primary color from text."""
-    colors = extract_colors(text)
-    return colors[0] if colors else ""
-
-
-# =============================================================================
-# STRIPE PARSING
-# =============================================================================
-
-STRIPE_ORDER_MAP = {
+# Intensity -> stripe_prominence mapping
+INTENSITY_TO_PROMINENCE = {
     "none": "0",
-    "mixed": "1", "mix": "1",
-    "irregular": "2", "disorganized": "2", "disorgnized": "2", "disorganzied": "2",
-    "disorgazied": "2", "disorangized": "2", "disorgnaized": "2", "idsorganzed": "2",
-    "disprgnized": "2", "disoragnized": "2",
-    "regular": "3", "reulagr": "3", "regualr": "3",
+    "mild": "1",
+    "medium": "2",
+    "strong": "3",
 }
 
-STRIPE_PROMINENCE_MAP = {
+# Order -> stripe_order mapping
+ORDER_TO_STRIPE_ORDER = {
+    "no": "0",
     "none": "0",
-    "faint": "1", "very faint": "1", "subtle": "1", "very subtle": "1",
-    "weak": "1", "obscure": "1",
-    "moderate": "2", "moderately": "2", "somewhat": "2", "medium": "2",
-    "prominent": "3", "prom": "3", "promenent": "3", "prominemnt": "3",
-    "very prominent": "4", "veyr prom": "4", "very prom": "4",
+    "mild": "1",
+    "medium": "2",
+    "strong": "3",
+}
+
+# Thickness -> arm_thickness mapping
+THICKNESS_TO_ARM_THICKNESS = {
+    "narrow": "0",
+    "thin": "0",
+    "medium": "1",
+    "thick": "2",
 }
 
 
 def parse_stripe_descriptions(text: str) -> Dict[str, str]:
-    """Parse stripe_descriptions field for order, prominence, and color."""
-    result = {"stripe_color": "", "stripe_order": "", "stripe_prominence": ""}
-    if not text:
+    """
+    Parse stripe_descriptions field in structured key=value format.
+    
+    Returns dict with V2 fields:
+    - stripe_color
+    - stripe_order
+    - stripe_prominence
+    - arm_thickness (extracted from thickness= key)
+    """
+    result = {
+        "stripe_color": "",
+        "stripe_order": "",
+        "stripe_prominence": "",
+        "arm_thickness": "",
+    }
+    
+    if not text or not text.strip():
         return result
     
-    text_lower = text.lower()
+    parsed = parse_stripe_key_value(text)
     
-    # Extract color
-    result["stripe_color"] = extract_primary_color(text)
+    # Extract color (direct mapping)
+    if "color" in parsed:
+        result["stripe_color"] = parsed["color"]
     
-    # Extract order (regular/irregular/mixed/disorganized)
-    for key, val in STRIPE_ORDER_MAP.items():
-        if key in text_lower:
-            result["stripe_order"] = val
-            break
+    # Extract intensity -> stripe_prominence
+    if "intensity" in parsed:
+        intensity = parsed["intensity"].lower()
+        result["stripe_prominence"] = INTENSITY_TO_PROMINENCE.get(intensity, "")
     
-    # Extract prominence
-    for key, val in sorted(STRIPE_PROMINENCE_MAP.items(), key=lambda x: len(x[0]), reverse=True):
-        if key in text_lower:
-            result["stripe_prominence"] = val
-            break
+    # Extract order -> stripe_order
+    if "order" in parsed:
+        order = parsed["order"].lower()
+        result["stripe_order"] = ORDER_TO_STRIPE_ORDER.get(order, "")
+    
+    # Extract thickness -> arm_thickness
+    if "thickness" in parsed:
+        thickness = parsed["thickness"].lower()
+        result["arm_thickness"] = THICKNESS_TO_ARM_THICKNESS.get(thickness, "")
     
     return result
 
 
 # =============================================================================
-# RETICULATION PARSING
+# RETICULATION DESCRIPTIONS PARSING
 # =============================================================================
+# Actual format: "strong", "medium", "weak", "none", "meandering", "stong" (typo)
 
-RETICULATION_ORDER_MAP = {
+RETICULATION_TO_ORDER = {
+    # Strength-based terms -> treat as reticulation strength/order
     "none": "0",
-    "mixed": "1", "variable": "1",
-    "meandering": "2", "meadnering": "2", "merandering": "2",
-    "traintrack": "3", "train track": "3", "train-track": "3",
-    "traintack": "3", "triansitonign": "3",
+    "weak": "1",
+    "medium": "2",
+    "strong": "3",
+    "stong": "3",  # typo in data
+    # Pattern-based terms
+    "meandering": "2",
+    "traintrack": "3",
+    "train track": "3",
+    "train-track": "3",
 }
 
 
 def parse_reticulation_descriptions(text: str) -> str:
-    """Parse reticulation_descriptions for order pattern."""
-    if not text:
+    """
+    Parse reticulation_descriptions to reticulation_order.
+    
+    Input is typically a single word: "strong", "medium", "weak", "meandering"
+    """
+    if not text or not text.strip():
         return ""
     
-    text_lower = text.lower()
-    
-    # Check for patterns (longer matches first)
-    for key, val in sorted(RETICULATION_ORDER_MAP.items(), key=lambda x: len(x[0]), reverse=True):
-        if key in text_lower:
-            return val
-    
-    return ""
+    text_lower = text.strip().lower()
+    return RETICULATION_TO_ORDER.get(text_lower, "")
 
 
 # =============================================================================
-# ROSETTE PARSING
+# ROSETTE DESCRIPTIONS PARSING
 # =============================================================================
-
-ROSETTE_PROMINENCE_MAP = {
-    "faint": "0", "very faint": "0", "weak": "0",
-    "moderate": "1", "medium": "1",
-    "prominent": "2", "prom": "2", "large": "2", "strong": "2",
-}
-
+# Actual format: Just color names like "mauve purple", "brown", "light purple"
 
 def parse_rosette_descriptions(text: str) -> Dict[str, str]:
-    """Parse rosette_descriptions for color and prominence."""
+    """
+    Parse rosette_descriptions field.
+    
+    In actual data, this is just a color (e.g., "mauve purple", "brown").
+    Returns dict with rosette_color (and empty rosette_prominence since not in data).
+    """
     result = {"rosette_color": "", "rosette_prominence": ""}
-    if not text:
+    
+    if not text or not text.strip():
         return result
     
-    text_lower = text.lower()
-    
-    # Extract color
-    result["rosette_color"] = extract_primary_color(text)
-    
-    # Extract prominence
-    for key, val in sorted(ROSETTE_PROMINENCE_MAP.items(), key=lambda x: len(x[0]), reverse=True):
-        if key in text_lower:
-            result["rosette_prominence"] = val
-            break
+    # The rosette_descriptions IS the color
+    result["rosette_color"] = text.strip()
     
     return result
+
+
+# =============================================================================
+# COLOR EXTRACTION HELPERS
+# =============================================================================
+
+def extract_primary_color_from_slash(text: str) -> str:
+    """
+    For fields like disk color that may have "/" separator.
+    Example: "orange/dark green" -> "orange"
+    """
+    if not text:
+        return ""
+    text = text.strip()
+    if "/" in text:
+        return text.split("/")[0].strip()
+    return text
 
 
 # =============================================================================
@@ -278,44 +297,12 @@ def convert_short_arm_code(old_code: str) -> str:
 
 
 # =============================================================================
-# OVERALL COLOR EXTRACTION
-# =============================================================================
-
-def extract_overall_color(other_desc: str, stripe_desc: str = "", rosette_desc: str = "") -> str:
-    """
-    Try to extract an overall color description.
-    Usually mentioned in Other_descriptions with words like "overall", "color", "vibe".
-    """
-    if not other_desc:
-        return ""
-    
-    text_lower = other_desc.lower()
-    
-    # Look for explicit "overall" mentions
-    overall_match = re.search(r'overall\s+(\w+[\w\s-]*?)(?:,|\.|$|color|vibe)', text_lower)
-    if overall_match:
-        colors = extract_colors(overall_match.group(1))
-        if colors:
-            return colors[0]
-    
-    # Look for "color" mentions
-    color_match = re.search(r'(\w+[\w\s-]*?)\s+color', text_lower)
-    if color_match:
-        colors = extract_colors(color_match.group(1))
-        if colors:
-            return colors[0]
-    
-    # Fall back to first color in the text
-    return extract_primary_color(other_desc)
-
-
-# =============================================================================
 # ROW MIGRATION
 # =============================================================================
 
 def migrate_row(old_row: Dict[str, str], id_col: str) -> Dict[str, str]:
     """Migrate a single row from V1 to V2 schema."""
-    new_row = {}
+    new_row: Dict[str, str] = {}
     
     # Direct mappings
     new_row[id_col] = old_row.get(id_col, "")
@@ -323,46 +310,53 @@ def migrate_row(old_row: Dict[str, str], id_col: str) -> Dict[str, str]:
     new_row["num_total_arms"] = old_row.get("num_arms", "")  # Renamed
     new_row["tip_to_tip_size_cm"] = old_row.get("diameter_cm", "")  # Renamed
     new_row["location"] = old_row.get("Last location", "")
+    
+    # Arm color - direct mapping
     new_row["arm_color"] = old_row.get("arm color", "")
-    new_row["central_disc_color"] = old_row.get("disk color", "")
+    
+    # Central disc color - take primary from possible "/" format
+    disk_color = old_row.get("disk color", "")
+    new_row["central_disc_color"] = extract_primary_color_from_slash(disk_color)
     
     # Convert short arm code
     new_row["short_arm_code"] = convert_short_arm_code(old_row.get("short_arm_codes", ""))
     
-    # Parse stripe descriptions
+    # Parse stripe descriptions (structured key=value format)
     stripe_parsed = parse_stripe_descriptions(old_row.get("stripe_descriptions", ""))
     new_row["stripe_color"] = stripe_parsed["stripe_color"]
     new_row["stripe_order"] = stripe_parsed["stripe_order"]
     new_row["stripe_prominence"] = stripe_parsed["stripe_prominence"]
-    new_row["stripe_extent"] = ""  # New field, no V1 equivalent
+    new_row["stripe_extent"] = ""  # Not in V1 data
+    new_row["arm_thickness"] = stripe_parsed["arm_thickness"]
     
-    # Parse rosette descriptions
+    # Parse rosette descriptions (just color in actual data)
     rosette_parsed = parse_rosette_descriptions(old_row.get("rosette_descriptions", ""))
     new_row["rosette_color"] = rosette_parsed["rosette_color"]
     new_row["rosette_prominence"] = rosette_parsed["rosette_prominence"]
     
-    # Parse reticulation
+    # Parse reticulation descriptions -> reticulation_order
     new_row["reticulation_order"] = parse_reticulation_descriptions(
         old_row.get("reticulation_descriptions", "")
     )
     
-    # Extract madreporite color
-    new_row["madreporite_color"] = extract_primary_color(
-        old_row.get("madreporite_descriptions", "")
-    )
+    # Madreporite - direct color
+    new_row["madreporite_color"] = old_row.get("madreporite_descriptions", "").strip()
     
-    # Extract overall color
-    new_row["overall_color"] = extract_overall_color(
-        old_row.get("Other_descriptions", ""),
-        old_row.get("stripe_descriptions", ""),
-        old_row.get("rosette_descriptions", ""),
-    )
+    # Overall color - derive from disk color if present
+    # Take the secondary color (after /) if present, otherwise empty
+    if "/" in disk_color:
+        parts = disk_color.split("/")
+        if len(parts) > 1:
+            new_row["overall_color"] = parts[1].strip()
+        else:
+            new_row["overall_color"] = ""
+    else:
+        new_row["overall_color"] = ""
     
     # Other_descriptions -> unusual_observation (preserve full text)
     new_row["unusual_observation"] = old_row.get("Other_descriptions", "")
     
     # New fields with no V1 equivalent
-    new_row["arm_thickness"] = ""
     new_row["papillae_central_disc_color"] = ""
     new_row["papillae_stripe_color"] = ""
     new_row["health_observation"] = ""
@@ -430,10 +424,12 @@ def migrate_csv(
         "rows_read": 0,
         "rows_written": 0,
         "short_arm_codes_converted": 0,
+        "stripe_color_extracted": 0,
         "stripe_order_extracted": 0,
         "stripe_prominence_extracted": 0,
+        "arm_thickness_extracted": 0,
         "reticulation_order_extracted": 0,
-        "colors_extracted": 0,
+        "rosette_color_extracted": 0,
     }
     
     if not old_path.exists():
@@ -456,14 +452,18 @@ def migrate_csv(
         # Collect stats
         if new_row.get("short_arm_code"):
             stats["short_arm_codes_converted"] += 1
+        if new_row.get("stripe_color"):
+            stats["stripe_color_extracted"] += 1
         if new_row.get("stripe_order"):
             stats["stripe_order_extracted"] += 1
         if new_row.get("stripe_prominence"):
             stats["stripe_prominence_extracted"] += 1
+        if new_row.get("arm_thickness"):
+            stats["arm_thickness_extracted"] += 1
         if new_row.get("reticulation_order"):
             stats["reticulation_order_extracted"] += 1
-        if any(new_row.get(f) for f in ["stripe_color", "rosette_color", "madreporite_color", "overall_color"]):
-            stats["colors_extracted"] += 1
+        if new_row.get("rosette_color"):
+            stats["rosette_color_extracted"] += 1
     
     stats["rows_written"] = len(new_rows)
     
@@ -471,11 +471,19 @@ def migrate_csv(
         print(f"  [DRY-RUN] Would write {len(new_rows)} rows to: {new_path}")
         # Show sample conversion
         if new_rows:
-            print(f"\n  Sample conversion (first row):")
-            sample = new_rows[0]
+            print(f"\n  Sample conversion (first row with stripe data):")
+            # Find a row with stripe data for better preview
+            sample = None
+            for r in new_rows:
+                if r.get("stripe_color") or r.get("stripe_order"):
+                    sample = r
+                    break
+            if not sample:
+                sample = new_rows[0]
+            
             for key, val in sample.items():
                 if val:
-                    print(f"    {key}: {val[:60]}{'...' if len(val) > 60 else ''}")
+                    print(f"    {key}: {val[:60]}{'...' if len(str(val)) > 60 else ''}")
     else:
         # Backup old file
         backup = backup_file(old_path)
@@ -521,15 +529,19 @@ def main():
     print(f"\nArchive directory: {archive_root}")
     print(f"Mode: {'DRY-RUN (no files will be modified)' if args.dry_run else 'LIVE'}")
     print()
+    print("Parsing Format: key=value (thickness=thick, color=grey/mauve, ...)")
+    print()
     
     total_stats = {
         "rows_read": 0,
         "rows_written": 0,
         "short_arm_codes_converted": 0,
+        "stripe_color_extracted": 0,
         "stripe_order_extracted": 0,
         "stripe_prominence_extracted": 0,
+        "arm_thickness_extracted": 0,
         "reticulation_order_extracted": 0,
-        "colors_extracted": 0,
+        "rosette_color_extracted": 0,
     }
     
     # Migrate gallery metadata
@@ -574,10 +586,12 @@ def main():
     print(f"  Total rows read:              {total_stats['rows_read']}")
     print(f"  Total rows written:           {total_stats['rows_written']}")
     print(f"  Short arm codes converted:    {total_stats['short_arm_codes_converted']}")
+    print(f"  Stripe color extracted:       {total_stats['stripe_color_extracted']}")
     print(f"  Stripe order extracted:       {total_stats['stripe_order_extracted']}")
     print(f"  Stripe prominence extracted:  {total_stats['stripe_prominence_extracted']}")
+    print(f"  Arm thickness extracted:      {total_stats['arm_thickness_extracted']}")
     print(f"  Reticulation order extracted: {total_stats['reticulation_order_extracted']}")
-    print(f"  Colors extracted:             {total_stats['colors_extracted']}")
+    print(f"  Rosette color extracted:      {total_stats['rosette_color_extracted']}")
     
     if args.dry_run:
         print("\n[DRY-RUN] No files were modified. Run without --dry-run to apply changes.")
@@ -589,4 +603,3 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-
