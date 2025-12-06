@@ -1,0 +1,17 @@
+{
+  "best_metric_name": "neg_l1_standard",
+  "selection_k": 50,
+  "config": {
+    "name": "neg_l1_standard",
+    "preprocess": "standard",
+    "similarity": "neg_l1"
+  },
+  "n_valid_queries": 61,
+  "mAP": {
+    "1": 0.08196721311475409,
+    "5": 0.13196721311475412,
+    "10": 0.1565964090554254,
+    "20": 0.16794114785156755,
+    "50": 0.18160851050738927
+  }
+}

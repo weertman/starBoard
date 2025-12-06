@@ -1,0 +1,141 @@
+﻿field_set,fields,n_queries_evaluated,k,map
+all,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions;volume_ml,61,1,0.016393
+all,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions;volume_ml,61,5,0.093989
+all,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions;volume_ml,61,10,0.122060
+all,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions;volume_ml,61,20,0.143863
+all,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions;volume_ml,61,50,0.151860
+categorical+codes,arm color;disk color;sex;short_arm_codes,61,1,0.049180
+categorical+codes,arm color;disk color;sex;short_arm_codes,61,5,0.080328
+categorical+codes,arm color;disk color;sex;short_arm_codes,61,10,0.100241
+categorical+codes,arm color;disk color;sex;short_arm_codes,61,20,0.122038
+categorical+codes,arm color;disk color;sex;short_arm_codes,61,50,0.131076
+categorical+codes+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions,61,1,0.016393
+categorical+codes+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions,61,5,0.113934
+categorical+codes+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions,61,10,0.125202
+categorical+codes+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions,61,20,0.138790
+categorical+codes+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;short_arm_codes;stripe_descriptions,61,50,0.155557
+categorical+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions,61,1,0.016393
+categorical+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions,61,5,0.113934
+categorical+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions,61,10,0.125202
+categorical+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions,61,20,0.138790
+categorical+text,Last location;Other_descriptions;arm color;disk color;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions,61,50,0.155557
+categorical_only,arm color;disk color;sex,61,1,0.049180
+categorical_only,arm color;disk color;sex,61,5,0.080328
+categorical_only,arm color;disk color;sex,61,10,0.100241
+categorical_only,arm color;disk color;sex,61,20,0.122038
+categorical_only,arm color;disk color;sex,61,50,0.131076
+codes+text,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions,61,1,0.016393
+codes+text,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions,61,5,0.085792
+codes+text,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions,61,10,0.113856
+codes+text,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions,61,20,0.142579
+codes+text,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions,61,50,0.149028
+codes_only,short_arm_codes,61,1,0.000000
+codes_only,short_arm_codes,61,5,0.000000
+codes_only,short_arm_codes,61,10,0.000000
+codes_only,short_arm_codes,61,20,0.000000
+codes_only,short_arm_codes,61,50,0.000000
+numeric+categorical,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;volume_ml,61,1,0.065574
+numeric+categorical,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;volume_ml,61,5,0.115847
+numeric+categorical,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;volume_ml,61,10,0.135617
+numeric+categorical,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;volume_ml,61,20,0.160883
+numeric+categorical,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;volume_ml,61,50,0.166798
+numeric+categorical+codes,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;short_arm_codes;volume_ml,61,1,0.065574
+numeric+categorical+codes,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;short_arm_codes;volume_ml,61,5,0.115847
+numeric+categorical+codes,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;short_arm_codes;volume_ml,61,10,0.135617
+numeric+categorical+codes,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;short_arm_codes;volume_ml,61,20,0.160883
+numeric+categorical+codes,arm color;diameter_cm;disk color;num_apparent_arms;num_arms;sex;short_arm_codes;volume_ml,61,50,0.166798
+numeric+categorical+text,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions;volume_ml,61,1,0.016393
+numeric+categorical+text,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions;volume_ml,61,5,0.093989
+numeric+categorical+text,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions;volume_ml,61,10,0.122060
+numeric+categorical+text,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions;volume_ml,61,20,0.143863
+numeric+categorical+text,Last location;Other_descriptions;arm color;diameter_cm;disk color;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;sex;stripe_descriptions;volume_ml,61,50,0.151860
+numeric+codes,diameter_cm;num_apparent_arms;num_arms;short_arm_codes;volume_ml,61,1,0.098361
+numeric+codes,diameter_cm;num_apparent_arms;num_arms;short_arm_codes;volume_ml,61,5,0.178689
+numeric+codes,diameter_cm;num_apparent_arms;num_arms;short_arm_codes;volume_ml,61,10,0.203695
+numeric+codes,diameter_cm;num_apparent_arms;num_arms;short_arm_codes;volume_ml,61,20,0.221266
+numeric+codes,diameter_cm;num_apparent_arms;num_arms;short_arm_codes;volume_ml,61,50,0.225933
+numeric+codes+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions;volume_ml,61,1,0.016393
+numeric+codes+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions;volume_ml,61,5,0.151639
+numeric+codes+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions;volume_ml,61,10,0.183932
+numeric+codes+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions;volume_ml,61,20,0.197901
+numeric+codes+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;short_arm_codes;stripe_descriptions;volume_ml,61,50,0.205404
+numeric+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;stripe_descriptions;volume_ml,61,1,0.016393
+numeric+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;stripe_descriptions;volume_ml,61,5,0.151639
+numeric+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;stripe_descriptions;volume_ml,61,10,0.183932
+numeric+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;stripe_descriptions;volume_ml,61,20,0.197901
+numeric+text,Last location;Other_descriptions;diameter_cm;madreporite_descriptions;num_apparent_arms;num_arms;reticulation_descriptions;rosette_descriptions;stripe_descriptions;volume_ml,61,50,0.205404
+numeric_only,diameter_cm;num_apparent_arms;num_arms;volume_ml,61,1,0.098361
+numeric_only,diameter_cm;num_apparent_arms;num_arms;volume_ml,61,5,0.178689
+numeric_only,diameter_cm;num_apparent_arms;num_arms;volume_ml,61,10,0.203695
+numeric_only,diameter_cm;num_apparent_arms;num_arms;volume_ml,61,20,0.221266
+numeric_only,diameter_cm;num_apparent_arms;num_arms;volume_ml,61,50,0.225933
+single:Last location,Last location,61,1,0.049180
+single:Last location,Last location,61,5,0.075137
+single:Last location,Last location,61,10,0.088407
+single:Last location,Last location,61,20,0.112454
+single:Last location,Last location,61,50,0.123761
+single:Other_descriptions,Other_descriptions,61,1,0.000000
+single:Other_descriptions,Other_descriptions,61,5,0.005464
+single:Other_descriptions,Other_descriptions,61,10,0.005464
+single:Other_descriptions,Other_descriptions,61,20,0.006955
+single:Other_descriptions,Other_descriptions,61,50,0.006955
+single:arm color,arm color,61,1,0.032787
+single:arm color,arm color,61,5,0.050273
+single:arm color,arm color,61,10,0.064422
+single:arm color,arm color,61,20,0.088874
+single:arm color,arm color,61,50,0.100424
+single:diameter_cm,diameter_cm,61,1,0.000000
+single:diameter_cm,diameter_cm,61,5,0.000000
+single:diameter_cm,diameter_cm,61,10,0.000000
+single:diameter_cm,diameter_cm,61,20,0.000000
+single:diameter_cm,diameter_cm,61,50,0.000000
+single:disk color,disk color,61,1,0.065574
+single:disk color,disk color,61,5,0.129235
+single:disk color,disk color,61,10,0.142291
+single:disk color,disk color,61,20,0.155159
+single:disk color,disk color,61,50,0.167040
+single:madreporite_descriptions,madreporite_descriptions,61,1,0.032787
+single:madreporite_descriptions,madreporite_descriptions,61,5,0.040984
+single:madreporite_descriptions,madreporite_descriptions,61,10,0.051698
+single:madreporite_descriptions,madreporite_descriptions,61,20,0.071334
+single:madreporite_descriptions,madreporite_descriptions,61,50,0.081485
+single:num_apparent_arms,num_apparent_arms,61,1,0.098361
+single:num_apparent_arms,num_apparent_arms,61,5,0.178689
+single:num_apparent_arms,num_apparent_arms,61,10,0.203695
+single:num_apparent_arms,num_apparent_arms,61,20,0.221266
+single:num_apparent_arms,num_apparent_arms,61,50,0.225933
+single:num_arms,num_arms,61,1,0.000000
+single:num_arms,num_arms,61,5,0.000000
+single:num_arms,num_arms,61,10,0.000000
+single:num_arms,num_arms,61,20,0.000000
+single:num_arms,num_arms,61,50,0.000000
+single:reticulation_descriptions,reticulation_descriptions,61,1,0.065574
+single:reticulation_descriptions,reticulation_descriptions,61,5,0.091803
+single:reticulation_descriptions,reticulation_descriptions,61,10,0.105159
+single:reticulation_descriptions,reticulation_descriptions,61,20,0.117956
+single:reticulation_descriptions,reticulation_descriptions,61,50,0.126184
+single:rosette_descriptions,rosette_descriptions,61,1,0.081967
+single:rosette_descriptions,rosette_descriptions,61,5,0.112842
+single:rosette_descriptions,rosette_descriptions,61,10,0.135561
+single:rosette_descriptions,rosette_descriptions,61,20,0.164785
+single:rosette_descriptions,rosette_descriptions,61,50,0.168625
+single:sex,sex,61,1,0.000000
+single:sex,sex,61,5,0.000000
+single:sex,sex,61,10,0.000000
+single:sex,sex,61,20,0.000000
+single:sex,sex,61,50,0.000000
+single:stripe_descriptions,stripe_descriptions,61,1,0.000000
+single:stripe_descriptions,stripe_descriptions,61,5,0.023224
+single:stripe_descriptions,stripe_descriptions,61,10,0.027908
+single:stripe_descriptions,stripe_descriptions,61,20,0.030821
+single:stripe_descriptions,stripe_descriptions,61,50,0.035396
+single:volume_ml,volume_ml,61,1,0.000000
+single:volume_ml,volume_ml,61,5,0.000000
+single:volume_ml,volume_ml,61,10,0.000000
+single:volume_ml,volume_ml,61,20,0.000000
+single:volume_ml,volume_ml,61,50,0.000000
+text_only,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;stripe_descriptions,61,1,0.016393
+text_only,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;stripe_descriptions,61,5,0.085792
+text_only,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;stripe_descriptions,61,10,0.113856
+text_only,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;stripe_descriptions,61,20,0.142579
+text_only,Last location;Other_descriptions;madreporite_descriptions;reticulation_descriptions;rosette_descriptions;stripe_descriptions,61,50,0.149028

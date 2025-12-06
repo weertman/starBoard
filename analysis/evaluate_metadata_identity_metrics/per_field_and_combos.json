@@ -1,0 +1,425 @@
+{
+  "k_values": [
+    1,
+    5,
+    10,
+    20,
+    50
+  ],
+  "selection_k": 50,
+  "metric_config": {
+    "name": "neg_l1_standard",
+    "preprocess": "standard",
+    "similarity": "neg_l1"
+  },
+  "results": [
+    {
+      "kind": "single",
+      "name": "Last location",
+      "size": 1,
+      "fields": [
+        "Last location"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 30,
+      "mAP": {
+        "1": 0.1,
+        "5": 0.1527777777777778,
+        "10": 0.18642857142857144,
+        "20": 0.2177777382576144,
+        "50": 0.2177777382576144
+      },
+      "selection_k": 50,
+      "selection_map": 0.2177777382576144
+    },
+    {
+      "kind": "single",
+      "name": "Other_descriptions",
+      "size": 1,
+      "fields": [
+        "Other_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 2,
+      "mAP": {
+        "1": 0.0,
+        "5": 0.16666666666666666,
+        "10": 0.21666666666666667,
+        "20": 0.21666666666666667,
+        "50": 0.21666666666666667
+      },
+      "selection_k": 50,
+      "selection_map": 0.21666666666666667
+    },
+    {
+      "kind": "single",
+      "name": "rosette_descriptions",
+      "size": 1,
+      "fields": [
+        "rosette_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 55,
+      "mAP": {
+        "1": 0.09090909090909091,
+        "5": 0.1296969696969697,
+        "10": 0.15514790764790765,
+        "20": 0.18745050216693893,
+        "50": 0.191668567278421
+      },
+      "selection_k": 50,
+      "selection_map": 0.191668567278421
+    },
+    {
+      "kind": "single",
+      "name": "reticulation_descriptions",
+      "size": 1,
+      "fields": [
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 42,
+      "mAP": {
+        "1": 0.023809523809523808,
+        "5": 0.0873015873015873,
+        "10": 0.11316137566137566,
+        "20": 0.13269879722223815,
+        "50": 0.1447065175332027
+      },
+      "selection_k": 50,
+      "selection_map": 0.1447065175332027
+    },
+    {
+      "kind": "single",
+      "name": "stripe_descriptions",
+      "size": 1,
+      "fields": [
+        "stripe_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 17,
+      "mAP": {
+        "1": 0.0,
+        "5": 0.08333333333333333,
+        "10": 0.10154061624649859,
+        "20": 0.11182242035570207,
+        "50": 0.1301405208369904
+      },
+      "selection_k": 50,
+      "selection_map": 0.1301405208369904
+    },
+    {
+      "kind": "single",
+      "name": "madreporite_descriptions",
+      "size": 1,
+      "fields": [
+        "madreporite_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 42,
+      "mAP": {
+        "1": 0.023809523809523808,
+        "5": 0.0642857142857143,
+        "10": 0.07932728647014362,
+        "20": 0.10752318583753795,
+        "50": 0.11892163038815634
+      },
+      "selection_k": 50,
+      "selection_map": 0.11892163038815634
+    },
+    {
+      "kind": "combo_2",
+      "name": "Last location+Other_descriptions",
+      "size": 2,
+      "fields": [
+        "Last location",
+        "Other_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 34,
+      "mAP": {
+        "1": 0.08823529411764706,
+        "5": 0.10882352941176471,
+        "10": 0.1125,
+        "20": 0.1601952118684043,
+        "50": 0.16439689254067316
+      },
+      "selection_k": 50,
+      "selection_map": 0.16439689254067316
+    },
+    {
+      "kind": "combo_2",
+      "name": "Last location+rosette_descriptions",
+      "size": 2,
+      "fields": [
+        "Last location",
+        "rosette_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 61,
+      "mAP": {
+        "1": 0.08196721311475409,
+        "5": 0.12568306010928962,
+        "10": 0.16386937288576633,
+        "20": 0.16799356354563683,
+        "50": 0.18645517260098413
+      },
+      "selection_k": 50,
+      "selection_map": 0.18645517260098413
+    },
+    {
+      "kind": "combo_2",
+      "name": "Last location+reticulation_descriptions",
+      "size": 2,
+      "fields": [
+        "Last location",
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 61,
+      "mAP": {
+        "1": 0.03278688524590164,
+        "5": 0.07568306010928962,
+        "10": 0.0890905542544887,
+        "20": 0.11501715730005836,
+        "50": 0.128505926061056
+      },
+      "selection_k": 50,
+      "selection_map": 0.128505926061056
+    },
+    {
+      "kind": "combo_2",
+      "name": "Other_descriptions+rosette_descriptions",
+      "size": 2,
+      "fields": [
+        "Other_descriptions",
+        "rosette_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 55,
+      "mAP": {
+        "1": 0.09090909090909091,
+        "5": 0.14303030303030304,
+        "10": 0.1734776334776334,
+        "20": 0.2028928973581379,
+        "50": 0.20604392077690978
+      },
+      "selection_k": 50,
+      "selection_map": 0.20604392077690978
+    },
+    {
+      "kind": "combo_2",
+      "name": "Other_descriptions+reticulation_descriptions",
+      "size": 2,
+      "fields": [
+        "Other_descriptions",
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 42,
+      "mAP": {
+        "1": 0.023809523809523808,
+        "5": 0.12738095238095237,
+        "10": 0.1435090702947846,
+        "20": 0.16073419409885575,
+        "50": 0.17239620849244555
+      },
+      "selection_k": 50,
+      "selection_map": 0.17239620849244555
+    },
+    {
+      "kind": "combo_2",
+      "name": "rosette_descriptions+reticulation_descriptions",
+      "size": 2,
+      "fields": [
+        "rosette_descriptions",
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 55,
+      "mAP": {
+        "1": 0.09090909090909091,
+        "5": 0.1463636363636364,
+        "10": 0.16038961038961036,
+        "20": 0.19392742315694744,
+        "50": 0.19749308592981013
+      },
+      "selection_k": 50,
+      "selection_map": 0.19749308592981013
+    },
+    {
+      "kind": "combo_3",
+      "name": "Last location+Other_descriptions+rosette_descriptions",
+      "size": 3,
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "rosette_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 61,
+      "mAP": {
+        "1": 0.09836065573770492,
+        "5": 0.13852459016393442,
+        "10": 0.16243169398907098,
+        "20": 0.17531413459571604,
+        "50": 0.1919949486335772
+      },
+      "selection_k": 50,
+      "selection_map": 0.1919949486335772
+    },
+    {
+      "kind": "combo_3",
+      "name": "Last location+Other_descriptions+reticulation_descriptions",
+      "size": 3,
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 61,
+      "mAP": {
+        "1": 0.03278688524590164,
+        "5": 0.03825136612021858,
+        "10": 0.06426945094977882,
+        "20": 0.09376839507974355,
+        "50": 0.10565024709391074
+      },
+      "selection_k": 50,
+      "selection_map": 0.10565024709391074
+    },
+    {
+      "kind": "combo_3",
+      "name": "Last location+rosette_descriptions+reticulation_descriptions",
+      "size": 3,
+      "fields": [
+        "Last location",
+        "rosette_descriptions",
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 61,
+      "mAP": {
+        "1": 0.09836065573770492,
+        "5": 0.1366120218579235,
+        "10": 0.1597384855581577,
+        "20": 0.17755296565249362,
+        "50": 0.1900858265575926
+      },
+      "selection_k": 50,
+      "selection_map": 0.1900858265575926
+    },
+    {
+      "kind": "combo_3",
+      "name": "Other_descriptions+rosette_descriptions+reticulation_descriptions",
+      "size": 3,
+      "fields": [
+        "Other_descriptions",
+        "rosette_descriptions",
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 55,
+      "mAP": {
+        "1": 0.09090909090909091,
+        "5": 0.1624242424242424,
+        "10": 0.18030303030303022,
+        "20": 0.21077178349061257,
+        "50": 0.21468965935863502
+      },
+      "selection_k": 50,
+      "selection_map": 0.21468965935863502
+    },
+    {
+      "kind": "combo_4",
+      "name": "Last location+Other_descriptions+rosette_descriptions+reticulation_descriptions",
+      "size": 4,
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "rosette_descriptions",
+        "reticulation_descriptions"
+      ],
+      "config": {
+        "name": "neg_l1_standard",
+        "preprocess": "standard",
+        "similarity": "neg_l1"
+      },
+      "n_valid_queries": 61,
+      "mAP": {
+        "1": 0.09836065573770492,
+        "5": 0.12459016393442623,
+        "10": 0.1571558678116055,
+        "20": 0.17222843277505,
+        "50": 0.18483521046837253
+      },
+      "selection_k": 50,
+      "selection_map": 0.18483521046837253
+    }
+  ]
+}

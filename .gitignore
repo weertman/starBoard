@@ -1,0 +1,60 @@
+# Data directories - contain research images, not for version control
+archive/gallery/
+archive/queries/
+archive/reports/
+archive/vocabularies/
+archive/*.log
+archive/*.log.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Embeddings and cached data
+*_embeddings*.json
+metadata_embeddings.json
+
+# Temporary/generated files
+*.tmp
+*.temp
+python_files.json
+

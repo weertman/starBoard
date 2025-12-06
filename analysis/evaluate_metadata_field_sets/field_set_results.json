@@ -1,0 +1,476 @@
+{
+  "field_sets": {
+    "all": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "arm color",
+        "diameter_cm",
+        "disk color",
+        "madreporite_descriptions",
+        "num_apparent_arms",
+        "num_arms",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "sex",
+        "short_arm_codes",
+        "stripe_descriptions",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.12205958886286758,
+        "20": 0.1438634137845552,
+        "5": 0.09398907103825137,
+        "50": 0.15186044055013642
+      },
+      "n_queries_evaluated": 61
+    },
+    "categorical+codes": {
+      "fields": [
+        "arm color",
+        "disk color",
+        "sex",
+        "short_arm_codes"
+      ],
+      "map": {
+        "1": 0.04918032786885246,
+        "10": 0.10024069737184488,
+        "20": 0.12203778650702969,
+        "5": 0.080327868852459,
+        "50": 0.13107619570540716
+      },
+      "n_queries_evaluated": 61
+    },
+    "categorical+codes+text": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "arm color",
+        "disk color",
+        "madreporite_descriptions",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "sex",
+        "short_arm_codes",
+        "stripe_descriptions"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.1252016653655998,
+        "20": 0.13879009495920627,
+        "5": 0.11393442622950817,
+        "50": 0.1555571851790542
+      },
+      "n_queries_evaluated": 61
+    },
+    "categorical+text": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "arm color",
+        "disk color",
+        "madreporite_descriptions",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "sex",
+        "stripe_descriptions"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.1252016653655998,
+        "20": 0.13879009495920627,
+        "5": 0.11393442622950817,
+        "50": 0.1555571851790542
+      },
+      "n_queries_evaluated": 61
+    },
+    "categorical_only": {
+      "fields": [
+        "arm color",
+        "disk color",
+        "sex"
+      ],
+      "map": {
+        "1": 0.04918032786885246,
+        "10": 0.10024069737184488,
+        "20": 0.12203778650702969,
+        "5": 0.080327868852459,
+        "50": 0.13107619570540716
+      },
+      "n_queries_evaluated": 61
+    },
+    "codes+text": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "madreporite_descriptions",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "short_arm_codes",
+        "stripe_descriptions"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.11385636221701795,
+        "20": 0.14257924582875092,
+        "5": 0.08579234972677596,
+        "50": 0.14902800012011783
+      },
+      "n_queries_evaluated": 61
+    },
+    "codes_only": {
+      "fields": [
+        "short_arm_codes"
+      ],
+      "map": {
+        "1": 0.0,
+        "10": 0.0,
+        "20": 0.0,
+        "5": 0.0,
+        "50": 0.0
+      },
+      "n_queries_evaluated": 61
+    },
+    "numeric+categorical": {
+      "fields": [
+        "arm color",
+        "diameter_cm",
+        "disk color",
+        "num_apparent_arms",
+        "num_arms",
+        "sex",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.06557377049180328,
+        "10": 0.1356167056986729,
+        "20": 0.1608829092445166,
+        "5": 0.11584699453551911,
+        "50": 0.1667983223923659
+      },
+      "n_queries_evaluated": 61
+    },
+    "numeric+categorical+codes": {
+      "fields": [
+        "arm color",
+        "diameter_cm",
+        "disk color",
+        "num_apparent_arms",
+        "num_arms",
+        "sex",
+        "short_arm_codes",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.06557377049180328,
+        "10": 0.1356167056986729,
+        "20": 0.1608829092445166,
+        "5": 0.11584699453551911,
+        "50": 0.1667983223923659
+      },
+      "n_queries_evaluated": 61
+    },
+    "numeric+categorical+text": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "arm color",
+        "diameter_cm",
+        "disk color",
+        "madreporite_descriptions",
+        "num_apparent_arms",
+        "num_arms",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "sex",
+        "stripe_descriptions",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.12205958886286758,
+        "20": 0.1438634137845552,
+        "5": 0.09398907103825137,
+        "50": 0.15186044055013642
+      },
+      "n_queries_evaluated": 61
+    },
+    "numeric+codes": {
+      "fields": [
+        "diameter_cm",
+        "num_apparent_arms",
+        "num_arms",
+        "short_arm_codes",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.09836065573770492,
+        "10": 0.2036950299245381,
+        "20": 0.22126606348869457,
+        "5": 0.1786885245901639,
+        "50": 0.22593347535059982
+      },
+      "n_queries_evaluated": 61
+    },
+    "numeric+codes+text": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "diameter_cm",
+        "madreporite_descriptions",
+        "num_apparent_arms",
+        "num_arms",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "short_arm_codes",
+        "stripe_descriptions",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.18393182409575853,
+        "20": 0.19790147538206204,
+        "5": 0.15163934426229508,
+        "50": 0.20540441435328324
+      },
+      "n_queries_evaluated": 61
+    },
+    "numeric+text": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "diameter_cm",
+        "madreporite_descriptions",
+        "num_apparent_arms",
+        "num_arms",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "stripe_descriptions",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.18393182409575853,
+        "20": 0.19790147538206204,
+        "5": 0.15163934426229508,
+        "50": 0.20540441435328324
+      },
+      "n_queries_evaluated": 61
+    },
+    "numeric_only": {
+      "fields": [
+        "diameter_cm",
+        "num_apparent_arms",
+        "num_arms",
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.09836065573770492,
+        "10": 0.2036950299245381,
+        "20": 0.22126606348869457,
+        "5": 0.1786885245901639,
+        "50": 0.22593347535059982
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:Last location": {
+      "fields": [
+        "Last location"
+      ],
+      "map": {
+        "1": 0.04918032786885246,
+        "10": 0.08840749414519908,
+        "20": 0.11245410471036009,
+        "5": 0.07513661202185794,
+        "50": 0.12376078567605377
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:Other_descriptions": {
+      "fields": [
+        "Other_descriptions"
+      ],
+      "map": {
+        "1": 0.0,
+        "10": 0.00546448087431694,
+        "20": 0.006954793840039741,
+        "5": 0.00546448087431694,
+        "50": 0.006954793840039741
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:arm color": {
+      "fields": [
+        "arm color"
+      ],
+      "map": {
+        "1": 0.03278688524590164,
+        "10": 0.0644223263075722,
+        "20": 0.08887393376049925,
+        "5": 0.05027322404371585,
+        "50": 0.10042383926719324
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:diameter_cm": {
+      "fields": [
+        "diameter_cm"
+      ],
+      "map": {
+        "1": 0.0,
+        "10": 0.0,
+        "20": 0.0,
+        "5": 0.0,
+        "50": 0.0
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:disk color": {
+      "fields": [
+        "disk color"
+      ],
+      "map": {
+        "1": 0.06557377049180328,
+        "10": 0.14229117876658864,
+        "20": 0.1551592894408709,
+        "5": 0.12923497267759562,
+        "50": 0.16703994180361234
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:madreporite_descriptions": {
+      "fields": [
+        "madreporite_descriptions"
+      ],
+      "map": {
+        "1": 0.03278688524590164,
+        "10": 0.051697892271662764,
+        "20": 0.07133384563915446,
+        "5": 0.040983606557377046,
+        "50": 0.08148521114609443
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:num_apparent_arms": {
+      "fields": [
+        "num_apparent_arms"
+      ],
+      "map": {
+        "1": 0.09836065573770492,
+        "10": 0.2036950299245381,
+        "20": 0.22126606348869457,
+        "5": 0.1786885245901639,
+        "50": 0.22593347535059982
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:num_arms": {
+      "fields": [
+        "num_arms"
+      ],
+      "map": {
+        "1": 0.0,
+        "10": 0.0,
+        "20": 0.0,
+        "5": 0.0,
+        "50": 0.0
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:reticulation_descriptions": {
+      "fields": [
+        "reticulation_descriptions"
+      ],
+      "map": {
+        "1": 0.06557377049180328,
+        "10": 0.10515873015873017,
+        "20": 0.1179558441130283,
+        "5": 0.0918032786885246,
+        "50": 0.1261836160169034
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:rosette_descriptions": {
+      "fields": [
+        "rosette_descriptions"
+      ],
+      "map": {
+        "1": 0.08196721311475409,
+        "10": 0.13556141035649233,
+        "20": 0.16478513647726456,
+        "5": 0.11284153005464481,
+        "50": 0.16862469547282566
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:sex": {
+      "fields": [
+        "sex"
+      ],
+      "map": {
+        "1": 0.0,
+        "10": 0.0,
+        "20": 0.0,
+        "5": 0.0,
+        "50": 0.0
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:stripe_descriptions": {
+      "fields": [
+        "stripe_descriptions"
+      ],
+      "map": {
+        "1": 0.0,
+        "10": 0.02790788446526151,
+        "20": 0.03082123932533768,
+        "5": 0.023224043715846993,
+        "50": 0.0353963780358545
+      },
+      "n_queries_evaluated": 61
+    },
+    "single:volume_ml": {
+      "fields": [
+        "volume_ml"
+      ],
+      "map": {
+        "1": 0.0,
+        "10": 0.0,
+        "20": 0.0,
+        "5": 0.0,
+        "50": 0.0
+      },
+      "n_queries_evaluated": 61
+    },
+    "text_only": {
+      "fields": [
+        "Last location",
+        "Other_descriptions",
+        "madreporite_descriptions",
+        "reticulation_descriptions",
+        "rosette_descriptions",
+        "stripe_descriptions"
+      ],
+      "map": {
+        "1": 0.01639344262295082,
+        "10": 0.11385636221701795,
+        "20": 0.14257924582875092,
+        "5": 0.08579234972677596,
+        "50": 0.14902800012011783
+      },
+      "n_queries_evaluated": 61
+    }
+  },
+  "k_values": [
+    1,
+    5,
+    10,
+    20,
+    50
+  ],
+  "num_queries": 61,
+  "selection_k": 50,
+  "total_yes_pairs_filtered": 62,
+  "total_yes_pairs_raw": 62
+}
