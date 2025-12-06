@@ -139,14 +139,31 @@ This is your "fine-tooth comb."
 The ranking engine uses these fields to calculate similarity.
 
 ### Morphological & Color Fields
+
 | Field | Type | Description |
 |-------|------|-------------|
+| **Numeric** | | |
 | `num_apparent_arms` | Numeric | Count of visible arms. |
-| `tip_to_tip_size_cm` | Numeric | Approximate diameter. |
+| `num_total_arms` | Numeric | Total arms including small/hidden ones. |
+| `tip_to_tip_size_cm` | Numeric | Approximate diameter (tip to tip). |
+| **Arms & Stripes** | | |
+| `short_arm_code` | Set/Code | Specific notation for growing and regenerating arms (e.g., `tiny(2)`). |
+| `arm_color` | Color | Primary color of the arms. |
+| `arm_thickness` | Ordinal | Relative thickness (Thin → Thick). |
+| `stripe_color` | Color | General color of arm stripes. |
 | `stripe_order` | Ordinal | Regularity of stripes (None → Regular). |
 | `stripe_prominence` | Ordinal | Contrast of stripes (Weak → Strongest). |
-| `arm_color` | Color | Primary color of the arms (LAB color space). |
-| `short_arm_code` | Set/Code | Specific notation for regenerating arms (e.g., `tiny(2)`). |
+| `stripe_extent` | Ordinal | How far stripes extend (None → Full). |
+| **Central Disc & Features** | | |
+| `central_disc_color` | Color | Color of the central disc background. |
+| `papillae_central_disc_color` | Color | Color of papillae on the central disc. |
+| `madreporite_color` | Color | Color of the madreporite. |
+| `rosette_color` | Color | General color of rosettes. |
+| `rosette_prominence` | Ordinal | Visibility of rosettes (Weak → Strong). |
+| **Other** | | |
+| `papillae_stripe_color` | Color | Color of papillae in stripe regions. |
+| `reticulation_order` | Ordinal | Pattern of reticulation (None → Train tracks). |
+| `overall_color` | Color | Overall color impression. |
 
 ### Text Descriptions (AI-Enhanced)
 Fields like `location`, `unusual_observation`, and `health_observation` are analyzed using **sentence-transformers**. This means "large gash on arm" and "big cut on limb" will be recognized as similar.
