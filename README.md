@@ -2,7 +2,7 @@
 
 A Qt-based desktop application for **wildlife photo-ID matching**, designed to help researchers match unknown individuals (Queries) against a known population (Gallery) using a combination of visual comparison and metadata-based ranking.
 
-Originally developed for sunflower sea star (*Pycnopodia helianthoides*) population monitoring, starBoard is adaptable to any photo-ID workflow where individuals can be described with structured metadata.
+Built for sunflower sea star (*Pycnopodia helianthoides*) population monitoring, with an architecture that could be extended to other sea star species sharing similar morphological traits.
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![PySide6](https://img.shields.io/badge/GUI-PySide6-green.svg)
