@@ -18,7 +18,11 @@ from src.data.past_matches import (
 )
 from src.data.archive_paths import archive_root
 from src.ui.vis_past_matches import (
-    TotalsDialog, TimelineDialog, ByQueryDialog, ByGalleryDialog
+    TotalsDialog, TimelineDialog, ByQueryDialog, ByGalleryDialog, QueryInflowDialog,
+    OutingStatsDialog, QueryGridDialog
+)
+from src.ui.vis_interaction_logs import (
+    SessionProductivityDialog, FeatureUsageDialog, WorkEstimationDialog
 )
 from src.ui.matrix_matches_dialog import MatrixMatchesDialog
 from src.data.matches_matrix import MatchMatrixData, load_match_matrix
@@ -35,6 +39,7 @@ from src.data.merge_yes import (
     read_merge_history_for_gallery,
     SILENT_MARKER_FILENAME,
 )
+from src.utils.interaction_logger import get_interaction_logger
 
 def _open_folder(path: Path) -> None:
     try:
@@ -61,6 +66,7 @@ class TabPastMatches(QWidget):
         super().__init__(parent)
         self._ds: PastMatchesDataset | None = None
         self._dialogs: List[QWidget] = []
+        self._ilog = get_interaction_logger()
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
@@ -85,11 +91,37 @@ class TabPastMatches(QWidget):
         self.btn_by_query = QPushButton("By Query…")
         self.btn_by_gallery = QPushButton("By Gallery…")
         self.btn_matrix = QPushButton("Matches Matrix…")
+        self.btn_query_inflow = QPushButton("Query Inflow…")
+        self.btn_query_inflow.setToolTip("Stacked bar chart of matched vs unmatched queries by first observation date")
         lay_vis.addWidget(self.btn_totals, 0, 0)
         lay_vis.addWidget(self.btn_timeline, 0, 1)
         lay_vis.addWidget(self.btn_by_query, 1, 0)
         lay_vis.addWidget(self.btn_by_gallery, 1, 1)
-        lay_vis.addWidget(self.btn_matrix, 0, 2, 2, 1)
+        lay_vis.addWidget(self.btn_matrix, 0, 2)
+        lay_vis.addWidget(self.btn_query_inflow, 1, 2)
+        
+        # Outing Stats (observations per outing)
+        self.btn_outing_stats = QPushButton("Outing Stats…")
+        self.btn_outing_stats.setToolTip("Stacked bar chart of observations per outing by identification status")
+        lay_vis.addWidget(self.btn_outing_stats, 2, 0)
+        
+        # Query Grid (best images grid)
+        self.btn_query_grid = QPushButton("Query Grid…")
+        self.btn_query_grid.setToolTip("Grid of best images for queries organized by outing")
+        lay_vis.addWidget(self.btn_query_grid, 2, 1)
+        
+        # Interaction Analytics (new)
+        lay_vis.addWidget(QLabel(""), 0, 3)  # Spacer
+        self.btn_session_productivity = QPushButton("Session Activity…")
+        self.btn_feature_usage = QPushButton("Feature Usage…")
+        self.btn_work_estimation = QPushButton("Work Estimation…")
+        self.btn_session_productivity.setToolTip("View activity timeline across sessions")
+        self.btn_feature_usage.setToolTip("View hierarchical feature usage patterns")
+        self.btn_work_estimation.setToolTip("Estimate remaining work to match all queries")
+        lay_vis.addWidget(self.btn_session_productivity, 0, 4)
+        lay_vis.addWidget(self.btn_feature_usage, 1, 4)
+        lay_vis.addWidget(self.btn_work_estimation, 0, 5)
+        
         outer.addWidget(gb_vis)
 
         # ---- Row 3: NEW — Merge YES's to Gallery ----
@@ -104,8 +136,12 @@ class TabPastMatches(QWidget):
         lay_merge.addWidget(self.lbl_count)
         lay_merge.addStretch(1)
 
-        self.btn_merge = QPushButton("Merge YES’s")
+        self.btn_merge = QPushButton("Merge YES's")
         lay_merge.addWidget(self.btn_merge)
+
+        self.btn_merge_all = QPushButton("Merge All")
+        self.btn_merge_all.setToolTip("Merge YES queries for all galleries at once")
+        lay_merge.addWidget(self.btn_merge_all)
 
         outer.addWidget(gb_merge)
 
@@ -154,12 +190,21 @@ class TabPastMatches(QWidget):
         self.btn_by_query.clicked.connect(lambda: self._open_dialog(ByQueryDialog))
         self.btn_by_gallery.clicked.connect(lambda: self._open_dialog(ByGalleryDialog))
         self.btn_matrix.clicked.connect(self._open_matrix_dialog)
+        self.btn_query_inflow.clicked.connect(lambda: self._open_dialog(QueryInflowDialog))
+        self.btn_outing_stats.clicked.connect(self._open_outing_stats_dialog)
+        self.btn_query_grid.clicked.connect(self._open_query_grid_dialog)
+        
+        # Interaction analytics dialogs
+        self.btn_session_productivity.clicked.connect(self._open_session_productivity_dialog)
+        self.btn_feature_usage.clicked.connect(self._open_feature_usage_dialog)
+        self.btn_work_estimation.clicked.connect(self._open_work_estimation_dialog)
 
         self.btn_export_tidy.clicked.connect(self._export_decisions_csv)
 
         # Merge signals
         self.cmb_gallery.currentIndexChanged.connect(self._update_merge_preview)
         self.btn_merge.clicked.connect(self._on_merge)
+        self.btn_merge_all.clicked.connect(self._on_merge_all)
 
         # Revert signals
         self.cmb_gallery_rev.currentIndexChanged.connect(self._on_revert_gallery_changed)
@@ -173,6 +218,7 @@ class TabPastMatches(QWidget):
 
     # ----------------- existing actions -----------------
     def _reload(self):
+        self._ilog.log("button_click", "btn_refresh_dataset", value="clicked")
         self._ds = build_past_matches_dataset()
 
         # Keep the merge/revert lists in sync with current state
@@ -180,11 +226,13 @@ class TabPastMatches(QWidget):
         self._refresh_revert_gallery_list()
 
     def _export_master(self):
+        self._ilog.log("button_click", "btn_export_master", value="clicked")
         ds = self._ds or build_past_matches_dataset()
         path = export_past_matches_master_csv(ds)
         QMessageBox.information(self, "starBoard", f"Master CSV exported:\n{path}")
 
     def _export_summaries(self):
+        self._ilog.log("button_click", "btn_export_summaries", value="clicked")
         ds = self._ds or build_past_matches_dataset()
         p_q, p_g, p_t = export_past_matches_summaries_csv(ds)
         QMessageBox.information(
@@ -194,17 +242,55 @@ class TabPastMatches(QWidget):
         )
 
     def _open_reports(self):
+        self._ilog.log("button_click", "btn_open_reports", value="clicked")
         p = archive_root() / "reports"
         _open_folder(p)
 
     def _open_dialog(self, cls):
+        self._ilog.log("dialog_open", f"dialog_{cls.__name__}", value="opened")
         dlg = cls(self._ds or build_past_matches_dataset(), self)
         dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
         self._dialogs.append(dlg)
         dlg.show()
 
     def _open_matrix_dialog(self):
+        self._ilog.log("dialog_open", "dialog_matrix", value="opened")
         dlg = MatrixMatchesDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_session_productivity_dialog(self):
+        self._ilog.log("dialog_open", "dialog_session_productivity", value="opened")
+        dlg = SessionProductivityDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_feature_usage_dialog(self):
+        self._ilog.log("dialog_open", "dialog_feature_usage", value="opened")
+        dlg = FeatureUsageDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_work_estimation_dialog(self):
+        self._ilog.log("dialog_open", "dialog_work_estimation", value="opened")
+        dlg = WorkEstimationDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_outing_stats_dialog(self):
+        self._ilog.log("dialog_open", "dialog_outing_stats", value="opened")
+        dlg = OutingStatsDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_query_grid_dialog(self):
+        self._ilog.log("dialog_open", "dialog_query_grid", value="opened")
+        dlg = QueryGridDialog(self)
         dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
         self._dialogs.append(dlg)
         dlg.show()
@@ -217,6 +303,7 @@ class TabPastMatches(QWidget):
 
     # ---- Export decided pairs tidy CSV (kept) ----
     def _export_decisions_csv(self):
+        self._ilog.log("button_click", "btn_export_decisions", value="clicked")
         data = load_match_matrix()
         logs = archive_root() / "reports"; logs.mkdir(parents=True, exist_ok=True)
         default = logs / "past_matches_decisions.csv"
@@ -253,12 +340,16 @@ class TabPastMatches(QWidget):
         if prev and (idx := self.cmb_gallery.findText(prev)) >= 0:
             self.cmb_gallery.setCurrentIndex(idx)
         self._update_merge_preview()
+        # Enable Merge All only if there are galleries with merge candidates
+        self.btn_merge_all.setEnabled(len(gids) > 0)
 
     def _current_gallery(self) -> str:
         return self.cmb_gallery.currentText() or ""
 
     def _update_merge_preview(self, _index: int = -1) -> None:
         gid = self._current_gallery()
+        if gid:
+            self._ilog.log("combo_change", "cmb_gallery_merge", value=gid)
         if not gid:
             self.lbl_count.setText("—")
             self.btn_merge.setEnabled(False)
@@ -271,6 +362,7 @@ class TabPastMatches(QWidget):
         gid = self._current_gallery()
         if not gid:
             return
+        self._ilog.log("button_click", "btn_merge", value=gid)
         qids = list_mergeable_queries_for_gallery(gid, require_encounters=True)
         if not qids:
             QMessageBox.information(self, "starBoard", f"No merge-able YES queries for gallery '{gid}'.")
@@ -314,6 +406,75 @@ class TabPastMatches(QWidget):
         self._refresh_merge_gallery_list()
         self._refresh_revert_gallery_list()
 
+    def _on_merge_all(self, checked: bool = False) -> None:
+        """Merge YES queries for all galleries at once."""
+        self._ilog.log("button_click", "btn_merge_all", value="clicked")
+
+        gids = list_galleries_with_merge_candidates(require_encounters=True)
+        if not gids:
+            QMessageBox.information(self, "starBoard", "No galleries have merge-able YES queries.")
+            return
+
+        # Dry-run for all galleries to get totals
+        total_queries = 0
+        total_dirs = 0
+        for gid in gids:
+            dry = merge_yeses_for_gallery(gid, dry_run=True)
+            total_queries += dry.num_queries
+            total_dirs += dry.num_encounter_dirs
+
+        marker = SILENT_MARKER_FILENAME
+        reply = QMessageBox.question(
+            self, "Merge All YES's",
+            f"This will merge YES queries across <b>{len(gids)}</b> gallery/galleries:\n\n"
+            f" • Copy <b>{total_dirs}</b> encounter folder(s) from <b>{total_queries}</b> YES query/queries\n"
+            f" • Mark each query as <b>silent</b> by writing <code>{marker}</code> in its folder\n"
+            f" • Append to each gallery's history CSV\n\n"
+            "Proceed?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # Execute merges
+        merged_galleries = 0
+        merged_queries = 0
+        merged_dirs = 0
+        all_errors: list[str] = []
+
+        for gid in gids:
+            rep = merge_yeses_for_gallery(gid, dry_run=False)
+            merged_galleries += 1
+            merged_queries += rep.num_queries
+            merged_dirs += rep.num_encounter_dirs
+            if rep.errors:
+                all_errors.extend([f"{gid}: {e}" for e in rep.errors])
+
+        if all_errors:
+            QMessageBox.warning(
+                self,
+                "starBoard",
+                f"Merged with errors.\n\n"
+                f"Galleries: {merged_galleries}\n"
+                f"Queries: {merged_queries}\n"
+                f"Encounter folders: {merged_dirs}\n\n"
+                f"Errors ({len(all_errors)}):\n - " + "\n - ".join(all_errors[:10])
+                + ("\n..." if len(all_errors) > 10 else "")
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "starBoard",
+                f"Merge complete.\n\n"
+                f"Galleries: {merged_galleries}\n"
+                f"Queries: {merged_queries}\n"
+                f"Encounter folders: {merged_dirs}"
+            )
+
+        # Refresh both panels
+        self._refresh_merge_gallery_list()
+        self._refresh_revert_gallery_list()
+
     # ----------------- NEW: Revert panel logic -----------------
     def _refresh_revert_gallery_list(self):
         prev = self.cmb_gallery_rev.currentText()
@@ -327,6 +488,8 @@ class TabPastMatches(QWidget):
         self._refresh_batch_list()
 
     def _on_revert_gallery_changed(self, _index: int = -1) -> None:
+        gid = self.cmb_gallery_rev.currentText()
+        self._ilog.log("combo_change", "cmb_gallery_revert", value=gid)
         self._refresh_batch_list()
 
     def _refresh_batch_list(self):
@@ -352,6 +515,8 @@ class TabPastMatches(QWidget):
             return
 
         bid = self.cmb_batch.currentData()
+        self._ilog.log("button_click", "btn_revert_batch", value=bid,
+                      context={"gallery_id": gid})
         rep = revert_merge_batch_for_gallery(gid, bid)
         if not rep.batch_id:
             QMessageBox.information(self, "starBoard", "Nothing to revert for this gallery.")
@@ -380,6 +545,7 @@ class TabPastMatches(QWidget):
 
     def _on_open_history_rev(self):
         gid = self.cmb_gallery_rev.currentText()
+        self._ilog.log("button_click", "btn_open_history", value=gid)
         if not gid:
             return
         p = archive_root() / "gallery" / gid / "_merge_history.csv"

@@ -144,3 +144,27 @@ def reorder_files_with_best(target: str, id_str: str, files: List[Path]) -> List
     except Exception:
         # Never break the caller; return original order on any error
         return files
+
+
+def find_best_index(target: str, id_str: str, files: List[Path]) -> int:
+    """
+    Find the index of the best photo in the given file list.
+    
+    Args:
+        target: "Gallery" or "Queries"
+        id_str: The identity ID
+        files: List of image file paths (in original order, not reordered)
+        
+    Returns:
+        Index of the best photo, or 0 if not found or no best is set
+    """
+    try:
+        if not files:
+            return 0
+        best_rel = load_best_rel_path(target, id_str)
+        if not best_rel:
+            return 0
+        idx = _match_index_by_suffix(files, best_rel)
+        return idx if idx >= 0 else 0
+    except Exception:
+        return 0

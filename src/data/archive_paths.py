@@ -78,6 +78,10 @@ GALLERY_HEADER_V2: List[str] = [
     "reticulation_order",
     # Overall
     "overall_color",
+    # Image sequence quality
+    "madreporite_visibility",
+    "anus_visibility",
+    "postural_visibility",
     # Notes
     "location",
     "unusual_observation",
@@ -114,6 +118,10 @@ QUERIES_HEADER_V2: List[str] = [
     "reticulation_order",
     # Overall
     "overall_color",
+    # Image sequence quality
+    "madreporite_visibility",
+    "anus_visibility",
+    "postural_visibility",
     # Notes
     "location",
     "unusual_observation",
@@ -137,6 +145,11 @@ def archive_root() -> Path:
     if env:
         return Path(env).expanduser().resolve()
     return project_root() / "archive"
+
+
+def logs_root() -> Path:
+    """Return the directory for interaction logs (archive/logs/)."""
+    return archive_root() / "logs"
 
 
 def gallery_root() -> Path:

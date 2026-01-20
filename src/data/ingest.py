@@ -7,6 +7,8 @@ import shutil
 import logging
 
 from .validators import validate_mmddyy_string
+from .id_registry import invalidate_id_cache
+from .image_index import invalidate_image_cache
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 log = logging.getLogger("starBoard.data.ingest")
@@ -86,7 +88,38 @@ def place_images(target_root: Path, id_str: str, encounter_dir_name: str, files:
     log.info("Ingested %d files into %s/%s", len(report.ops), id_str, encounter_dir_name)
     if report.errors:
         log.warning("Ingest errors: %s", "; ".join(report.errors))
+    
+    # Track new ID as pending for DL precomputation (best-effort)
+    if report.ops:
+        _track_pending_id(target_root, id_str)
+        # Invalidate caches since new files/IDs may have been added
+        invalidate_id_cache()
+        invalidate_image_cache()
+    
     return report
+
+
+def _track_pending_id(target_root: Path, id_str: str):
+    """Track an ID as pending for DL precomputation."""
+    try:
+        from src.dl.registry import DLRegistry
+        registry = DLRegistry.load()
+        
+        # Determine target from root path
+        root_name = target_root.name.lower()
+        if "gallery" in root_name:
+            target = "Gallery"
+        elif "quer" in root_name:
+            target = "Queries"
+        else:
+            return  # Unknown target
+        
+        registry.add_pending_id(target, id_str)
+        log.debug("Tracked pending ID for DL: %s/%s", target, id_str)
+    except ImportError:
+        pass  # DL module not available
+    except Exception as e:
+        log.debug("Failed to track pending ID: %s", e)
 
 def discover_ids_and_images(parent_dir: Path) -> List[Tuple[str, List[Path]]]:
     parent = Path(parent_dir)

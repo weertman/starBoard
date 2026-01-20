@@ -26,6 +26,7 @@ from PySide6.QtGui import QFont
 from src.data.fields_config import (
     get_fields_config, FieldsConfig, FieldDef, ScorerParams,
 )
+from src.utils.interaction_logger import get_interaction_logger
 
 
 class _CollapsibleSection(QWidget):
@@ -82,6 +83,7 @@ class FieldsConfigDialog(QDialog):
         self.setWindowTitle("Fields Configuration")
         self.setMinimumSize(700, 600)
         self.resize(800, 700)
+        self._ilog = get_interaction_logger()
         
         # Load current config
         self._config = get_fields_config(reload=True)
@@ -539,6 +541,7 @@ class FieldsConfigDialog(QDialog):
     
     def _on_save(self):
         """Save configuration to YAML file."""
+        self._ilog.log("button_click", "btn_save_config", value="clicked")
         try:
             data = self._build_yaml_dict()
             yaml_content = self._generate_yaml_with_comments(data)
@@ -561,6 +564,7 @@ class FieldsConfigDialog(QDialog):
     
     def _on_reset(self):
         """Reset all settings to defaults."""
+        self._ilog.log("button_click", "btn_reset_config", value="clicked")
         reply = QMessageBox.question(
             self,
             "Reset Configuration",

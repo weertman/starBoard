@@ -16,7 +16,8 @@ project_root = this_file.parent
 sys.path.insert(0, str(project_root))  # so 'src' is importable
 
 from src.ui.main_window import MainWindow
-from src.data.archive_paths import archive_root
+from src.data.archive_paths import archive_root, logs_root
+from src.utils.interaction_logger import get_interaction_logger
 
 
 class _SessionFilter(logging.Filter):
@@ -30,7 +31,8 @@ class _SessionFilter(logging.Filter):
         return True
 
 
-def _setup_logging():
+def _setup_logging() -> str:
+    """Set up application logging and return the session ID."""
     log_dir = archive_root()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "starboard.log"
@@ -62,10 +64,17 @@ def _setup_logging():
 
     logging.getLogger("PIL").setLevel(logging.WARNING)
     logging.info("Logging initialized. Log file=%s level=%s", log_path, level_name)
+    
+    return sid
 
 
 def main():
-    _setup_logging()
+    session_id = _setup_logging()
+    
+    # Initialize interaction logger for user analytics
+    interaction_logger = get_interaction_logger()
+    interaction_logger.initialize(session_id, logs_root())
+    
     app = QApplication(sys.argv)
     win = MainWindow()
     win.show()

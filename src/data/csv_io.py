@@ -7,6 +7,15 @@ import logging
 
 log = logging.getLogger("starBoard.data.csv")
 
+# Lazy import to avoid circular dependency
+def _invalidate_id_cache() -> None:
+    """Invalidate the ID registry cache (lazy import to avoid circular dependency)."""
+    try:
+        from .id_registry import invalidate_id_cache
+        invalidate_id_cache()
+    except ImportError:
+        pass
+
 # -------- normalization helpers --------
 def normalize_key(s: str) -> str:
     """Normalize CSV header keys: strip whitespace and remove BOM."""
@@ -132,6 +141,8 @@ def append_row(csv_path: Path, header: List[str], row: Dict[str, str]) -> None:
         writer = csv.writer(f)
         writer.writerow(ordered)
     log.info("Appended row to %s for ID=%s", csv_path, ordered[0] if ordered else "")
+    # New IDs may have been added; invalidate the cache
+    _invalidate_id_cache()
 
 def _normalize_row_keys(row: Dict[str, str]) -> Dict[str, str]:
     """Return a copy of row with normalized keys; values left as-is."""

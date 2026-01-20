@@ -21,6 +21,9 @@ from src.data.csv_io import (
     normalize_id_value, ensure_header,
 )
 from src.data.compare_labels import LABELS_HEADER  # ["query_id","gallery_id","verdict","notes","updated_utc"]
+from src.data.observation_dates import first_observation_for_all
+from src.data.id_registry import list_ids
+from src.ui.query_state_delegate import get_query_state, QueryState
 
 # ---------------------------- types ----------------------------
 Row = Dict[str, str]
@@ -54,6 +57,9 @@ class PastMatchesDataset:
     timeline_daily: List[Tuple[str, int, int, int, int]]       # (day, yes, maybe, no, total), sorted by day asc
     per_query_counts: Dict[str, Dict[Verdict, int]]            # query_id -> {yes, maybe, no, total}
     per_gallery_counts: Dict[str, Dict[Verdict, int]]          # gallery_id -> {yes, maybe, no, total}
+
+    # Query inflow by first observation date: {date_str -> {"matched": n, "attempted": n, "not_attempted": n}}
+    queries_by_first_obs: Dict[str, Dict[str, int]]
 
 
 # ------------------------ internals & helpers ------------------------
@@ -255,14 +261,45 @@ def build_past_matches_dataset() -> PastMatchesDataset:
             out[k] = {"yes": c["yes"], "maybe": c["maybe"], "no": c["no"], "total": c["total"]}
         return out
 
+    per_query_counts_std = _std_counts(per_q)
+
+    # ---- Query inflow by first observation date ----
+    # Get all query IDs (including those with no decisions yet)
+    all_query_ids = set(list_ids("Queries"))
+    first_obs_map = first_observation_for_all("Queries")
+
+    # Aggregate by first observation date using QueryState classification
+    # - matched: has at least one YES verdict
+    # - attempted: has pins or labels but no YES (PINNED or ATTEMPTED state)
+    # - not_attempted: no pins and no labels (NOT_ATTEMPTED state)
+    queries_by_first_obs: Dict[str, Dict[str, int]] = defaultdict(
+        lambda: {"matched": 0, "attempted": 0, "not_attempted": 0}
+    )
+    for qid in all_query_ids:
+        first_obs = first_obs_map.get(qid)
+        if first_obs is None:
+            continue  # Skip queries without a parseable observation date
+        date_str = first_obs.isoformat()
+        state = get_query_state(qid)
+        if state == QueryState.MATCHED:
+            queries_by_first_obs[date_str]["matched"] += 1
+        elif state in (QueryState.PINNED, QueryState.ATTEMPTED):
+            queries_by_first_obs[date_str]["attempted"] += 1
+        else:  # NOT_ATTEMPTED
+            queries_by_first_obs[date_str]["not_attempted"] += 1
+
+    # Convert defaultdict to regular dict
+    queries_by_first_obs = dict(queries_by_first_obs)
+
     ds = PastMatchesDataset(
         records=records,
         totals_by_verdict={"yes": totals["yes"], "maybe": totals["maybe"], "no": totals["no"]},
         timeline_daily=timeline,
-        per_query_counts=_std_counts(per_q),
+        per_query_counts=per_query_counts_std,
         per_gallery_counts=_std_counts(per_g),
+        queries_by_first_obs=queries_by_first_obs,
     )
-    return ds  # :contentReference[oaicite:8]{index=8}
+    return ds
 
 
 def export_past_matches_master_csv(path: Optional[Path] = None) -> Path:

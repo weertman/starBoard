@@ -176,6 +176,10 @@ class MetadataFormV2(QWidget):
         """Check if any values have changed since last populate()."""
         return self.collect_row_dict() != self._loaded_snapshot
 
+    def mark_clean(self) -> None:
+        """Mark current values as the clean baseline (e.g., after saving)."""
+        self._loaded_snapshot = self.collect_row_dict()
+
     def revert_to_loaded(self) -> None:
         """Revert all values to the last populated state."""
         if self._loaded_snapshot:

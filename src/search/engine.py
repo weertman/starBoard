@@ -148,6 +148,11 @@ class FirstOrderSearchEngine:
         logger.info("text_backend=%s", self._text_backend)
 
     def rebuild(self, *, recompute_embeddings: bool = False) -> None:
+        # Guard: skip redundant rebuild if already built and not forcing embeddings
+        if self._built and not recompute_embeddings:
+            logger.debug("rebuild skipped (already built, recompute_embeddings=False)")
+            return
+        
         # Proactively ensure/upgrade canonical metadata CSVs so new fields exist
         try:
             for t in ("Gallery", "Queries"):
@@ -211,6 +216,11 @@ class FirstOrderSearchEngine:
     def rebuild_if_needed(self) -> None:
         if not self._built:
             self.rebuild()
+    
+    def reset_built(self) -> None:
+        """Reset the _built flag to force a full rebuild on next call."""
+        self._built = False
+        logger.debug("engine._built reset to False")
 
     # ---------------- ranking ----------------
     def _query_row(self, query_id: str) -> Row | None:

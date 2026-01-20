@@ -112,6 +112,22 @@ SHORT_ARM_SEVERITY_OPTIONS = [
     CategoricalOption("Tiny short", "tiny"),
 ]
 
+# --- Image Sequence Quality Options ---
+MARKER_VISIBILITY_OPTIONS = [
+    CategoricalOption("Not visible", 0),
+    CategoricalOption("Barely visible", 1),
+    CategoricalOption("Adequately visible", 2),
+    CategoricalOption("Excellently visible", 3),
+]
+
+POSTURAL_VISIBILITY_OPTIONS = [
+    CategoricalOption("Very poor", 0),
+    CategoricalOption("Poor", 1),
+    CategoricalOption("Adequate", 2),
+    CategoricalOption("Good", 3),
+    CategoricalOption("Excellent", 4),
+]
+
 
 # =============================================================================
 # FIELD DEFINITIONS (ordered by annotation workflow)
@@ -276,7 +292,33 @@ FIELD_DEFINITIONS: List[FieldDefinition] = [
         tooltip="Overall color impression of the individual",
     ),
 
-    # --- Group 4: Text Annotations ---
+    # --- Group 4: Image Sequence Quality ---
+    FieldDefinition(
+        name="madreporite_visibility",
+        display_name="Madreporite visibility",
+        annotation_type=AnnotationType.MORPH_CATEGORICAL,
+        group="image_quality",
+        options=MARKER_VISIBILITY_OPTIONS,
+        tooltip="Visibility of the madreporite marker for bilateral symmetry identification",
+    ),
+    FieldDefinition(
+        name="anus_visibility",
+        display_name="Anus visibility",
+        annotation_type=AnnotationType.MORPH_CATEGORICAL,
+        group="image_quality",
+        options=MARKER_VISIBILITY_OPTIONS,
+        tooltip="Visibility of the anus marker for bilateral symmetry identification",
+    ),
+    FieldDefinition(
+        name="postural_visibility",
+        display_name="Postural visibility",
+        annotation_type=AnnotationType.MORPH_CATEGORICAL,
+        group="image_quality",
+        options=POSTURAL_VISIBILITY_OPTIONS,
+        tooltip="Quality of the star's posture for re-identification purposes",
+    ),
+
+    # --- Group 5: Text Annotations ---
     FieldDefinition(
         name="location",
         display_name="Location",
@@ -297,6 +339,87 @@ FIELD_DEFINITIONS: List[FieldDefinition] = [
         annotation_type=AnnotationType.TEXT_FREE,
         group="notes",
         tooltip="Observations about the star's health",
+    ),
+
+    # --- Group 6: Morphometric Tool Measurements (Auto-populated) ---
+    FieldDefinition(
+        name="morph_num_arms",
+        display_name="Arms detected",
+        annotation_type=AnnotationType.NUMERIC_INT,
+        group="morphometric_auto",
+        min_value=0,
+        max_value=30,
+        tooltip="Number of arms detected by YOLO model (auto-populated from morphometric tool)",
+    ),
+    FieldDefinition(
+        name="morph_area_mm2",
+        display_name="Area (mm²)",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="morphometric_auto",
+        min_value=0.0,
+        max_value=100000.0,
+        tooltip="Calibrated surface area in square millimeters (auto-populated)",
+    ),
+    FieldDefinition(
+        name="morph_major_axis_mm",
+        display_name="Major axis (mm)",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="morphometric_auto",
+        min_value=0.0,
+        max_value=1500.0,
+        tooltip="Fitted ellipse major axis length in mm (auto-populated)",
+    ),
+    FieldDefinition(
+        name="morph_minor_axis_mm",
+        display_name="Minor axis (mm)",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="morphometric_auto",
+        min_value=0.0,
+        max_value=1500.0,
+        tooltip="Fitted ellipse minor axis length in mm (auto-populated)",
+    ),
+    FieldDefinition(
+        name="morph_mean_arm_length_mm",
+        display_name="Mean arm length (mm)",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="morphometric_auto",
+        min_value=0.0,
+        max_value=750.0,
+        tooltip="Average length of all detected arms in mm (auto-populated)",
+    ),
+    FieldDefinition(
+        name="morph_max_arm_length_mm",
+        display_name="Max arm length (mm)",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="morphometric_auto",
+        min_value=0.0,
+        max_value=750.0,
+        tooltip="Length of the longest detected arm in mm (auto-populated)",
+    ),
+    FieldDefinition(
+        name="morph_tip_to_tip_mm",
+        display_name="Tip-to-tip diameter (mm)",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="morphometric_auto",
+        min_value=0.0,
+        max_value=1500.0,
+        tooltip="Maximum diameter between opposing arm tips in mm (auto-populated)",
+    ),
+    FieldDefinition(
+        name="morph_volume_mm3",
+        display_name="Volume (mm³)",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="morphometric_auto",
+        min_value=0.0,
+        max_value=1000000.0,
+        tooltip="Estimated 3D volume in cubic millimeters (auto-populated, requires depth estimation)",
+    ),
+    FieldDefinition(
+        name="morph_source_folder",
+        display_name="Source mFolder",
+        annotation_type=AnnotationType.TEXT_FREE,
+        group="morphometric_auto",
+        tooltip="Path to the source mFolder containing full morphometric data",
     ),
 ]
 
@@ -370,10 +493,32 @@ FIELD_GROUPS: List[FieldGroup] = [
         start_expanded=True,
     ),
     FieldGroup(
+        name="image_quality",
+        display_name="Image Sequence Quality",
+        fields=["madreporite_visibility", "anus_visibility", "postural_visibility"],
+        start_expanded=True,
+    ),
+    FieldGroup(
         name="notes",
         display_name="Notes & Location",
         fields=["location", "unusual_observation", "health_observation"],
         start_expanded=True,
+    ),
+    FieldGroup(
+        name="morphometric_auto",
+        display_name="Morphometric Measurements (Auto)",
+        fields=[
+            "morph_num_arms",
+            "morph_area_mm2",
+            "morph_major_axis_mm",
+            "morph_minor_axis_mm",
+            "morph_mean_arm_length_mm",
+            "morph_max_arm_length_mm",
+            "morph_tip_to_tip_mm",
+            "morph_volume_mm3",
+            "morph_source_folder",
+        ],
+        start_expanded=False,  # Collapsed by default since auto-populated
     ),
 ]
 

@@ -23,7 +23,8 @@ Notes:
   misspelled "querries_metadata.csv" header variants via csv_io helpers.
 """
 
-from typing import Dict, List, Set
+from functools import lru_cache
+from typing import Dict, List, Set, Tuple
 import logging
 
 from .archive_paths import (
@@ -83,6 +84,30 @@ def _folder_ids(target: str) -> Set[str]:
     return ids
 
 
+@lru_cache(maxsize=4)
+def _list_ids_cached(target: str, exclude_silent: bool) -> Tuple[str, ...]:
+    """
+    Internal cached implementation of list_ids.
+    Returns a tuple (hashable) for caching; outer function converts to list.
+    """
+    # Collect candidates
+    folder = _folder_ids(target)
+    csv = _csv_ids(target)
+    # Guard against reserved names leaking in from either source
+    ids = {x for x in (set(folder) | set(csv)) if x not in RESERVED_ID_NAMES}
+
+    if target.lower().startswith("q") and exclude_silent:
+        before = len(ids)
+        ids = {q for q in ids if not is_silent_query(q)}
+        removed = before - len(ids)
+        if removed:
+            log.info("list_ids exclude_silent=True removed=%d", removed)
+
+    out = tuple(sorted(ids))
+    log.info("list_ids target=%s count=%d (exclude_silent=%s)", target, len(out), exclude_silent)
+    return out
+
+
 def list_ids(target: str, *, exclude_silent: bool = False) -> List[str]:
     """
     Union of:
@@ -99,22 +124,13 @@ def list_ids(target: str, *, exclude_silent: bool = False) -> List[str]:
         Only applies when target is "Queries". If True, any query that has a
         `_SILENT.flag` in its folder is omitted.
     """
-    # Collect candidates
-    folder = _folder_ids(target)
-    csv = _csv_ids(target)
-    # Guard against reserved names leaking in from either source
-    ids = {x for x in (set(folder) | set(csv)) if x not in RESERVED_ID_NAMES}
+    return list(_list_ids_cached(target, exclude_silent))
 
-    if target.lower().startswith("q") and exclude_silent:
-        before = len(ids)
-        ids = {q for q in ids if not is_silent_query(q)}
-        removed = before - len(ids)
-        if removed:
-            log.info("list_ids exclude_silent=True removed=%d", removed)
 
-    out = sorted(ids)
-    log.info("list_ids target=%s count=%d (exclude_silent=%s)", target, len(out), exclude_silent)
-    return out
+def invalidate_id_cache() -> None:
+    """Clear the list_ids cache. Call after adding/removing IDs or modifying silence flags."""
+    _list_ids_cached.cache_clear()
+    log.debug("Invalidated list_ids cache")
 
 
 def id_exists(target: str, id_str: str) -> bool:

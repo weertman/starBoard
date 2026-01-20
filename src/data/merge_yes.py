@@ -7,11 +7,12 @@ from typing import List, Dict, Iterable, Optional, Set
 from datetime import datetime
 import shutil, uuid, json, csv, logging
 
-from .archive_paths import gallery_root, queries_root, roots_for_read
-from .csv_io import normalize_id_value
-from .id_registry import list_ids
+from .archive_paths import gallery_root, queries_root, roots_for_read, metadata_csv_paths_for_read
+from .csv_io import normalize_id_value, read_rows_multi, last_row_per_id
+from .id_registry import list_ids, invalidate_id_cache
 from .compare_labels import load_latest_map_for_query
 from .validators import validate_mmddyy_string
+from .observation_dates import last_observation_date
 
 log = logging.getLogger("starBoard.data.merge_yes")
 
@@ -366,8 +367,29 @@ def merge_yeses_for_gallery(gallery_id: str, *, dry_run: bool = False) -> MergeR
             except Exception as e:
                 errors.append(f"failed to add silent marker for {qid}: {e}")
 
+    # Record location history for merged queries
+    if not dry_run:
+        try:
+            from .location_history import add_location_sighting
+            # Load query metadata to get locations
+            q_csv_paths = metadata_csv_paths_for_read("Queries")
+            q_rows = read_rows_multi(q_csv_paths)
+            q_by_id = last_row_per_id(q_rows, "query_id")
+            
+            for qid in sorted(set(qids)):
+                q_meta = q_by_id.get(normalize_id_value(qid), {})
+                location = (q_meta.get("location") or "").strip()
+                if location:
+                    obs_date = last_observation_date("Queries", qid)
+                    add_location_sighting(gallery_id, location, obs_date, qid)
+        except Exception as e:
+            # Location history is non-critical; log but don't fail the merge
+            log.warning("Failed to record location history for %s: %s", gallery_id, e)
+
     if not dry_run:
         _append_rows(_history_path(gallery_id), hist_rows)
+        # Silence flags changed; invalidate ID cache so list_ids(exclude_silent=True) refreshes
+        invalidate_id_cache()
 
     return MergeReport(
         batch_id=batch_id,
@@ -472,6 +494,8 @@ def revert_merge_batch_for_gallery(gallery_id: str, batch_id: str) -> MergeRepor
             pass
 
     _append_rows(_history_path(gallery_id), hist_rows)
+    # Silence flags changed (restored); invalidate ID cache
+    invalidate_id_cache()
 
     return MergeReport(
         batch_id=batch_id,

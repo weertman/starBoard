@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QGroupBox, QCheckBox, QScrollArea, QSizePolicy, QSpinBox, QDoubleSpinBox, QGridLayout,
     QSplitter, QDialog, QTableWidget, QTableWidgetItem, QHeaderView, QWidget as _QW, QVBoxLayout as _QVL,
     QListWidget, QListWidgetItem, QLineEdit, QDialogButtonBox, QToolButton, QFrame, QDateEdit,
-    QCompleter,
+    QCompleter, QSlider,
 )
 
 from src.search.engine import (
@@ -32,8 +32,19 @@ from src.data.merge_yes import is_query_silent
 from .image_strip import ImageStrip
 from .lineup_card import LineupCard
 from .fields_config_dialog import FieldsConfigDialog
+from .query_state_delegate import (
+    QueryStateDelegate, QueryState, QUERY_STATE_ROLE,
+    get_query_state, apply_query_states_to_combobox, apply_quality_to_combobox,
+    get_quality_for_ids, QUALITY_MADREPORITE_ROLE, QUALITY_ANUS_ROLE, QUALITY_POSTURE_ROLE,
+)
 from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from src.data.archive_paths import last_observation_for_all
+from src.data.csv_io import read_rows_multi, last_row_per_id, append_row
+from src.ui.image_quality_panel import ImageQualityPanel
+from src.ui.metadata_form_v2 import MetadataFormV2
+from src.utils.interaction_logger import get_interaction_logger
+from src.dl.verification_lookup import get_verification_lookup, get_active_verification_lookup
+from src.dl.registry import DLRegistry
 
 # ---- Field groupings for the checkbox panel (V2 schema)
 FIELD_GROUPS = [
@@ -73,14 +84,18 @@ PRESETS: Dict[str, Set[str]] = {
 
 # ---------------- metadata pop-out (non-modal) ----------------
 class _MetadataPopup(QDialog):
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title: str, parent=None, gallery_id: str = None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(False)                     # non-blocking
         self.setAttribute(Qt.WA_DeleteOnClose)   # close frees memory
-        self.resize(540, 520)
+        self.resize(540, 600)
+        self._gallery_id = gallery_id  # For location history display
 
         lay = QVBoxLayout(self)
+        
+        # Metadata table
+        lay.addWidget(QLabel("<b>Metadata</b>"))
         self.table = QTableWidget(0, 2, self)
         self.table.setHorizontalHeaderLabels(["Field", "Value"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -88,6 +103,42 @@ class _MetadataPopup(QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.setWordWrap(True)
         lay.addWidget(self.table)
+        
+        # Location history section (only for gallery)
+        if gallery_id:
+            lay.addWidget(QLabel("<b>Location History</b>"))
+            self.history_table = QTableWidget(0, 3, self)
+            self.history_table.setHorizontalHeaderLabels(["Date", "Location", "Source Query"])
+            self.history_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            self.history_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            self.history_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+            self.history_table.verticalHeader().setVisible(False)
+            self.history_table.setMaximumHeight(150)
+            lay.addWidget(self.history_table)
+            self._load_location_history()
+        else:
+            self.history_table = None
+
+    def _load_location_history(self):
+        """Load and display location history for gallery individual."""
+        if not self._gallery_id or not self.history_table:
+            return
+        try:
+            from src.data.location_history import get_location_history
+            sightings = get_location_history(self._gallery_id)
+            self.history_table.setRowCount(len(sightings))
+            for i, s in enumerate(sightings):
+                date_str = s.observation_date.strftime("%Y-%m-%d") if s.observation_date else ""
+                self.history_table.setItem(i, 0, QTableWidgetItem(date_str))
+                self.history_table.setItem(i, 1, QTableWidgetItem(s.location))
+                self.history_table.setItem(i, 2, QTableWidgetItem(s.query_id))
+            if not sightings:
+                self.history_table.setRowCount(1)
+                self.history_table.setItem(0, 0, QTableWidgetItem(""))
+                self.history_table.setItem(0, 1, QTableWidgetItem("(no location history)"))
+                self.history_table.setItem(0, 2, QTableWidgetItem(""))
+        except Exception:
+            pass
 
     def populate(self, row: Dict[str, str]):
         fields = [k for k in row.keys() if k]
@@ -97,21 +148,133 @@ class _MetadataPopup(QDialog):
             self.table.setItem(i, 1, QTableWidgetItem(row.get(k, "")))
 
 
+# ---------------- metadata edit pop-out (non-modal, editable) ----------------
+class _MetadataEditPopup(QDialog):
+    """
+    Editable metadata popup dialog with full MetadataFormV2.
+    Allows in-place editing of metadata from the First-order tab.
+    """
+    saved = Signal()  # Emitted when metadata is saved
+
+    def __init__(self, target: str, id_value: str, parent=None):
+        super().__init__(parent)
+        self._target = target
+        self._id_value = id_value
+        self._ilog = get_interaction_logger()
+
+        self.setWindowTitle(f"Edit Metadata: {id_value}")
+        self.setModal(False)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.resize(620, 700)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(8)
+
+        # Header with ID display
+        header = QHBoxLayout()
+        header.addWidget(QLabel(f"<b>{target}:</b> {id_value}"))
+        header.addStretch(1)
+        lay.addLayout(header)
+
+        # Metadata form (reusing MetadataFormV2)
+        self.form = MetadataFormV2()
+        self.form.set_target(target)
+        self.form.set_id_value(id_value)
+        lay.addWidget(self.form, 1)
+
+        # Button row
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        self.btn_save = QPushButton("Save")
+        self.btn_save.setDefault(True)
+        self.btn_save.clicked.connect(self._on_save)
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.clicked.connect(self.close)
+        btn_row.addWidget(self.btn_cancel)
+        btn_row.addWidget(self.btn_save)
+        lay.addLayout(btn_row)
+
+        # Load existing metadata
+        self._load_metadata()
+
+    def _load_metadata(self):
+        """Load existing metadata from CSV."""
+        id_col = ap.id_column_name(self._target)
+        csv_paths = self._csv_paths_for_read()
+        rows = read_rows_multi(csv_paths)
+        latest_map = last_row_per_id(rows, id_col)
+        # Normalize ID for lookup
+        from src.data.id_registry import normalize_id_value
+        data = latest_map.get(normalize_id_value(self._id_value), {})
+        data[id_col] = self._id_value
+        self.form.populate(data)
+
+    def _csv_paths_for_read(self):
+        """Get CSV paths for reading metadata (both old and new locations)."""
+        from pathlib import Path
+        candidates = []
+        if self._target == "Gallery":
+            candidates = [
+                ap.gallery_root(prefer_new=True) / "gallery_metadata.csv",
+                ap.gallery_root(prefer_new=False) / "gallery_metadata.csv",
+            ]
+        else:
+            candidates = [
+                ap.queries_root(prefer_new=True) / "queries_metadata.csv",
+                ap.queries_root(prefer_new=False) / "queries_metadata.csv",
+            ]
+        return [p for p in candidates if p.exists()]
+
+    def _on_save(self):
+        """Save metadata to CSV."""
+        self._ilog.log("button_click", "btn_save_metadata_edit", value=self._id_value,
+                      context={"target": self._target})
+        csv_path, header = ap.metadata_csv_for(self._target)
+        row = self.form.collect_row()
+        row[ap.id_column_name(self._target)] = self._id_value
+        append_row(csv_path, header, row)
+        self.form.mark_clean()
+        self.saved.emit()
+        self.close()
+
+    def closeEvent(self, event):
+        """Warn if there are unsaved changes."""
+        if self.form.is_dirty():
+            from PySide6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved changes. Discard them?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                event.ignore()
+                return
+        event.accept()
+
+
 # ---------------- exclusion dialog ----------------
 class _ExcludeDialog(QDialog):
     """
     Lets the user temporarily exclude specific gallery IDs and/or
     exclude all items from selected 'Last location' values.
+    Also supports filtering to INCLUDE only individuals seen at specific locations (location history).
     Exclusions are not persisted; caller should store results in memory.
     """
     def __init__(self, all_gallery_ids: List[str], last_locations: List[str],
-                 excluded_ids: Set[str], excluded_locations: Set[str], parent=None):
+                 excluded_ids: Set[str], excluded_locations: Set[str], 
+                 include_history_locations: Set[str] = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Exclude from ranking")
-        self.resize(560, 600)
+        self.setWindowTitle("Filter ranking")
+        self.resize(560, 750)
+        
+        self._ilog = get_interaction_logger()
 
         self._ids_initial = set(excluded_ids)
         self._locs_initial = set(excluded_locations)
+        self._hist_locs_initial = set(include_history_locations or set())
 
         self._ids_out: Set[str] = set(excluded_ids)
         self._locs_out: Set[str] = set(excluded_locations)
@@ -139,8 +302,8 @@ class _ExcludeDialog(QDialog):
             self.list_ids.addItem(it)
         root.addWidget(self.list_ids, 1)
 
-        # --- by location
-        root.addWidget(QLabel("<b>Exclude by location</b>"))
+        # --- by location (current metadata)
+        root.addWidget(QLabel("<b>Exclude by current location</b>"))
         row2 = QHBoxLayout()
         self.cmb_location = QComboBox()
         self.cmb_location.addItem("— choose location —")
@@ -162,6 +325,40 @@ class _ExcludeDialog(QDialog):
             self.list_locations.addItem(QListWidgetItem(loc))
         root.addWidget(self.list_locations, 0)
 
+        # --- by location history (INCLUDE filter)
+        root.addWidget(QLabel("<b>Include only individuals seen at (location history)</b>"))
+        row3 = QHBoxLayout()
+        self.cmb_history_location = QComboBox()
+        self.cmb_history_location.addItem("— choose location —")
+        # Get all historical locations
+        try:
+            from src.data.location_history import get_all_historical_locations
+            hist_locs = get_all_historical_locations(all_gallery_ids)
+            for loc in sorted(hist_locs):
+                self.cmb_history_location.addItem(loc)
+        except Exception:
+            pass
+        row3.addWidget(self.cmb_history_location)
+        btn_add_hist = QPushButton("Add")
+        btn_add_hist.clicked.connect(self._on_add_history_location)
+        row3.addWidget(btn_add_hist)
+        btn_clear_hist = QPushButton("Clear")
+        btn_clear_hist.clicked.connect(self._on_clear_history_locations)
+        row3.addWidget(btn_clear_hist)
+        row3.addStretch(1)
+        root.addLayout(row3)
+
+        self.list_history_locations = QListWidget()
+        self.list_history_locations.setSelectionMode(QListWidget.NoSelection)
+        for loc in sorted(include_history_locations or set()):
+            self.list_history_locations.addItem(QListWidgetItem(loc))
+        root.addWidget(self.list_history_locations, 0)
+        
+        # Help text
+        help_lbl = QLabel("<i>Location history filter shows only individuals ever seen at selected locations.</i>")
+        help_lbl.setWordWrap(True)
+        root.addWidget(help_lbl)
+
         # --- buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -180,19 +377,34 @@ class _ExcludeDialog(QDialog):
             return
         existing = [self.list_locations.item(i).text() for i in range(self.list_locations.count())]
         if loc not in existing:
+            self._ilog.log("button_click", "btn_add_location", value=loc)
             self.list_locations.addItem(QListWidgetItem(loc))
 
     def _on_clear_locations(self):
         self.list_locations.clear()
 
-    def get_results(self) -> Tuple[Set[str], Set[str]]:
+    def _on_add_history_location(self):
+        loc = self.cmb_history_location.currentText().strip()
+        if not loc or loc.startswith("—"):
+            return
+        existing = [self.list_history_locations.item(i).text() for i in range(self.list_history_locations.count())]
+        if loc not in existing:
+            self._ilog.log("button_click", "btn_add_history_location", value=loc)
+            self.list_history_locations.addItem(QListWidgetItem(loc))
+
+    def _on_clear_history_locations(self):
+        self.list_history_locations.clear()
+
+    def get_results(self) -> Tuple[Set[str], Set[str], Set[str]]:
+        """Returns (excluded_ids, excluded_locations, include_history_locations)."""
         ids: Set[str] = set()
         for i in range(self.list_ids.count()):
             it = self.list_ids.item(i)
             if it.checkState() == Qt.Checked:
                 ids.add(it.text())
         locs: Set[str] = {self.list_locations.item(i).text() for i in range(self.list_locations.count())}
-        return ids, locs
+        hist_locs: Set[str] = {self.list_history_locations.item(i).text() for i in range(self.list_history_locations.count())}
+        return ids, locs, hist_locs
 
 
 # ---------------- Collapsible wrapper ----------------
@@ -239,7 +451,7 @@ class CollapsibleSection(QWidget):
             item = self.content_layout.takeAt(0)
             w = item.widget()
             if w:
-                w.setParent(None)
+                w.deleteLater()
         self.content_layout.addWidget(widget)
 
     def _on_toggled(self, checked: bool):
@@ -273,94 +485,251 @@ class TabFirstOrder(QWidget):
         self._current_query: str = ""
         self._cards: List[LineupCard] = []
         self._meta_popup: _MetadataPopup | None = None
+        self._meta_edit_popup: _MetadataEditPopup | None = None
 
         # session-scoped exclusions (NOT persisted)
         self._excluded_ids: Set[str] = set()
         self._excluded_locations: Set[str] = set()
+        self._include_history_locations: Set[str] = set()  # location history filter (include mode)
 
         # date filter state
         self._dates_initialized: bool = False
+        
+        # Flag to suppress file watcher during internal saves (Option A fix)
+        self._suppress_csv_watch: bool = False
+        
+        # Interaction logger for user analytics
+        self._ilog = get_interaction_logger()
+        
+        # Stored evaluation data for query sorting by confidence
+        self._stored_evaluation = None  # StoredEvaluation or None
+        self._sort_by_confidence = False  # Whether to sort queries by similarity
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(8)
 
-        # --- Controls row ---
-        controls = QHBoxLayout()
-        controls.addWidget(QLabel("Query:"))
+        # --- Controls row 1: Query, Preset, Top-K, action buttons ---
+        controls_row1 = QHBoxLayout()
+        
+        # Sort by confidence toggle (before Query combo)
+        self.chk_sort_confidence = QCheckBox("🎯")
+        self.chk_sort_confidence.setToolTip(
+            "Sort queries by match confidence (highest similarity first).\n"
+            "Requires evaluation to be run in Deep Learning tab."
+        )
+        self.chk_sort_confidence.setEnabled(False)  # Enabled when evaluation available
+        self.chk_sort_confidence.toggled.connect(self._on_sort_confidence_toggled)
+        controls_row1.addWidget(self.chk_sort_confidence)
+        
+        controls_row1.addWidget(QLabel("Query:"))
         self.cmb_query = QComboBox()
-        self.cmb_query.setMinimumWidth(260)
+        self.cmb_query.setMinimumWidth(320)
         # Make combo editable for type-to-search functionality
         self.cmb_query.setEditable(True)
         self.cmb_query.setInsertPolicy(QComboBox.NoInsert)
         self.cmb_query.completer().setFilterMode(Qt.MatchContains)
         self.cmb_query.completer().setCompletionMode(QCompleter.PopupCompletion)
-        controls.addWidget(self.cmb_query)
+        # Apply state-based color coding delegate
+        self._query_state_delegate = QueryStateDelegate(self.cmb_query)
+        self.cmb_query.setItemDelegate(self._query_state_delegate)
+        controls_row1.addWidget(self.cmb_query)
 
-        controls.addWidget(QLabel("Preset:"))
+        # Query navigation buttons
+        self.btn_prev_query = QPushButton("◀")
+        self.btn_prev_query.setFixedWidth(28)
+        self.btn_prev_query.setToolTip("Previous query in list")
+        self.btn_prev_query.clicked.connect(self._on_prev_query_clicked)
+        controls_row1.addWidget(self.btn_prev_query)
+
+        self.btn_next_query = QPushButton("▶")
+        self.btn_next_query.setFixedWidth(28)
+        self.btn_next_query.setToolTip("Next query in list")
+        self.btn_next_query.clicked.connect(self._on_next_query_clicked)
+        controls_row1.addWidget(self.btn_next_query)
+
+        controls_row1.addWidget(QLabel("Preset:"))
         self.cmb_preset = QComboBox()
         self.cmb_preset.addItems(list(PRESETS.keys()))
         self.cmb_preset.currentIndexChanged.connect(self._apply_preset)
-        controls.addWidget(self.cmb_preset)
+        controls_row1.addWidget(self.cmb_preset)
 
-        controls.addWidget(QLabel("Top-K:"))
+        controls_row1.addWidget(QLabel("Top-K:"))
         self.spin_topk = QSpinBox()
         self.spin_topk.setRange(1, 500)
         self.spin_topk.setValue(50)
-        controls.addWidget(self.spin_topk)
+        self.spin_topk.valueChanged.connect(
+            lambda v: self._ilog.log("spin_change", "spin_topk", value=str(v)))
+        controls_row1.addWidget(self.spin_topk)
 
         self.btn_rebuild = QPushButton("Rebuild index")
         self.btn_rebuild.clicked.connect(self._on_rebuild)
-        controls.addWidget(self.btn_rebuild)
+        controls_row1.addWidget(self.btn_rebuild)
 
         self.btn_refresh = QPushButton("Refresh")
         self.btn_refresh.clicked.connect(self._refresh_results)
-        controls.addWidget(self.btn_refresh)
+        self.btn_refresh.clicked.connect(
+            lambda: self._ilog.log("button_click", "btn_refresh", value="clicked"))
+        controls_row1.addWidget(self.btn_refresh)
 
         self.btn_exclude = QPushButton("Exclude…")
         self.btn_exclude.setToolTip("Temporarily exclude gallery members or entire locations")
         self.btn_exclude.clicked.connect(self._open_exclude_dialog)
-        controls.addWidget(self.btn_exclude)
+        controls_row1.addWidget(self.btn_exclude)
 
         self.btn_config = QPushButton("Set up config…")
         self.btn_config.setToolTip("Configure field weights, enabled fields, and scorer parameters")
         self.btn_config.clicked.connect(self._open_config_dialog)
-        controls.addWidget(self.btn_config)
+        controls_row1.addWidget(self.btn_config)
 
-        # ---- NEW: Query date filter (From/To + include-no-date) ----
-        controls.addSpacing(10)
+        controls_row1.addStretch(1)
+        outer.addLayout(controls_row1)
+
+        # --- Controls row 2: Date filter, Visual/DL controls, Fusion, status ---
+        controls_row2 = QHBoxLayout()
+
+        # ---- Query date filter (From/To + include-no-date) ----
         self.chk_date = QCheckBox("Date filter")
         self.chk_date.toggled.connect(self._on_date_filter_changed)
-        controls.addWidget(self.chk_date)
+        controls_row2.addWidget(self.chk_date)
 
-        controls.addWidget(QLabel("From:"))
+        controls_row2.addWidget(QLabel("From:"))
         self.date_from = QDateEdit()
         self.date_from.setCalendarPopup(True)
         self.date_from.setDisplayFormat("yyyy-MM-dd")
         self.date_from.dateChanged.connect(self._on_date_filter_changed)
-        controls.addWidget(self.date_from)
+        controls_row2.addWidget(self.date_from)
 
-        controls.addWidget(QLabel("To:"))
+        controls_row2.addWidget(QLabel("To:"))
         self.date_to = QDateEdit()
         self.date_to.setCalendarPopup(True)
         self.date_to.setDisplayFormat("yyyy-MM-dd")
         self.date_to.dateChanged.connect(self._on_date_filter_changed)
-        controls.addWidget(self.date_to)
+        controls_row2.addWidget(self.date_to)
 
         self.chk_include_nodate = QCheckBox("Include no‑date")
         self.chk_include_nodate.setToolTip("Include queries with no detectable sampling date")
         self.chk_include_nodate.toggled.connect(self._on_date_filter_changed)
-        controls.addWidget(self.chk_include_nodate)
+        controls_row2.addWidget(self.chk_include_nodate)
 
         # initialize enabled/disabled state
         self._update_date_widgets_enabled()
 
-        controls.addStretch(1)
+        # ---- Visual Ranking (DL) controls ----
+        controls_row2.addSpacing(20)
+        self.chk_visual = QCheckBox("Visual")
+        self.chk_visual.setToolTip("Enable deep learning visual similarity ranking")
+        self.chk_visual.toggled.connect(self._on_visual_toggled)
+        controls_row2.addWidget(self.chk_visual)
+
+        self.cmb_model = QComboBox()
+        self.cmb_model.setMinimumWidth(120)
+        self.cmb_model.setToolTip("Select the visual model to use")
+        self.cmb_model.currentIndexChanged.connect(self._on_model_changed)
+        controls_row2.addWidget(self.cmb_model)
+
+        # Visual mode selector (Centroid vs Image-Based)
+        self.cmb_visual_mode = QComboBox()
+        self.cmb_visual_mode.addItem("Image", "image")  # Default
+        self.cmb_visual_mode.addItem("Centroid", "centroid")
+        self.cmb_visual_mode.setToolTip("Image: rank by current image; Centroid: rank by identity average")
+        self.cmb_visual_mode.currentIndexChanged.connect(self._on_visual_mode_changed)
+        controls_row2.addWidget(self.cmb_visual_mode)
+
+        # Refresh button for image-based mode
+        self.btn_refresh_visual = QPushButton("↻")
+        self.btn_refresh_visual.setFixedWidth(28)
+        self.btn_refresh_visual.setToolTip("Refresh ranking for current image")
+        self.btn_refresh_visual.clicked.connect(self._on_refresh_visual)
+        controls_row2.addWidget(self.btn_refresh_visual)
+
+        # Roll to closest toggle (for image-based mode)
+        self.chk_roll_to_closest = QCheckBox("Roll to closest")
+        self.chk_roll_to_closest.setToolTip(
+            "When enabled, top-ranked gallery identities show the image "
+            "most similar to the current query image"
+        )
+        self.chk_roll_to_closest.setChecked(False)
+        self.chk_roll_to_closest.toggled.connect(self._on_roll_to_closest_toggled)
+        controls_row2.addWidget(self.chk_roll_to_closest)
+
+        # Limit for roll-to-closest (only apply to top N results)
+        self.spin_roll_limit = QSpinBox()
+        self.spin_roll_limit.setRange(1, 100)
+        self.spin_roll_limit.setValue(5)
+        self.spin_roll_limit.setToolTip(
+            "Only roll to closest for the top N gallery identities.\n"
+            "DL similarity is most meaningful for top matches; lower ranks show curated best photo."
+        )
+        self.spin_roll_limit.setFixedWidth(50)
+        self.spin_roll_limit.valueChanged.connect(self._on_roll_to_closest_toggled)
+        controls_row2.addWidget(self.spin_roll_limit)
+
+        controls_row2.addWidget(QLabel("Fusion:"))
+        self.slider_fusion = QSlider(Qt.Horizontal)
+        self.slider_fusion.setRange(0, 100)
+        self.slider_fusion.setValue(50)
+        self.slider_fusion.setFixedWidth(80)
+        self.slider_fusion.setToolTip("0% = metadata only, 100% = visual only")
+        self.slider_fusion.valueChanged.connect(self._on_fusion_changed)
+        controls_row2.addWidget(self.slider_fusion)
+        self.lbl_fusion = QLabel("50%")
+        self.lbl_fusion.setFixedWidth(35)
+        controls_row2.addWidget(self.lbl_fusion)
+
+        # ---- Verification controls (P(same) from verification model) ----
+        controls_row2.addSpacing(16)
+        self.chk_verification = QCheckBox("Verification")
+        self.chk_verification.setToolTip(
+            "Use verification model P(same) scores for ranking.\n"
+            "Requires precomputed verification data from Deep Learning tab."
+        )
+        self.chk_verification.toggled.connect(self._on_verification_toggled)
+        controls_row2.addWidget(self.chk_verification)
+
+        self.cmb_verif_model = QComboBox()
+        self.cmb_verif_model.setMinimumWidth(100)
+        self.cmb_verif_model.setToolTip("Select verification model")
+        self.cmb_verif_model.currentIndexChanged.connect(self._on_verif_model_changed)
+        controls_row2.addWidget(self.cmb_verif_model)
+
+        controls_row2.addWidget(QLabel("V-Fusion:"))
+        self.slider_verif_fusion = QSlider(Qt.Horizontal)
+        self.slider_verif_fusion.setRange(0, 100)
+        self.slider_verif_fusion.setValue(50)
+        self.slider_verif_fusion.setFixedWidth(80)
+        self.slider_verif_fusion.setToolTip(
+            "Blend verification with metadata/visual:\n"
+            "0% = no verification, 100% = verification only"
+        )
+        self.slider_verif_fusion.valueChanged.connect(self._on_verif_fusion_changed)
+        controls_row2.addWidget(self.slider_verif_fusion)
+        self.lbl_verif_fusion = QLabel("50%")
+        self.lbl_verif_fusion.setFixedWidth(35)
+        controls_row2.addWidget(self.lbl_verif_fusion)
+
+        # Initialize visual ranking state
+        self._visual_available = False
+        self._visual_lookup = None
+        self._image_lookup = None  # For image-based mode
+        # {gallery_id: (local_idx, path)} - both for robustness (try index, fallback to path)
+        self._closest_gallery_image: Dict[str, Tuple[int, str]] = {}
+        self._init_visual_controls()
+
+        # Initialize verification ranking state
+        self._verification_available = False
+        self._verification_lookup = None
+        self._init_verification_controls()
+        
+        # Load stored evaluation for query sorting by confidence
+        self._load_stored_evaluation()
+
+        controls_row2.addStretch(1)
         self.lbl_excluded = QLabel("Excluded: 0")
-        controls.addWidget(self.lbl_excluded)
+        controls_row2.addWidget(self.lbl_excluded)
         self.lbl_pinned = QLabel("Pinned: 0")
-        controls.addWidget(self.lbl_pinned)
-        outer.addLayout(controls)
+        controls_row2.addWidget(self.lbl_pinned)
+        outer.addLayout(controls_row2)
 
         # ------------- Include fields panel (now placed raw; outer scroll wraps both) -------------
         gb_fields = QGroupBox("Include fields (averaged by default)")
@@ -385,6 +754,10 @@ class TabFirstOrder(QWidget):
             for f in fields:
                 chk = QCheckBox(f)
                 chk.setChecked(True)
+                # Log field toggle
+                chk.toggled.connect(
+                    lambda checked, field=f: self._ilog.log(
+                        "checkbox_toggle", f"chk_field_{field}", value=str(checked)))
                 self.chk_by_name[f] = chk
                 grid.addWidget(chk, row, col, 1, 1)
                 row += 1
@@ -453,26 +826,56 @@ class TabFirstOrder(QWidget):
         qwrap = _QW()
         qwrap_l = _QVL(qwrap)
         qwrap_l.setContentsMargins(8, 8, 8, 8)
+        
+        # Query ID row with suggested match
+        id_row = QHBoxLayout()
+        id_row.addWidget(QLabel("ID:"))
         self.lbl_query_id = QLabel("—")
-        qwrap_l.addWidget(QLabel("ID:"))
-        qwrap_l.addWidget(self.lbl_query_id)
+        id_row.addWidget(self.lbl_query_id)
+        id_row.addSpacing(12)
+        self.lbl_suggested_match = QLabel("")
+        self.lbl_suggested_match.setStyleSheet("color: #1b9e77; font-weight: bold;")
+        self.lbl_suggested_match.setToolTip("Top suggested match from evaluation")
+        id_row.addWidget(self.lbl_suggested_match)
+        id_row.addStretch(1)
+        qwrap_l.addLayout(id_row)
 
         self.query_strip = ImageStrip(files=[], long_edge=768)
 
-        # query footer (Open Folder + View Metadata)
+        # query footer (Open Folder + View Metadata + Image Quality Panel)
         q_footer = QWidget()
-        qf_l = QHBoxLayout(q_footer)
+        qf_l = QVBoxLayout(q_footer)
         qf_l.setContentsMargins(0, 0, 0, 0)
+        qf_l.setSpacing(4)
+        
+        # Image quality panel (compact horizontal layout)
+        self.query_quality_panel = ImageQualityPanel(
+            parent=q_footer,
+            show_save_button=True,
+            compact=True,
+            title="",
+        )
+        self.query_quality_panel.set_target("Queries")
+        self.query_quality_panel.saved.connect(self._on_query_quality_saved)
+        qf_l.addWidget(self.query_quality_panel)
+        
+        # Buttons row
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
         self.btn_open_query = QPushButton("Open Folder")
         self.btn_best_query = QPushButton("Set Best (Query)")
         self.btn_open_query.clicked.connect(self._open_query_folder)
         self.btn_best_query.clicked.connect(self._on_set_best_query)
         self.btn_meta_query = QPushButton("View Metadata")
         self.btn_meta_query.clicked.connect(self._show_query_metadata)
-        qf_l.addStretch(1)
-        qf_l.addWidget(self.btn_open_query)
-        qf_l.addWidget(self.btn_best_query)
-        qf_l.addWidget(self.btn_meta_query)
+        self.btn_edit_meta_query = QPushButton("Edit Metadata")
+        self.btn_edit_meta_query.clicked.connect(self._edit_query_metadata)
+        btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_open_query)
+        btn_row.addWidget(self.btn_best_query)
+        btn_row.addWidget(self.btn_meta_query)
+        btn_row.addWidget(self.btn_edit_meta_query)
+        qf_l.addLayout(btn_row)
 
         self.query_vsplit = QSplitter(Qt.Vertical)
         qtop = _QW()
@@ -553,12 +956,13 @@ class TabFirstOrder(QWidget):
 
         outer.addWidget(self.vsplit_all, 1)
 
+        # Sync field checkboxes with config BEFORE populating queries
+        # (otherwise the first ranking uses all fields instead of config)
+        self._sync_checkboxes_from_config()
+
         # Populate query IDs and hook signals
         self._refresh_query_ids()
         self.cmb_query.currentIndexChanged.connect(self._on_query_changed)
-
-        # Sync field checkboxes with config (initial load)
-        self._sync_checkboxes_from_config()
 
         # --- Auto-reload First-order on metadata saves (watch CSVs) ---
         self._meta_watcher = QFileSystemWatcher(self)
@@ -627,21 +1031,35 @@ class TabFirstOrder(QWidget):
             d = last_obs.get(qid)
             return (d is None, d or _date.max, qid.lower())
 
-        # Move queries that already have a positive match ("yes") to the bottom
+        # Compute query states and move matched queries to the bottom
+        # States: NOT_ATTEMPTED (no labels), ATTEMPTED (has labels, no yes), MATCHED (has yes)
+        query_states: Dict[str, QueryState] = {}
         unmatched: List[str] = []
         matched: List[str] = []
         for qid in ids:
-            try:
-                latest = load_latest_map_for_query(qid)  # {gid -> row}
-                has_yes = any(((row.get("verdict", "") or "").strip().lower() == "yes") for row in latest.values())
-            except Exception:
-                has_yes = False
-            (matched if has_yes else unmatched).append(qid)
-        ordered = sorted(unmatched, key=_date_alpha_key) + sorted(matched, key=_date_alpha_key)
+            state = get_query_state(qid)
+            query_states[qid] = state
+            if state == QueryState.MATCHED:
+                matched.append(qid)
+            else:
+                unmatched.append(qid)
+        
+        # Apply confidence sorting if enabled, otherwise use date/alpha sorting
+        if self._sort_by_confidence and self._stored_evaluation:
+            # Sort unmatched queries by confidence (highest first)
+            ordered = self._get_confidence_sorted_queries(unmatched) + sorted(matched, key=_date_alpha_key)
+        else:
+            ordered = sorted(unmatched, key=_date_alpha_key) + sorted(matched, key=_date_alpha_key)
 
         self.cmb_query.blockSignals(True)
         self.cmb_query.clear()
         self.cmb_query.addItems(ordered)
+        
+        # Apply state-based color coding to combo items
+        apply_query_states_to_combobox(self.cmb_query, ordered, query_states)
+        # Apply quality indicator symbols
+        apply_quality_to_combobox(self.cmb_query, ordered, "Queries")
+        
         # try to restore previous selection if still present
         if prev_sel and (idx := self.cmb_query.findText(prev_sel)) >= 0:
             self.cmb_query.setCurrentIndex(idx)
@@ -649,9 +1067,17 @@ class TabFirstOrder(QWidget):
             self.cmb_query.setCurrentIndex(0)
         self.cmb_query.blockSignals(False)
 
-        # ensure downstream state aligns
+        # Option D: Only call _on_query_changed if query actually changed
+        # This preserves view state when the same query is still selected
         if ordered:
-            self._on_query_changed()
+            new_sel = self.cmb_query.currentText()
+            if new_sel != prev_sel:
+                # Different query selected - full refresh needed
+                self._on_query_changed()
+            elif new_sel != self._current_query:
+                # Selection restored but internal state out of sync - refresh
+                self._on_query_changed()
+            # else: same query, same selection - preserve view state, skip refresh
         else:
             # no queries after filter
             self._current_query = ""
@@ -705,6 +1131,9 @@ class TabFirstOrder(QWidget):
     def _apply_preset(self):
         name = self.cmb_preset.currentText()
         
+        # Log preset selection
+        self._ilog.log("combo_change", "cmb_preset", value=name)
+        
         # "Config" preset reads from fields_config.yaml
         if name == PRESET_CONFIG:
             self._sync_checkboxes_from_config()
@@ -718,6 +1147,9 @@ class TabFirstOrder(QWidget):
         return {f for f, chk in self.chk_by_name.items() if chk.isChecked()}
 
     def _on_rebuild(self):
+        self._ilog.log("button_click", "btn_rebuild", value="clicked")
+        # Reset built flag to force a full rebuild when user explicitly requests it
+        self.engine.reset_built()
         self.engine.rebuild()
         # Rebuild can change date coverage; refresh combo accordingly
         self._dates_initialized = False
@@ -728,6 +1160,7 @@ class TabFirstOrder(QWidget):
         qid = self._current_query
         if not qid:
             return
+        self._ilog.log("file_open", "btn_open_query", value=qid)
         folder = ap.queries_root(prefer_new=True) / qid
         try:
             if platform.system() == "Windows":
@@ -742,31 +1175,90 @@ class TabFirstOrder(QWidget):
     def _show_query_metadata(self):
         if not self._current_query:
             return
+        self._ilog.log("button_click", "btn_meta_query", value=self._current_query)
         q_row = self.engine._queries_rows_by_id.get(self._current_query, {})
         if not q_row:
             return
         if self._meta_popup is None or not self._meta_popup.isVisible():
             self._meta_popup = _MetadataPopup(f"Metadata: {self._current_query}", self)
+            # Clear reference when C++ object is deleted (due to WA_DeleteOnClose)
+            self._meta_popup.destroyed.connect(lambda: setattr(self, '_meta_popup', None))
         self._meta_popup.populate(q_row)
         self._meta_popup.show()
         self._meta_popup.raise_()
 
+    def _show_gallery_metadata(self, gallery_id: str):
+        """Show metadata popup for a gallery ID."""
+        g_row = self.engine._gallery_rows_by_id.get(gallery_id, {})
+        if not g_row:
+            return
+        popup = _MetadataPopup(f"Metadata: {gallery_id}", self, gallery_id=gallery_id)
+        popup.destroyed.connect(lambda: None)  # prevent crash; non-modal so no caching
+        popup.populate(g_row)
+        popup.show()
+        popup.raise_()
+
+    def _edit_query_metadata(self):
+        """Open edit metadata popup for the current query."""
+        if not self._current_query:
+            return
+        self._ilog.log("button_click", "btn_edit_meta_query", value=self._current_query)
+        if self._meta_edit_popup is None or not self._meta_edit_popup.isVisible():
+            self._meta_edit_popup = _MetadataEditPopup("Queries", self._current_query, self)
+            self._meta_edit_popup.saved.connect(self._on_metadata_edited)
+            self._meta_edit_popup.destroyed.connect(lambda: setattr(self, '_meta_edit_popup', None))
+        self._meta_edit_popup.show()
+        self._meta_edit_popup.raise_()
+
+    def _edit_gallery_metadata(self, gallery_id: str):
+        """Open edit metadata popup for a gallery ID."""
+        self._ilog.log("button_click", "btn_edit_meta_gallery", value=gallery_id)
+        popup = _MetadataEditPopup("Gallery", gallery_id, self)
+        popup.saved.connect(self._on_metadata_edited)
+        popup.destroyed.connect(lambda: None)
+        popup.show()
+        popup.raise_()
+
+    def _on_metadata_edited(self):
+        """Refresh rankings after metadata is edited."""
+        self._refresh_results()
+
     def _open_exclude_dialog(self):
+        self._ilog.log("dialog_open", "exclude_dialog")
         # Gather gallery IDs and available location values
         gallery_ids = sorted(list(self.engine._gallery_rows_by_id.keys()))
         locs: List[str] = []
         for r in self.engine._gallery_rows_by_id.values():
             locs.append((r.get("location", "") or "").strip())
-        dlg = _ExcludeDialog(gallery_ids, locs, set(self._excluded_ids), set(self._excluded_locations), self)
+        dlg = _ExcludeDialog(
+            gallery_ids, locs, 
+            set(self._excluded_ids), set(self._excluded_locations),
+            set(self._include_history_locations), self
+        )
         if dlg.exec():
-            ids, locs_set = dlg.get_results()
+            ids, locs_set, hist_locs = dlg.get_results()
             self._excluded_ids = set(ids)
             self._excluded_locations = set(locs_set)
-            self.lbl_excluded.setText(f"Excluded: {len(self._excluded_ids) or 0} + {len(self._excluded_locations) or 0} loc")
+            self._include_history_locations = set(hist_locs)
+            # Update label to show all filter counts
+            filter_parts = []
+            if self._excluded_ids:
+                filter_parts.append(f"{len(self._excluded_ids)} IDs")
+            if self._excluded_locations:
+                filter_parts.append(f"{len(self._excluded_locations)} loc")
+            if self._include_history_locations:
+                filter_parts.append(f"{len(self._include_history_locations)} hist")
+            self.lbl_excluded.setText(f"Filters: {', '.join(filter_parts) if filter_parts else 'none'}")
+            self._ilog.log("dialog_close", "exclude_dialog", value="accepted",
+                          context={"excluded_ids": len(ids), "excluded_locs": len(locs_set), 
+                                   "include_hist_locs": len(hist_locs)})
             self._refresh_results()
+        else:
+            self._ilog.log("dialog_close", "exclude_dialog", value="cancelled")
 
     def _open_config_dialog(self):
         """Open the fields configuration dialog."""
+        self._ilog.log("dialog_open", "config_dialog")
         dlg = FieldsConfigDialog(self)
         dlg.configSaved.connect(self._on_config_saved)
         dlg.exec()
@@ -800,6 +1292,12 @@ class TabFirstOrder(QWidget):
         qid = self.cmb_query.currentText()
         self._current_query = qid or ""
         self.lbl_query_id.setText(qid or "—")
+        
+        # Update suggested match display
+        self._update_suggested_match_display(qid)
+        
+        # Log query selection
+        self._ilog.log("combo_change", "cmb_query", value=qid)
         files = list_image_files("Queries", qid) if qid else []
         files = reorder_files_with_best("Queries", qid, files) if qid else files
         self.query_strip.set_files(files)
@@ -816,16 +1314,65 @@ class TabFirstOrder(QWidget):
         # load persisted pins for this query
         self._pinned = self._load_pins(self._current_query) if self._current_query else []
         self.lbl_pinned.setText(f"Pinned: {len(self._pinned)}")
+        
+        # Update image quality panel for this query
+        if hasattr(self, 'query_quality_panel'):
+            self.query_quality_panel.load_for_id("Queries", qid)
+        
         self._refresh_results()
+
+    def _on_prev_query_clicked(self) -> None:
+        """Navigate to the previous query in the combo box list."""
+        self._ilog.log("button_click", "btn_prev_query", value="clicked")
+        current_idx = self.cmb_query.currentIndex()
+        if current_idx > 0:
+            self.cmb_query.setCurrentIndex(current_idx - 1)
+
+    def _on_next_query_clicked(self) -> None:
+        """Navigate to the next query in the combo box list."""
+        self._ilog.log("button_click", "btn_next_query", value="clicked")
+        current_idx = self.cmb_query.currentIndex()
+        max_idx = self.cmb_query.count() - 1
+        if current_idx < max_idx:
+            self.cmb_query.setCurrentIndex(current_idx + 1)
 
     def _on_set_best_query(self):
         qid = self._current_query
         if not qid or not self.query_strip.files:
             return
         idx = max(0, min(self.query_strip.idx, len(self.query_strip.files) - 1))
+        self._ilog.log("button_click", "btn_best_query", value=qid,
+                      context={"image_idx": idx})
         save_best_for_id("Queries", qid, self.query_strip.files[idx])
         files = reorder_files_with_best("Queries", qid, list(self.query_strip.files))
         self.query_strip.set_files(files)
+
+    def _on_query_quality_saved(self, target: str, id_value: str) -> None:
+        """Handle image quality saved for the query.
+        
+        Option A: Suppress the file watcher rebuild to preserve view state.
+        The file watcher would trigger a full rebuild which resets both query
+        and gallery views - we don't need that for internal saves.
+        """
+        # Set suppress flag - the file watcher event may already be queued
+        self._suppress_csv_watch = True
+        # Clear the flag after the debounce period (200ms) plus margin
+        QTimer.singleShot(300, self._clear_csv_watch_suppress)
+        
+        # Update the quality indicator symbols for this specific query in the combo
+        idx = self.cmb_query.findText(id_value)
+        if idx >= 0:
+            quality_data = get_quality_for_ids("Queries", [id_value])
+            madreporite, anus, posture = quality_data.get(id_value, (-1.0, -1.0, -1.0))
+            model = self.cmb_query.model()
+            model_idx = model.index(idx, 0)
+            model.setData(model_idx, madreporite, QUALITY_MADREPORITE_ROLE)
+            model.setData(model_idx, anus, QUALITY_ANUS_ROLE)
+            model.setData(model_idx, posture, QUALITY_POSTURE_ROLE)
+
+    def _clear_csv_watch_suppress(self) -> None:
+        """Clear the CSV watch suppress flag after internal save completes."""
+        self._suppress_csv_watch = False
 
     def _auto_excluded_for_same_day(self, qid: str) -> Set[str]:
         """
@@ -847,6 +1394,7 @@ class TabFirstOrder(QWidget):
 
     def _on_filters_toggled(self, expanded: bool):
         """When the filters section collapses, reclaim the vertical space in the splitter."""
+        self._ilog.log("checkbox_toggle", "filters_section", value=str(expanded))
         sizes = self.vsplit_all.sizes()
         total = sum(sizes) if sizes else 0
         if expanded:
@@ -863,7 +1411,10 @@ class TabFirstOrder(QWidget):
             return
 
         fields = self._selected_fields()
-        if not fields:
+        use_visual = self.chk_visual.isChecked() and self._visual_available
+        use_verification = self.chk_verification.isChecked() and self._verification_available
+        
+        if not fields and not use_visual and not use_verification:
             # Do NOT clear the gallery when no fields are selected.
             # Keep what's currently visible and just re-apply sizing.
             self._sync_card_min_height_from_query()
@@ -879,21 +1430,163 @@ class TabFirstOrder(QWidget):
         if not equalize:
             weights = {f: config.get_weight(f) for f in fields}
 
-        results = self.engine.rank(
-            qid,
-            include_fields=fields,
-            equalize_weights=equalize,
-            weights=weights,
-            top_k=int(self.spin_topk.value()),
-            numeric_offsets=self._collect_numeric_offsets(),
-        )
+        # Get metadata-based ranking results
+        if fields:
+            results = self.engine.rank(
+                qid,
+                include_fields=fields,
+                equalize_weights=equalize,
+                weights=weights,
+                top_k=int(self.spin_topk.value()) * 2 if use_visual else int(self.spin_topk.value()),
+                numeric_offsets=self._collect_numeric_offsets(),
+            )
+        else:
+            results = []
+
+        # Get visual scores if enabled
+        visual_scores: Dict[str, float] = {}
+        if use_visual:
+            visual_scores = self._get_visual_scores(qid)
+
+        # Get verification scores if enabled
+        verification_scores: Dict[str, float] = {}
+        if use_verification:
+            verification_scores = self._get_verification_scores(qid)
+
+        # Fuse scores if both are available
+        fusion_alpha = self.slider_fusion.value() / 100.0 if use_visual else 0.0
+        verif_alpha = self.slider_verif_fusion.value() / 100.0 if use_verification else 0.0
+        
+        # Build a combined result set with visual and/or verification fusion
+        from dataclasses import dataclass
+        
+        @dataclass
+        class FusedResult:
+            gallery_id: str
+            score: float
+            k_contrib: float
+            field_breakdown: Dict[str, float]
+            verification_score: Optional[float] = None
+
+        need_fusion = (use_visual and visual_scores) or (use_verification and verification_scores)
+        
+        if need_fusion:
+            # Collect metadata scores
+            metadata_scores: Dict[str, float] = {}
+            result_by_id: Dict[str, object] = {}
+            for it in results:
+                metadata_scores[it.gallery_id] = it.score
+                result_by_id[it.gallery_id] = it
+            
+            # All gallery IDs (union of all sources)
+            all_gallery_ids = set(metadata_scores.keys())
+            if visual_scores:
+                all_gallery_ids |= set(visual_scores.keys())
+            if verification_scores:
+                all_gallery_ids |= set(verification_scores.keys())
+            
+            # Compute fused scores in two stages:
+            # Stage 1: metadata + visual fusion
+            # Stage 2: (metadata+visual) + verification fusion
+            fused_scores: Dict[str, float] = {}
+            for gid in all_gallery_ids:
+                m_score = metadata_scores.get(gid, 0.0)
+                
+                # Stage 1: metadata + visual
+                if use_visual and visual_scores:
+                    v_score = visual_scores.get(gid, 0.0)
+                    base_score = fusion_alpha * v_score + (1 - fusion_alpha) * m_score
+                else:
+                    base_score = m_score
+                
+                # Stage 2: base + verification
+                if use_verification and verification_scores:
+                    verif_score = verification_scores.get(gid, 0.0)
+                    final_score = verif_alpha * verif_score + (1 - verif_alpha) * base_score
+                else:
+                    final_score = base_score
+                
+                fused_scores[gid] = final_score
+            
+            # Sort by fused score and limit to top_k
+            sorted_gids = sorted(fused_scores.keys(), key=lambda g: -fused_scores[g])
+            sorted_gids = sorted_gids[:int(self.spin_topk.value())]
+            
+            # Rebuild result items with updated scores
+            fused_results = []
+            for gid in sorted_gids:
+                # Build field breakdown
+                if gid in result_by_id:
+                    orig = result_by_id[gid]
+                    breakdown = dict(orig.field_breakdown)
+                    k_contrib = orig.k_contrib
+                else:
+                    breakdown = {}
+                    k_contrib = 0
+                
+                # Add visual score to breakdown if present
+                if gid in visual_scores:
+                    breakdown["visual"] = visual_scores[gid]
+                
+                # Add verification score to breakdown if present
+                if gid in verification_scores:
+                    breakdown["P(same)"] = verification_scores[gid]
+                
+                fused_results.append(FusedResult(
+                    gallery_id=gid,
+                    score=fused_scores[gid],
+                    k_contrib=k_contrib,
+                    field_breakdown=breakdown,
+                    verification_score=verification_scores.get(gid) if verification_scores else None
+                ))
+            
+            results = fused_results
+        else:
+            # No fusion needed - wrap results in FusedResult for consistent interface
+            wrapped_results = []
+            for it in results:
+                wrapped_results.append(FusedResult(
+                    gallery_id=it.gallery_id,
+                    score=it.score,
+                    k_contrib=it.k_contrib,
+                    field_breakdown=dict(it.field_breakdown),
+                    verification_score=None
+                ))
+            results = wrapped_results
 
         # ---- Manual exclusions still EXCLUDE; auto same-day YES now DEMOTES ----
+        # EXCEPT: if the current query has its own YES match, that gallery is PROMOTED to top
         demote_ids = set(self._auto_excluded_for_same_day(qid))  # keep logic; change handling
         excluded_ids = set(self._excluded_ids)  # manual-only
         excluded_locs = set(self._excluded_locations)
+        include_hist_locs = set(self._include_history_locations)  # location history filter
+        
+        # Pre-compute which gallery IDs pass the location history filter
+        hist_allowed_ids: Set[str] | None = None
+        if include_hist_locs:
+            try:
+                from src.data.location_history import find_galleries_with_location_history
+                all_gids = [it.gallery_id for it in results]
+                hist_allowed_ids = find_galleries_with_location_history(all_gids, include_hist_locs)
+            except Exception:
+                hist_allowed_ids = None  # On error, don't filter
 
-        kept, demoted = [], []
+        # Find the gallery that has a YES match specifically for THIS query (promote it)
+        promote_gid: str | None = None
+        try:
+            latest_for_qid = load_latest_map_for_query(qid)
+            for gid, row in latest_for_qid.items():
+                if (row.get("verdict", "") or "").strip().lower() == "yes":
+                    promote_gid = gid
+                    break  # take the first YES match found
+        except Exception:
+            pass
+
+        # Don't demote the gallery that is the query's own match - it will be promoted instead
+        if promote_gid:
+            demote_ids.discard(promote_gid)
+
+        kept, demoted, promoted = [], [], []
         for it in results:
             # Manual ID exclusion => drop
             if it.gallery_id in excluded_ids:
@@ -903,15 +1596,34 @@ class TabFirstOrder(QWidget):
             loc = (g_row.get("location", "") or "").strip()
             if loc and loc in excluded_locs:
                 continue
-            # Auto same-day YES => demote to the end; otherwise keep in place
-            (demoted if it.gallery_id in demote_ids else kept).append(it)
+            # Location history filter (include mode) => drop if not in allowed set
+            if hist_allowed_ids is not None and it.gallery_id not in hist_allowed_ids:
+                continue
+            # Query's own YES match => promote to top
+            if promote_gid and it.gallery_id == promote_gid:
+                promoted.append(it)
+            # Auto same-day YES (from other queries) => demote to the end
+            elif it.gallery_id in demote_ids:
+                demoted.append(it)
+            else:
+                kept.append(it)
 
-        ordered = kept + demoted  # preserve relative order within each bucket
+        ordered = promoted + kept + demoted  # promoted first, then normal, then demoted
 
         # ---- Build cards (with robust constructor call & rich tooltips) ----
         cards: List[LineupCard] = []
         q_row = self.engine._queries_rows_by_id.get(qid, {})
-        for it in ordered:
+        
+        # Determine if we should roll gallery images to closest match
+        use_roll_to_closest = (
+            use_visual
+            and self.cmb_visual_mode.currentData() == "image"
+            and self.chk_roll_to_closest.isChecked()
+        )
+        # Only apply roll-to-closest for top N results (DL is noise after that)
+        roll_limit = self.spin_roll_limit.value() if use_roll_to_closest else 0
+        
+        for rank, it in enumerate(ordered):
             g_row = self.engine._gallery_rows_by_id.get(it.gallery_id, {})
             tooltips = {
                 f: self._tooltip_for_field(
@@ -922,7 +1634,16 @@ class TabFirstOrder(QWidget):
                 )
                 for f in it.field_breakdown.keys()
             }
+            
+            # Get closest image info for this gallery identity (if applicable)
+            # Only apply to top N results - DL similarity is noise after that
+            closest_image_info = None
+            if use_roll_to_closest and rank < roll_limit:
+                closest_image_info = self._closest_gallery_image.get(it.gallery_id)
 
+            # Get verification score if available (FusedResult has it, others don't)
+            verif_score = getattr(it, 'verification_score', None)
+            
             # Try the new signature first (with query_id for decision UI)
             card = None
             try:
@@ -933,6 +1654,8 @@ class TabFirstOrder(QWidget):
                     it.field_breakdown,
                     field_tooltips=tooltips,
                     query_id=self._current_query,  # enables decision combo + save
+                    closest_image_info=closest_image_info,  # (idx, path) tuple for O(1) with fallback
+                    verification_score=verif_score,  # P(same) from verification model
                 )
             except TypeError:
                 try:
@@ -943,6 +1666,12 @@ class TabFirstOrder(QWidget):
 
             if hasattr(card, "btn_pin"):
                 card.btn_pin.clicked.connect(lambda _=None, gid=it.gallery_id: self._toggle_pin(gid))
+            if hasattr(card, "metadataRequested"):
+                card.metadataRequested.connect(self._show_gallery_metadata)
+            if hasattr(card, "editMetadataRequested"):
+                card.editMetadataRequested.connect(self._edit_gallery_metadata)
+            if hasattr(card, "decisionSaved"):
+                card.decisionSaved.connect(self._on_card_decision_saved)
             cards.append(card)
 
         self._set_cards(cards)
@@ -953,7 +1682,7 @@ class TabFirstOrder(QWidget):
             item = self.cards_layout.takeAt(0)
             w = item.widget()
             if w:
-                w.setParent(None)
+                w.deleteLater()  # Properly destroy old cards instead of orphaning them
         self._cards = cards
         for c in cards:
             c.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
@@ -965,6 +1694,9 @@ class TabFirstOrder(QWidget):
 
         # NEW: ensure min width is also synced immediately
         self._sync_card_min_width_from_query()
+
+        # Update gallery search combo with current cards
+        self._update_gallery_search_combo()
 
     def _fit_cards_to_viewport(self):
         vh = self.scroll.viewport().height()
@@ -982,15 +1714,59 @@ class TabFirstOrder(QWidget):
                 except Exception:
                     pass
 
+    def _update_gallery_search_combo(self):
+        """Update the gallery search combo box with current card IDs."""
+        if not hasattr(self, 'cmb_gallery_search') or self.cmb_gallery_search is None:
+            return
+        self.cmb_gallery_search.blockSignals(True)
+        self.cmb_gallery_search.clear()
+        for card in self._cards:
+            self.cmb_gallery_search.addItem(card.gallery_id)
+        self.cmb_gallery_search.setCurrentIndex(-1)  # No selection initially
+        self.cmb_gallery_search.blockSignals(False)
+        self.cmb_gallery_search.setEnabled(len(self._cards) > 0)
+
+    def _on_gallery_search_changed(self, index: int):
+        """Handle gallery search combo selection - scroll to the selected card."""
+        if not hasattr(self, '_cards') or index < 0 or index >= len(self._cards):
+            return
+        gid = self._cards[index].gallery_id if index < len(self._cards) else ""
+        self._ilog.log("combo_change", "cmb_gallery_search", value=gid)
+        self._scroll_to_gallery_card(index)
+
     def _toggle_pin(self, gid: str):
-        if gid in self._pinned:
+        was_pinned = gid in self._pinned
+        if was_pinned:
             self._pinned.remove(gid)
         else:
             self._pinned.append(gid)
         self.lbl_pinned.setText(f"Pinned: {len(self._pinned)}")
         self._save_pins()
+        # Log pin action
+        self._ilog.log("button_click", "btn_pin", value="unpinned" if was_pinned else "pinned",
+                      context={"gallery_id": gid, "query_id": self._current_query})
+        # Update query state color (pins affect the PINNED state)
+        self._update_single_query_state(self._current_query)
+
+    def _on_card_decision_saved(self, query_id: str, gallery_id: str, verdict: str):
+        """Handle decision saved from a LineupCard - update query state color."""
+        self._ilog.log("decision_save", "lineup_card", value=verdict,
+                      context={"query_id": query_id, "gallery_id": gallery_id})
+        self._update_single_query_state(query_id)
+    
+    def _update_single_query_state(self, qid: str) -> None:
+        """Update the state color for a single query in the combo box."""
+        idx = self.cmb_query.findText(qid)
+        if idx >= 0:
+            state = get_query_state(qid)
+            model = self.cmb_query.model()
+            model.setData(model.index(idx, 0), state, QUERY_STATE_ROLE)
 
     def _on_metadata_csv_changed(self, _path: str):
+        # Option A: Skip rebuild if this was triggered by an internal save
+        if self._suppress_csv_watch:
+            return
+        
         # Debounce: in case of multiple appends in quick succession
         if getattr(self, "_meta_debounce", None) is None:
             self._meta_debounce = QTimer(self)
@@ -1022,6 +1798,7 @@ class TabFirstOrder(QWidget):
         return out
 
     def _reset_offsets(self):
+        self._ilog.log("button_click", "btn_reset_offsets", value="clicked")
         for w in getattr(self, "_offset_widgets", {}).values():
             try:
                 w.blockSignals(True)
@@ -1034,6 +1811,10 @@ class TabFirstOrder(QWidget):
         self._refresh_results()
 
     def _on_offsets_changed(self, *_):
+        # Log current offset values (throttled via interaction logger)
+        offsets = self._collect_numeric_offsets()
+        if offsets:
+            self._ilog.log("offset_change", "offset_widgets", value=str(offsets))
         self._refresh_results()
 
     # ---------- Min-height sync between Query viewer and Gallery cards ----------
@@ -1118,6 +1899,20 @@ class TabFirstOrder(QWidget):
         row.setContentsMargins(4, 0, 4, 0)
         row.setSpacing(6)
 
+        # Gallery search combo box
+        row.addWidget(QLabel("Jump to:"))
+        self.cmb_gallery_search = QComboBox()
+        self.cmb_gallery_search.setMinimumWidth(140)
+        self.cmb_gallery_search.setEditable(True)
+        self.cmb_gallery_search.setInsertPolicy(QComboBox.NoInsert)
+        self.cmb_gallery_search.setPlaceholderText("Gallery ID…")
+        self.cmb_gallery_search.completer().setFilterMode(Qt.MatchContains)
+        self.cmb_gallery_search.completer().setCompletionMode(QCompleter.PopupCompletion)
+        self.cmb_gallery_search.currentIndexChanged.connect(self._on_gallery_search_changed)
+        row.addWidget(self.cmb_gallery_search)
+
+        row.addStretch(1)
+
         self.btn_gallery_prev = QPushButton("◀ Prev result")
         self.btn_gallery_next = QPushButton("Next result ▶")
 
@@ -1128,7 +1923,6 @@ class TabFirstOrder(QWidget):
             "Scroll to the next gallery identity and center it in view."
         )
 
-        row.addStretch(1)
         row.addWidget(self.btn_gallery_prev)
         row.addWidget(self.btn_gallery_next)
         vlay.addLayout(row)
@@ -1136,6 +1930,9 @@ class TabFirstOrder(QWidget):
         # Wire up behavior.
         self.btn_gallery_prev.clicked.connect(self._on_gallery_prev_clicked)
         self.btn_gallery_next.clicked.connect(self._on_gallery_next_clicked)
+
+        # Populate the gallery search combo with current cards
+        self._update_gallery_search_combo()
 
         self._gallery_nav_installed = True
 
@@ -1206,6 +2003,7 @@ class TabFirstOrder(QWidget):
         """
         Jump to the previous gallery card (if any) and center it.
         """
+        self._ilog.log("button_click", "btn_gallery_prev", value="clicked")
         if not self._cards:
             return
         cur = self._current_gallery_card_index()
@@ -1220,6 +2018,7 @@ class TabFirstOrder(QWidget):
         """
         Jump to the next gallery card (if any) and center it.
         """
+        self._ilog.log("button_click", "btn_gallery_next", value="clicked")
         if not self._cards:
             return
         cur = self._current_gallery_card_index()
@@ -1367,6 +2166,10 @@ class TabFirstOrder(QWidget):
         self._update_date_widgets_enabled()
 
     def _on_date_filter_changed(self, *_):
+        self._ilog.log("date_change", "date_filter", value=str(self.chk_date.isChecked()),
+                      context={"from": self.date_from.date().toString("yyyy-MM-dd"),
+                              "to": self.date_to.date().toString("yyyy-MM-dd"),
+                              "include_nodate": self.chk_include_nodate.isChecked()})
         self._update_date_widgets_enabled()
         self._refresh_query_ids()
 
@@ -1400,3 +2203,479 @@ class TabFirstOrder(QWidget):
             if d_from <= d <= d_to:
                 out.append(qid)
         return out
+
+    # ---- visual ranking helpers ----
+    def _init_visual_controls(self):
+        """Initialize visual ranking controls based on DL availability."""
+        try:
+            from src.dl import DL_AVAILABLE
+            from src.dl.registry import DLRegistry
+            
+            if not DL_AVAILABLE:
+                self._visual_available = False
+                self.chk_visual.setEnabled(False)
+                self.chk_visual.setToolTip("PyTorch not installed. Install with: pip install -r requirements-dl.txt")
+                self.cmb_model.setEnabled(False)
+                self.cmb_visual_mode.setEnabled(False)
+                self.btn_refresh_visual.setEnabled(False)
+                self.chk_roll_to_closest.setEnabled(False)
+                self.spin_roll_limit.setEnabled(False)
+                self.slider_fusion.setEnabled(False)
+                self.lbl_fusion.setEnabled(False)
+                return
+            
+            registry = DLRegistry.load()
+            precomputed = registry.get_precomputed_models()
+            
+            if not precomputed:
+                self._visual_available = False
+                self.chk_visual.setEnabled(False)
+                self.chk_visual.setToolTip("Run precomputation in Deep Learning tab to enable")
+                self.cmb_model.setEnabled(False)
+                self.cmb_visual_mode.setEnabled(False)
+                self.btn_refresh_visual.setEnabled(False)
+                self.chk_roll_to_closest.setEnabled(False)
+                self.spin_roll_limit.setEnabled(False)
+                self.slider_fusion.setEnabled(False)
+                self.lbl_fusion.setEnabled(False)
+                return
+            
+            # Populate model combo
+            self.cmb_model.blockSignals(True)
+            self.cmb_model.clear()
+            for key, entry in precomputed.items():
+                self.cmb_model.addItem(entry.display_name, key)
+            
+            # Select active model
+            if registry.active_model and registry.active_model in precomputed:
+                idx = self.cmb_model.findData(registry.active_model)
+                if idx >= 0:
+                    self.cmb_model.setCurrentIndex(idx)
+            
+            self.cmb_model.blockSignals(False)
+            
+            self._visual_available = True
+            self.chk_visual.setEnabled(True)
+            self.chk_visual.setToolTip("Enable deep learning visual similarity ranking")
+            self._update_visual_widgets_enabled()
+            
+        except ImportError:
+            self._visual_available = False
+            self.chk_visual.setEnabled(False)
+            self.chk_visual.setToolTip("DL module not available")
+            self.cmb_model.setEnabled(False)
+            self.cmb_visual_mode.setEnabled(False)
+            self.btn_refresh_visual.setEnabled(False)
+            self.chk_roll_to_closest.setEnabled(False)
+            self.spin_roll_limit.setEnabled(False)
+            self.slider_fusion.setEnabled(False)
+            self.lbl_fusion.setEnabled(False)
+    
+    def _update_visual_widgets_enabled(self):
+        """Update visual widget enabled states based on checkbox."""
+        on = self.chk_visual.isChecked() and self._visual_available
+        is_image_mode = self.cmb_visual_mode.currentData() == "image"
+        roll_enabled = on and is_image_mode and self.chk_roll_to_closest.isChecked()
+        self.cmb_model.setEnabled(on and self.cmb_model.count() > 1)
+        self.cmb_visual_mode.setEnabled(on)
+        self.btn_refresh_visual.setEnabled(on and is_image_mode)
+        self.chk_roll_to_closest.setEnabled(on and is_image_mode)
+        self.spin_roll_limit.setEnabled(roll_enabled)
+        self.slider_fusion.setEnabled(on)
+        self.lbl_fusion.setEnabled(on)
+    
+    def _on_visual_toggled(self, checked: bool):
+        """Handle visual checkbox toggle."""
+        self._ilog.log("checkbox_toggle", "chk_visual", value=str(checked))
+        self._update_visual_widgets_enabled()
+        if checked:
+            self._load_visual_lookup()
+        self._refresh_results()
+    
+    def _on_model_changed(self, index: int):
+        """Handle model selection change."""
+        model_key = self.cmb_model.currentData()
+        self._ilog.log("combo_change", "cmb_model", value=str(model_key))
+        if self.chk_visual.isChecked():
+            self._load_visual_lookup()
+            self._refresh_results()
+    
+    def _on_fusion_changed(self, value: int):
+        """Handle fusion slider change."""
+        self._ilog.log("slider_change", "slider_fusion", value=str(value))
+        self.lbl_fusion.setText(f"{value}%")
+        if self.chk_visual.isChecked():
+            self._refresh_results()
+    
+    def _load_visual_lookup(self):
+        """Load the similarity lookup for the selected model."""
+        if not self._visual_available:
+            self._visual_lookup = None
+            self._image_lookup = None
+            return
+        
+        try:
+            from src.dl.similarity_lookup import get_lookup, get_image_lookup
+            
+            model_key = self.cmb_model.currentData()
+            if model_key:
+                self._visual_lookup = get_lookup(model_key)
+                self._image_lookup = get_image_lookup(model_key)
+            else:
+                self._visual_lookup = None
+                self._image_lookup = None
+        except Exception as e:
+            import logging
+            logging.getLogger("starBoard.ui.tab_first_order").warning("Failed to load visual lookup: %s", e)
+            self._visual_lookup = None
+            self._image_lookup = None
+    
+    def _get_visual_scores(self, query_id: str) -> Dict[str, float]:
+        """Get visual similarity scores for a query."""
+        visual_mode = self.cmb_visual_mode.currentData()
+        
+        if visual_mode == "image":
+            return self._get_image_based_scores()
+        else:
+            return self._get_centroid_scores(query_id)
+    
+    def _get_centroid_scores(self, query_id: str) -> Dict[str, float]:
+        """Get centroid-based similarity scores (identity average)."""
+        if not self._visual_lookup or not self._visual_lookup.is_loaded():
+            return {}
+        
+        return self._visual_lookup.get_scores_for_query(query_id)
+    
+    def _get_image_based_scores(self) -> Dict[str, float]:
+        """
+        Get image-based similarity scores for the current query image.
+        
+        Ranks gallery identities by the best-matching image from each.
+        Also populates self._closest_gallery_image with (local_idx, path) tuples
+        for each gallery identity - uses index for O(1) lookup with path fallback.
+        """
+        # Clear previous closest image mapping
+        self._closest_gallery_image = {}
+        
+        if not self._image_lookup or not self._image_lookup.is_loaded():
+            # Fall back to centroid if image lookup not available
+            return self._get_centroid_scores(self._current_query) if self._current_query else {}
+        
+        # Get current query image path
+        current_image_path = self._get_current_query_image_path()
+        if not current_image_path:
+            return {}
+        
+        # Get ranked gallery by best-match to current image
+        # Returns: List[Tuple[gallery_id, best_score, best_gallery_image_path, local_idx]]
+        ranked = self._image_lookup.rank_gallery_by_query_image(current_image_path)
+        
+        # Build score dict and closest image mapping (both index and path for robustness)
+        scores: Dict[str, float] = {}
+        for gid, score, path, local_idx in ranked:
+            scores[gid] = score
+            self._closest_gallery_image[gid] = (local_idx, path)
+        
+        return scores
+    
+    def _get_current_query_image_path(self) -> Optional[str]:
+        """Get the path of the currently displayed query image."""
+        if not hasattr(self, 'query_strip') or not self.query_strip.files:
+            return None
+        
+        try:
+            idx = self.query_strip.idx
+            if 0 <= idx < len(self.query_strip.files):
+                return str(self.query_strip.files[idx])
+        except Exception:
+            pass
+        
+        return None
+    
+    def _on_visual_mode_changed(self, index: int):
+        """Handle visual mode selection change."""
+        mode = self.cmb_visual_mode.currentData()
+        self._ilog.log("combo_change", "cmb_visual_mode", value=str(mode))
+        self._update_visual_widgets_enabled()
+        if self.chk_visual.isChecked():
+            self._refresh_results()
+    
+    def _on_roll_to_closest_toggled(self, checked: bool):
+        """Handle roll-to-closest toggle change."""
+        self._ilog.log("checkbox_toggle", "chk_roll_to_closest", value=str(self.chk_roll_to_closest.isChecked()),
+                      context={"roll_limit": self.spin_roll_limit.value()})
+        # Re-render cards so they roll to closest (or back to best)
+        if self.chk_visual.isChecked() and self.cmb_visual_mode.currentData() == "image":
+            self._refresh_results()
+    
+    def _on_refresh_visual(self):
+        """Refresh visual ranking for current image."""
+        self._ilog.log("button_click", "btn_refresh_visual", value="clicked")
+        if self.chk_visual.isChecked():
+            self._refresh_results()
+    
+    def refresh_visual_state(self):
+        """Refresh visual ranking state (call after precomputation completes)."""
+        self._init_visual_controls()
+        if self.chk_visual.isChecked():
+            self._load_visual_lookup()
+            self._refresh_results()
+
+    # ==================== Verification Model Controls ====================
+
+    def _init_verification_controls(self):
+        """Initialize verification ranking controls based on precomputed data availability."""
+        try:
+            from src.dl import DL_AVAILABLE
+            
+            if not DL_AVAILABLE:
+                self._verification_available = False
+                self.chk_verification.setEnabled(False)
+                self.chk_verification.setToolTip("PyTorch not installed. Install with: pip install -r requirements-dl.txt")
+                self.cmb_verif_model.setEnabled(False)
+                self.slider_verif_fusion.setEnabled(False)
+                self.lbl_verif_fusion.setEnabled(False)
+                return
+            
+            registry = DLRegistry.load()
+            precomputed_verif = {
+                k: v for k, v in registry.verification_models.items()
+                if v.precomputed
+            }
+            
+            if not precomputed_verif:
+                self._verification_available = False
+                self.chk_verification.setEnabled(False)
+                self.chk_verification.setToolTip(
+                    "Run verification precomputation in Deep Learning tab to enable.\n"
+                    "This computes P(same individual) scores for all query-gallery pairs."
+                )
+                self.cmb_verif_model.setEnabled(False)
+                self.slider_verif_fusion.setEnabled(False)
+                self.lbl_verif_fusion.setEnabled(False)
+                return
+            
+            # Populate verification model combo
+            self.cmb_verif_model.blockSignals(True)
+            self.cmb_verif_model.clear()
+            for key, entry in precomputed_verif.items():
+                self.cmb_verif_model.addItem(entry.display_name, key)
+            
+            # Select active verification model
+            if registry.active_verification_model and registry.active_verification_model in precomputed_verif:
+                idx = self.cmb_verif_model.findData(registry.active_verification_model)
+                if idx >= 0:
+                    self.cmb_verif_model.setCurrentIndex(idx)
+            
+            self.cmb_verif_model.blockSignals(False)
+            
+            self._verification_available = True
+            self.chk_verification.setEnabled(True)
+            self.chk_verification.setToolTip(
+                "Enable verification model P(same) scores for ranking.\n"
+                "Uses cross-attention model to predict probability of same individual."
+            )
+            self._update_verification_widgets_enabled()
+            
+        except ImportError:
+            self._verification_available = False
+            self.chk_verification.setEnabled(False)
+            self.chk_verification.setToolTip("DL module not available")
+            self.cmb_verif_model.setEnabled(False)
+            self.slider_verif_fusion.setEnabled(False)
+            self.lbl_verif_fusion.setEnabled(False)
+
+    def _update_verification_widgets_enabled(self):
+        """Update verification widget enabled states based on checkbox."""
+        on = self.chk_verification.isChecked() and self._verification_available
+        self.cmb_verif_model.setEnabled(on and self.cmb_verif_model.count() > 1)
+        self.slider_verif_fusion.setEnabled(on)
+        self.lbl_verif_fusion.setEnabled(on)
+
+    def _on_verification_toggled(self, checked: bool):
+        """Handle verification checkbox toggle."""
+        self._ilog.log("checkbox_toggle", "chk_verification", value=str(checked))
+        self._update_verification_widgets_enabled()
+        if checked:
+            self._load_verification_lookup()
+        self._refresh_results()
+
+    def _on_verif_model_changed(self, index: int):
+        """Handle verification model selection change."""
+        model_key = self.cmb_verif_model.currentData()
+        self._ilog.log("combo_change", "cmb_verif_model", value=str(model_key))
+        if self.chk_verification.isChecked():
+            self._load_verification_lookup()
+            self._refresh_results()
+
+    def _on_verif_fusion_changed(self, value: int):
+        """Handle verification fusion slider change."""
+        self._ilog.log("slider_change", "slider_verif_fusion", value=str(value))
+        self.lbl_verif_fusion.setText(f"{value}%")
+        if self.chk_verification.isChecked():
+            self._refresh_results()
+
+    def _load_verification_lookup(self):
+        """Load the verification lookup for the selected model."""
+        if not self._verification_available:
+            self._verification_lookup = None
+            return
+        
+        try:
+            model_key = self.cmb_verif_model.currentData()
+            if model_key:
+                self._verification_lookup = get_verification_lookup(model_key)
+            else:
+                self._verification_lookup = None
+        except Exception as e:
+            import logging
+            logging.getLogger("starBoard.ui.tab_first_order").warning(
+                "Failed to load verification lookup: %s", e
+            )
+            self._verification_lookup = None
+
+    def _get_verification_scores(self, query_id: str) -> Dict[str, float]:
+        """Get verification P(same) scores for a query."""
+        if not self._verification_lookup or not self._verification_lookup.is_loaded():
+            return {}
+        
+        return self._verification_lookup.get_scores_for_query(query_id)
+
+    def refresh_verification_state(self):
+        """Refresh verification state (call after verification precomputation completes)."""
+        self._init_verification_controls()
+        if self.chk_verification.isChecked():
+            self._load_verification_lookup()
+            self._refresh_results()
+    
+    # ==================== Evaluation-based Query Sorting ====================
+    
+    def refresh_evaluation_state(self):
+        """Refresh evaluation state (call after evaluation completes in DL tab)."""
+        self._load_stored_evaluation()
+    
+    def _load_stored_evaluation(self):
+        """Load stored evaluation results for the active model."""
+        try:
+            from src.dl.evaluation import load_evaluation, has_evaluation
+            from src.dl.registry import DLRegistry
+            
+            registry = DLRegistry.load()
+            model_key = registry.active_model
+            
+            if model_key and has_evaluation(model_key):
+                self._stored_evaluation = load_evaluation(model_key)
+                self.chk_sort_confidence.setEnabled(True)
+                self.chk_sort_confidence.setToolTip(
+                    f"Sort queries by match confidence (highest similarity first).\n"
+                    f"Using evaluation from: {self._stored_evaluation.timestamp[:10] if self._stored_evaluation else 'N/A'}"
+                )
+            else:
+                self._stored_evaluation = None
+                self.chk_sort_confidence.setEnabled(False)
+                self.chk_sort_confidence.setChecked(False)
+                self.chk_sort_confidence.setToolTip(
+                    "Sort queries by match confidence (highest similarity first).\n"
+                    "Requires evaluation to be run in Deep Learning tab."
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger("starBoard.ui.tab_first_order").warning(
+                "Failed to load stored evaluation: %s", e
+            )
+            self._stored_evaluation = None
+            self.chk_sort_confidence.setEnabled(False)
+    
+    def _on_sort_confidence_toggled(self, checked: bool):
+        """Handle toggle of sort-by-confidence checkbox."""
+        self._ilog.log("checkbox_toggle", "chk_sort_confidence", value=str(checked))
+        self._sort_by_confidence = checked
+        self._refresh_query_ids()
+    
+    def _get_confidence_sorted_queries(self, query_ids: List[str]) -> List[str]:
+        """
+        Sort query IDs by match confidence if evaluation data is available.
+        
+        Args:
+            query_ids: List of query IDs to sort
+            
+        Returns:
+            Sorted list with highest confidence first, then remaining alphabetically
+        """
+        if not self._stored_evaluation:
+            return query_ids
+        
+        # Get sorted queries from evaluation (highest score first)
+        eval_sorted = self._stored_evaluation.get_sorted_queries()
+        eval_order = {qid: i for i, (qid, _, _) in enumerate(eval_sorted)}
+        
+        # Separate queries with evaluation data from those without
+        with_eval = []
+        without_eval = []
+        
+        for qid in query_ids:
+            if qid in eval_order:
+                with_eval.append((eval_order[qid], qid))
+            else:
+                without_eval.append(qid)
+        
+        # Sort: evaluated queries by rank, then unevaluated alphabetically
+        with_eval.sort(key=lambda x: x[0])
+        sorted_queries = [qid for _, qid in with_eval] + sorted(without_eval)
+        
+        return sorted_queries
+    
+    def get_top_suggested_match(self, query_id: str) -> Optional[Tuple[str, float]]:
+        """
+        Get the top suggested gallery match for a query.
+        
+        Args:
+            query_id: The query to look up
+            
+        Returns:
+            (gallery_id, similarity_score) or None if no suggestion
+        """
+        if self._stored_evaluation:
+            return self._stored_evaluation.get_top_match(query_id)
+        return None
+    
+    def _update_suggested_match_display(self, query_id: str):
+        """Update the suggested match label for the current query."""
+        if not query_id or not self._stored_evaluation:
+            self.lbl_suggested_match.setText("")
+            return
+        
+        match = self.get_top_suggested_match(query_id)
+        if match:
+            gallery_id, score = match
+            self.lbl_suggested_match.setText(f"→ {gallery_id} ({score:.2f})")
+            self.lbl_suggested_match.setToolTip(
+                f"Top suggested match: {gallery_id}\n"
+                f"Similarity score: {score:.3f}"
+            )
+        else:
+            self.lbl_suggested_match.setText("")
+    
+    def on_match_decision_made(self, query_id: str):
+        """
+        Called when a match decision is made for a query.
+        
+        Updates the stored evaluation and refreshes the query list if needed.
+        """
+        if self._stored_evaluation and query_id in self._stored_evaluation.query_suggestions:
+            # Remove from stored evaluation
+            self._stored_evaluation.remove_query(query_id)
+            
+            # Also update the persisted file
+            try:
+                from src.dl.evaluation import update_stored_evaluation
+                from src.dl.registry import DLRegistry
+                registry = DLRegistry.load()
+                if registry.active_model:
+                    update_stored_evaluation(registry.active_model, query_id)
+            except Exception:
+                pass
+            
+            # Refresh query list if sorting by confidence
+            if self._sort_by_confidence:
+                self._refresh_query_ids()

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.data.matches_matrix import MatchMatrixData, load_match_matrix
+from src.utils.interaction_logger import get_interaction_logger
 
 _COLORS = {
     "yes": QColor(0, 140, 60),     # green
@@ -93,6 +94,7 @@ class MatrixMatchesDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Past Matches — Queries × Gallery")
         self.resize(1100, 700)
+        self._ilog = get_interaction_logger()
         lay = QVBoxLayout(self)
 
         # Legend
@@ -127,6 +129,7 @@ class MatrixMatchesDialog(QDialog):
         self._reload()
 
     def _reload(self):
+        self._ilog.log("button_click", "btn_refresh_matrix", value="clicked")
         data = load_match_matrix()
         model = _MatrixModel(data)
         self.table.setModel(model)

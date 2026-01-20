@@ -28,6 +28,7 @@ from src.data.annotation_schema import (
     SHORT_ARM_SEVERITY_OPTIONS,
 )
 from src.data.vocabulary_store import get_vocabulary_store
+from src.utils.interaction_logger import get_interaction_logger
 
 
 # =============================================================================
@@ -41,6 +42,11 @@ class AnnotationWidget(QWidget):
     def __init__(self, field_def: FieldDefinition, parent=None):
         super().__init__(parent)
         self.field_def = field_def
+        self._ilog = get_interaction_logger()
+    
+    def _log_value_change(self, value: str) -> None:
+        """Log a value change for this annotation widget."""
+        self._ilog.log("annotation_change", f"annotation_{self.field_def.name}", value=value)
 
     def get_value(self) -> str:
         """Get the current value as a string for CSV storage."""
@@ -83,6 +89,7 @@ class NumericIntWidget(AnnotationWidget):
         layout.addStretch()
 
     def _on_change(self) -> None:
+        self._log_value_change(self.get_value())
         self.value_changed.emit()
 
     def get_value(self) -> str:
@@ -129,6 +136,7 @@ class NumericFloatWidget(AnnotationWidget):
         layout.addStretch()
 
     def _on_change(self) -> None:
+        self._log_value_change(self.get_value())
         self.value_changed.emit()
 
     def get_value(self) -> str:

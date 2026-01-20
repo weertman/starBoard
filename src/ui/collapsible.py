@@ -51,7 +51,7 @@ class CollapsibleSection(QWidget):
             item = self.content_layout.takeAt(0)
             w = item.widget()
             if w:
-                w.setParent(None)
+                w.deleteLater()
         self.content_layout.addWidget(widget, 1)  # stretch factor for expansion
 
     def _on_toggled(self, checked: bool) -> None:

@@ -67,10 +67,21 @@ class ImageStrip(QWidget):
     eyedropperColorPicked = Signal(QColor)
     eyedropperCancelled = Signal()
 
-    def __init__(self, files: List[Path] | None = None, long_edge: int = 768, parent=None):
+    def __init__(self, files: List[Path] | None = None, long_edge: int = 768, initial_idx: int = 0, best_idx: int = 0, closest_idx: int | None = None, parent=None):
         super().__init__(parent)
         self.files: List[Path] = files or []
-        self.idx = 0
+        # Clamp initial_idx to valid range
+        if self.files and initial_idx > 0:
+            self.idx = min(initial_idx, len(self.files) - 1)
+        else:
+            self.idx = 0
+        # Track best photo index (default 0, can be set externally)
+        self._best_idx = max(0, min(best_idx, len(self.files) - 1)) if self.files else 0
+        # Track closest match index (for toggle behavior in roll-to-closest mode)
+        # None means toggle is disabled; button always goes to best
+        self._closest_idx: int | None = None
+        if closest_idx is not None and self.files:
+            self._closest_idx = max(0, min(closest_idx, len(self.files) - 1))
         self.long_edge = int(long_edge)
         self._rotation = 0.0
         self._scale = 1.0
@@ -80,6 +91,10 @@ class ImageStrip(QWidget):
         self._rotating = False
         self._drag_start_x = 0.0
         self._rotation_at_press = 0.0
+        
+        # Track whether user has ever interacted with this view (zoom/pan/rotate)
+        # If True, we preserve their state during resize operations
+        self._user_interacted = False
         
         # Eyedropper state
         self._eyedropper_active = False
@@ -91,7 +106,10 @@ class ImageStrip(QWidget):
         lay = QHBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0)
         self.btn_prev = QPushButton("◀")
         self.btn_next = QPushButton("▶")
+        self.btn_best = QPushButton("★")
+        self.btn_best.setFixedWidth(28)
         self.lbl_idx = QLabel("0/0")
+        self._update_best_button_tooltip()
 
         self.view = QGraphicsView()
         self.scene = QGraphicsScene(self.view)
@@ -108,10 +126,12 @@ class ImageStrip(QWidget):
 
         self.btn_prev.clicked.connect(self.prev)
         self.btn_next.clicked.connect(self.next)
+        self.btn_best.clicked.connect(self.go_to_best)
 
         lay.addWidget(self.btn_prev)
         lay.addWidget(self.view, 1)
         lay.addWidget(self.btn_next)
+        lay.addWidget(self.btn_best)
         lay.addWidget(self.lbl_idx)
 
         self._act_fit = QAction("Fit", self); self._act_fit.triggered.connect(self.fit)
@@ -127,30 +147,154 @@ class ImageStrip(QWidget):
         self._rotation = 0.0
         self._scale = 1.0
         self._hires_loaded = False
+        self._user_interacted = False  # Reset on new file set
         self._show_current(reset_view=True)
 
+    def roll_to_index(self, target_idx: int) -> bool:
+        """
+        Set the current image to the specified index (O(1) operation).
+        
+        Args:
+            target_idx: The index of the image to display
+            
+        Returns:
+            True if the index was valid and applied, False otherwise
+        """
+        if not self.files or target_idx < 0 or target_idx >= len(self.files):
+            return False
+        
+        if self.idx != target_idx:
+            self.idx = target_idx
+            self._rotation = 0.0
+            self._scale = 1.0
+            self._hires_loaded = False
+            self._user_interacted = False  # Reset on image change
+            self._show_current(reset_view=True)
+        
+        return True
+
+    def set_best_idx(self, idx: int) -> None:
+        """
+        Set the index of the best photo for this strip.
+        
+        Args:
+            idx: The index of the best photo in the files list
+        """
+        if self.files:
+            self._best_idx = max(0, min(idx, len(self.files) - 1))
+        else:
+            self._best_idx = 0
+        self._update_best_button_tooltip()
+
+    def set_closest_idx(self, idx: int | None) -> None:
+        """
+        Set the index of the closest matching image (enables toggle mode).
+        
+        Args:
+            idx: The index of the closest image, or None to disable toggle
+        """
+        if idx is not None and self.files:
+            self._closest_idx = max(0, min(idx, len(self.files) - 1))
+        else:
+            self._closest_idx = None
+        self._update_best_button_tooltip()
+
+    def _update_best_button_tooltip(self) -> None:
+        """Update the ★ button tooltip based on current mode."""
+        if self._closest_idx is not None:
+            self.btn_best.setToolTip("Toggle between best photo and closest match")
+        else:
+            self.btn_best.setToolTip("Go to best photo")
+
+    def go_to_best(self) -> bool:
+        """
+        Navigate to the best photo, or toggle between best and closest.
+        
+        When closest_idx is set (roll-to-closest mode), this toggles:
+        - If at best → go to closest
+        - If at closest (or anywhere else) → go to best
+        
+        Returns:
+            True if navigation succeeded, False otherwise
+        """
+        if self._closest_idx is not None:
+            # Toggle mode: alternate between best and closest
+            if self.idx == self._best_idx:
+                return self.roll_to_index(self._closest_idx)
+            else:
+                return self.roll_to_index(self._best_idx)
+        else:
+            # Normal mode: always go to best
+            return self.roll_to_index(self._best_idx)
+
+    def roll_to_path(self, target_path: str) -> bool:
+        """
+        Set the current image to the one matching target_path.
+        
+        Matching is done by filename stem (without extension) to handle
+        cases where cache paths use .png but originals use .jpg/.jpeg.
+        
+        Note: Prefer roll_to_index() when you have a precomputed index,
+        as it's O(1) vs O(n) for this method.
+        
+        Args:
+            target_path: Path to the target image (can be cache or original path)
+            
+        Returns:
+            True if a matching image was found and selected, False otherwise
+        """
+        if not self.files or not target_path:
+            return False
+        
+        target_stem = Path(target_path).stem
+        
+        for i, f in enumerate(self.files):
+            if Path(f).stem == target_stem:
+                if self.idx != i:
+                    self.idx = i
+                    self._rotation = 0.0
+                    self._scale = 1.0
+                    self._hires_loaded = False
+                    self._user_interacted = False  # Reset on image change
+                    self._show_current(reset_view=True)
+                return True
+        
+        return False
+
     def set_view_height(self, h: int):
-        """Baseline minimum; parent splitters/cards may grow the view beyond this."""
-        h = max(80, int(h))
-        self.view.setMinimumHeight(h)
-        self.fit()
+        """
+        Set baseline minimum height.
+        
+        - If user has interacted with this view (zoom/pan/rotate), preserves their state
+        - If user hasn't touched it, refits to the new size for optimal display
+        """
+        self.view.setMinimumHeight(max(80, int(h)))
+        if not self._user_interacted:
+            self.fit()
 
     def set_view_min_width(self, w: int):
-        """Baseline minimum width for the image viewport."""
-        w = max(100, int(w))
-        self.view.setMinimumWidth(w)
-        self.fit()
+        """
+        Set baseline minimum width.
+        
+        - If user has interacted with this view (zoom/pan/rotate), preserves their state
+        - If user hasn't touched it, refits to the new size for optimal display
+        """
+        self.view.setMinimumWidth(max(100, int(w)))
+        if not self._user_interacted:
+            self.fit()
 
     def prev(self):
         if not self.files: return
         self.idx = (self.idx - 1) % len(self.files)
         self._rotation = 0.0; self._scale = 1.0; self._hires_loaded = False
+        self._user_interacted = False  # Reset on image change
         self._show_current(reset_view=True)
 
     def next(self):
         if not self.files: return
         self.idx = (self.idx + 1) % len(self.files)
         self._rotation = 0.0; self._scale = 1.0; self._hires_loaded = False
+        self._user_interacted = False  # Reset on image change
         self._show_current(reset_view=True)
 
     def fit(self):
@@ -312,9 +456,15 @@ class ImageStrip(QWidget):
                 factor = 1.0015 ** float(delta)
                 self.view.scale(factor, factor)
                 self._scale *= factor
+                self._user_interacted = True  # User zoomed - preserve their state
                 if not self._hires_loaded and self._scale >= self._hires_trigger:
                     self._upgrade_to_fullres()
                 ev.accept(); return True
+            
+            # Detect pan via ScrollHandDrag (mouse drag without rotation key)
+            if t == QEvent.MouseButtonRelease and not self._rotating:
+                if self.view.dragMode() == QGraphicsView.ScrollHandDrag:
+                    self._user_interacted = True  # User panned - preserve their state
             
             # Rotation mode
             if t == QEvent.MouseButtonPress and getattr(ev, "button", lambda: None)() == Qt.LeftButton:
@@ -332,6 +482,7 @@ class ImageStrip(QWidget):
                 ev.accept(); return True
             if t == QEvent.MouseButtonRelease and self._rotating:
                 self._rotating = False
+                self._user_interacted = True  # User rotated - preserve their state
                 self.view.setDragMode(QGraphicsView.ScrollHandDrag)
                 ev.accept(); return True
 
