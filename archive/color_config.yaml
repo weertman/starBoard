@@ -1,0 +1,1623 @@
+color_space: LAB
+distance_metric: delta_e_cie2000
+colors:
+  aliceblue:
+    rgb:
+    - 240
+    - 248
+    - 255
+    lab:
+    - 97.179
+    - -1.349
+    - -4.263
+    source: python
+  antiquewhite:
+    rgb:
+    - 250
+    - 235
+    - 215
+    lab:
+    - 93.731
+    - 1.839
+    - 11.526
+    source: python
+  aqua:
+    rgb:
+    - 0
+    - 255
+    - 255
+    lab:
+    - 91.113
+    - -48.088
+    - -14.131
+    source: python
+  aquamarine:
+    rgb:
+    - 127
+    - 255
+    - 212
+    lab:
+    - 92.034
+    - -45.525
+    - 9.718
+    source: python
+  beige:
+    rgb:
+    - 245
+    - 245
+    - 220
+    lab:
+    - 95.949
+    - -4.193
+    - 12.049
+    source: python
+  bisque:
+    rgb:
+    - 255
+    - 228
+    - 196
+    lab:
+    - 92.013
+    - 4.431
+    - 19.012
+    source: python
+  black:
+    rgb:
+    - 0
+    - 0
+    - 0
+    lab:
+    - 0.0
+    - 0.0
+    - 0.0
+    source: user
+  blanchedalmond:
+    rgb:
+    - 255
+    - 235
+    - 205
+    lab:
+    - 93.92
+    - 2.13
+    - 17.026
+    source: python
+  blue:
+    rgb:
+    - 0
+    - 0
+    - 255
+    lab:
+    - 32.297
+    - 79.188
+    - -107.86
+    source: python
+  blueviolet:
+    rgb:
+    - 138
+    - 43
+    - 226
+    lab:
+    - 42.188
+    - 69.845
+    - -74.763
+    source: python
+  bright-orange:
+    rgb:
+    - 255
+    - 165
+    - 0
+    lab:
+    - 74.936
+    - 23.933
+    - 78.95
+    source: vocabulary
+  brown:
+    rgb:
+    - 165
+    - 42
+    - 42
+    lab:
+    - 37.527
+    - 49.69
+    - 30.543
+    source: python
+  brown mauve:
+    rgb:
+    - 165
+    - 42
+    - 42
+    lab:
+    - 37.527
+    - 49.69
+    - 30.543
+    source: vocabulary
+  brown-mauve:
+    rgb:
+    - 165
+    - 42
+    - 42
+    lab:
+    - 37.527
+    - 49.69
+    - 30.543
+    source: vocabulary
+  brown-orange:
+    rgb:
+    - 255
+    - 165
+    - 0
+    lab:
+    - 74.936
+    - 23.933
+    - 78.95
+    source: vocabulary
+  burgundy:
+    rgb:
+    - 128
+    - 0
+    - 32
+    lab:
+    - 25.848
+    - 48.895
+    - 21.297
+    source: python
+  burgundy-mauve:
+    rgb:
+    - 128
+    - 0
+    - 32
+    lab:
+    - 25.848
+    - 48.895
+    - 21.297
+    source: vocabulary
+  burgundy-saddlebrown:
+    rgb:
+    - 104
+    - 64
+    - 66
+    lab:
+    - 31.816
+    - 17.722
+    - 6.097
+    source: user
+  burlywood:
+    rgb:
+    - 222
+    - 184
+    - 135
+    lab:
+    - 77.018
+    - 7.05
+    - 30.019
+    source: python
+  burnt-orange:
+    rgb:
+    - 255
+    - 165
+    - 0
+    lab:
+    - 74.936
+    - 23.933
+    - 78.95
+    source: vocabulary
+  cadetblue:
+    rgb:
+    - 95
+    - 158
+    - 160
+    lab:
+    - 61.153
+    - -19.679
+    - -7.421
+    source: python
+  chartreuse:
+    rgb:
+    - 127
+    - 255
+    - 0
+    lab:
+    - 89.873
+    - -68.066
+    - 85.78
+    source: python
+  chocolate:
+    rgb:
+    - 210
+    - 105
+    - 30
+    lab:
+    - 55.99
+    - 37.053
+    - 56.741
+    source: python
+  coral:
+    rgb:
+    - 255
+    - 127
+    - 80
+    lab:
+    - 67.295
+    - 45.354
+    - 47.493
+    source: python
+  cornflowerblue:
+    rgb:
+    - 100
+    - 149
+    - 237
+    lab:
+    - 61.926
+    - 9.333
+    - -49.298
+    source: python
+  cornsilk:
+    rgb:
+    - 255
+    - 248
+    - 220
+    lab:
+    - 97.456
+    - -2.218
+    - 14.294
+    source: python
+  crimson:
+    rgb:
+    - 220
+    - 20
+    - 60
+    lab:
+    - 47.036
+    - 70.921
+    - 33.6
+    source: python
+  cyan:
+    rgb:
+    - 0
+    - 255
+    - 255
+    lab:
+    - 91.113
+    - -48.088
+    - -14.131
+    source: python
+  dark-brown:
+    rgb:
+    - 165
+    - 42
+    - 42
+    lab:
+    - 37.527
+    - 49.69
+    - 30.543
+    source: vocabulary
+  dark-orange:
+    rgb:
+    - 255
+    - 165
+    - 0
+    lab:
+    - 74.936
+    - 23.933
+    - 78.95
+    source: vocabulary
+  dark-purple:
+    rgb:
+    - 128
+    - 0
+    - 128
+    lab:
+    - 29.785
+    - 58.928
+    - -36.487
+    source: vocabulary
+  darkblue:
+    rgb:
+    - 0
+    - 0
+    - 139
+    lab:
+    - 14.754
+    - 50.423
+    - -68.681
+    source: python
+  darkcyan:
+    rgb:
+    - 0
+    - 139
+    - 139
+    lab:
+    - 52.205
+    - -30.62
+    - -8.998
+    source: python
+  darkgray:
+    rgb:
+    - 169
+    - 169
+    - 169
+    lab:
+    - 69.238
+    - -0.0
+    - 0.0
+    source: python
+  darkgreen:
+    rgb:
+    - 0
+    - 100
+    - 0
+    lab:
+    - 36.202
+    - -43.37
+    - 41.858
+    source: python
+  darkgrey:
+    rgb:
+    - 169
+    - 169
+    - 169
+    lab:
+    - 69.238
+    - -0.0
+    - 0.0
+    source: python
+  darkkhaki:
+    rgb:
+    - 189
+    - 183
+    - 107
+    lab:
+    - 73.382
+    - -8.788
+    - 39.292
+    source: python
+  darkmagenta:
+    rgb:
+    - 139
+    - 0
+    - 139
+    lab:
+    - 32.6
+    - 62.552
+    - -38.731
+    source: python
+  darkolivegreen:
+    rgb:
+    - 85
+    - 107
+    - 47
+    lab:
+    - 42.234
+    - -18.828
+    - 30.598
+    source: python
+  darkorange:
+    rgb:
+    - 255
+    - 140
+    - 0
+    lab:
+    - 69.485
+    - 36.826
+    - 75.487
+    source: python
+  darkorchid:
+    rgb:
+    - 153
+    - 50
+    - 204
+    lab:
+    - 43.38
+    - 65.154
+    - -60.098
+    source: python
+  darkred:
+    rgb:
+    - 139
+    - 0
+    - 0
+    lab:
+    - 28.09
+    - 51.0
+    - 41.291
+    source: python
+  darksalmon:
+    rgb:
+    - 233
+    - 150
+    - 122
+    lab:
+    - 69.856
+    - 28.174
+    - 27.712
+    source: python
+  darkseagreen:
+    rgb:
+    - 143
+    - 188
+    - 143
+    lab:
+    - 72.087
+    - -23.82
+    - 18.038
+    source: python
+  darkslateblue:
+    rgb:
+    - 72
+    - 61
+    - 139
+    lab:
+    - 30.828
+    - 26.051
+    - -42.083
+    source: python
+  darkslategray:
+    rgb:
+    - 47
+    - 79
+    - 79
+    lab:
+    - 31.255
+    - -11.72
+    - -3.724
+    source: python
+  darkslategrey:
+    rgb:
+    - 47
+    - 79
+    - 79
+    lab:
+    - 31.255
+    - -11.72
+    - -3.724
+    source: python
+  darkturquoise:
+    rgb:
+    - 0
+    - 206
+    - 209
+    lab:
+    - 75.29
+    - -40.043
+    - -13.513
+    source: python
+  darkviolet:
+    rgb:
+    - 148
+    - 0
+    - 211
+    lab:
+    - 39.58
+    - 76.322
+    - -70.366
+    source: python
+  deeppink:
+    rgb:
+    - 255
+    - 20
+    - 147
+    lab:
+    - 55.961
+    - 84.539
+    - -5.7
+    source: python
+  deepskyblue:
+    rgb:
+    - 0
+    - 191
+    - 255
+    lab:
+    - 72.546
+    - -17.659
+    - -42.541
+    source: python
+  dimgray:
+    rgb:
+    - 105
+    - 105
+    - 105
+    lab:
+    - 44.414
+    - -0.0
+    - 0.0
+    source: python
+  dimgrey:
+    rgb:
+    - 105
+    - 105
+    - 105
+    lab:
+    - 44.414
+    - -0.0
+    - 0.0
+    source: python
+  dodgerblue:
+    rgb:
+    - 30
+    - 144
+    - 255
+    lab:
+    - 59.378
+    - 9.958
+    - -63.388
+    source: python
+  firebrick:
+    rgb:
+    - 178
+    - 34
+    - 34
+    lab:
+    - 39.118
+    - 55.917
+    - 37.649
+    source: python
+  floralwhite:
+    rgb:
+    - 255
+    - 250
+    - 240
+    lab:
+    - 98.402
+    - -0.037
+    - 5.376
+    source: python
+  forestgreen:
+    rgb:
+    - 34
+    - 139
+    - 34
+    lab:
+    - 50.593
+    - -49.585
+    - 45.016
+    source: python
+  fuchsia:
+    rgb:
+    - 255
+    - 0
+    - 255
+    lab:
+    - 60.324
+    - 98.234
+    - -60.825
+    source: python
+  gainsboro:
+    rgb:
+    - 225
+    - 225
+    - 225
+    lab:
+    - 89.531
+    - -0.0
+    - 0.0
+    source: user
+  ghostwhite:
+    rgb:
+    - 248
+    - 248
+    - 255
+    lab:
+    - 97.757
+    - 1.247
+    - -3.345
+    source: python
+  gold:
+    rgb:
+    - 255
+    - 215
+    - 0
+    lab:
+    - 86.931
+    - -1.924
+    - 87.132
+    source: python
+  gray:
+    rgb:
+    - 128
+    - 128
+    - 128
+    lab:
+    - 53.585
+    - -0.0
+    - 0.0
+    source: python
+  green:
+    rgb:
+    - 0
+    - 128
+    - 0
+    lab:
+    - 46.227
+    - -51.698
+    - 49.897
+    source: python
+  greenyellow:
+    rgb:
+    - 173
+    - 255
+    - 47
+    lab:
+    - 91.957
+    - -52.481
+    - 81.864
+    source: python
+  grey:
+    rgb:
+    - 128
+    - 128
+    - 128
+    lab:
+    - 53.585
+    - -0.0
+    - 0.0
+    source: python
+  hotpink:
+    rgb:
+    - 255
+    - 105
+    - 180
+    lab:
+    - 65.486
+    - 64.238
+    - -10.646
+    source: python
+  indianred:
+    rgb:
+    - 205
+    - 92
+    - 92
+    lab:
+    - 53.395
+    - 44.828
+    - 22.117
+    source: python
+  ivory:
+    rgb:
+    - 255
+    - 255
+    - 240
+    lab:
+    - 99.64
+    - -2.551
+    - 7.163
+    source: python
+  khaki:
+    rgb:
+    - 240
+    - 230
+    - 140
+    lab:
+    - 90.328
+    - -9.01
+    - 44.979
+    source: python
+  lavender:
+    rgb:
+    - 230
+    - 230
+    - 250
+    lab:
+    - 91.828
+    - 3.708
+    - -9.661
+    source: python
+  lavenderblush:
+    rgb:
+    - 255
+    - 240
+    - 245
+    lab:
+    - 96.069
+    - 5.887
+    - -0.594
+    source: python
+  lawngreen:
+    rgb:
+    - 124
+    - 252
+    - 0
+    lab:
+    - 88.876
+    - -67.856
+    - 84.952
+    source: python
+  lemonchiffon:
+    rgb:
+    - 255
+    - 250
+    - 205
+    lab:
+    - 97.648
+    - -5.427
+    - 22.234
+    source: python
+  light-brown:
+    rgb:
+    - 165
+    - 42
+    - 42
+    lab:
+    - 37.527
+    - 49.69
+    - 30.543
+    source: vocabulary
+  light-orange:
+    rgb:
+    - 255
+    - 165
+    - 0
+    lab:
+    - 74.936
+    - 23.933
+    - 78.95
+    source: vocabulary
+  light-purple:
+    rgb:
+    - 128
+    - 0
+    - 128
+    lab:
+    - 29.785
+    - 58.928
+    - -36.487
+    source: vocabulary
+  lightblue:
+    rgb:
+    - 173
+    - 216
+    - 230
+    lab:
+    - 83.813
+    - -10.892
+    - -11.477
+    source: python
+  lightcoral:
+    rgb:
+    - 240
+    - 128
+    - 128
+    lab:
+    - 66.157
+    - 42.81
+    - 19.557
+    source: python
+  lightcyan:
+    rgb:
+    - 224
+    - 255
+    - 255
+    lab:
+    - 97.867
+    - -9.945
+    - -3.375
+    source: python
+  lightgoldenrodyellow:
+    rgb:
+    - 250
+    - 250
+    - 210
+    lab:
+    - 97.369
+    - -6.481
+    - 19.237
+    source: python
+  lightgray:
+    rgb:
+    - 211
+    - 211
+    - 211
+    lab:
+    - 84.556
+    - -0.0
+    - 0.0
+    source: python
+  lightgreen:
+    rgb:
+    - 144
+    - 238
+    - 144
+    lab:
+    - 86.548
+    - -46.328
+    - 36.949
+    source: python
+  lightgrey:
+    rgb:
+    - 211
+    - 211
+    - 211
+    lab:
+    - 84.556
+    - -0.0
+    - 0.0
+    source: python
+  lightpink:
+    rgb:
+    - 255
+    - 182
+    - 193
+    lab:
+    - 81.055
+    - 27.963
+    - 5.036
+    source: python
+  lightsalmon:
+    rgb:
+    - 255
+    - 160
+    - 122
+    lab:
+    - 74.706
+    - 31.478
+    - 34.549
+    source: python
+  lightskyblue:
+    rgb:
+    - 135
+    - 206
+    - 250
+    lab:
+    - 79.723
+    - -10.831
+    - -28.502
+    source: python
+  lightslategray:
+    rgb:
+    - 119
+    - 136
+    - 153
+    lab:
+    - 55.917
+    - -2.248
+    - -11.108
+    source: python
+  lightslategrey:
+    rgb:
+    - 119
+    - 136
+    - 153
+    lab:
+    - 55.917
+    - -2.248
+    - -11.108
+    source: python
+  lightsteelblue:
+    rgb:
+    - 176
+    - 196
+    - 222
+    lab:
+    - 78.452
+    - -1.282
+    - -15.211
+    source: python
+  lightyellow:
+    rgb:
+    - 255
+    - 255
+    - 224
+    lab:
+    - 99.285
+    - -5.107
+    - 14.838
+    source: python
+  lime:
+    rgb:
+    - 0
+    - 255
+    - 0
+    lab:
+    - 87.735
+    - -86.183
+    - 83.179
+    source: python
+  limegreen:
+    rgb:
+    - 50
+    - 205
+    - 50
+    lab:
+    - 72.607
+    - -67.126
+    - 61.437
+    source: python
+  linen:
+    rgb:
+    - 250
+    - 240
+    - 230
+    lab:
+    - 95.312
+    - 1.677
+    - 6.022
+    source: python
+  magenta:
+    rgb:
+    - 255
+    - 0
+    - 255
+    lab:
+    - 60.324
+    - 98.234
+    - -60.825
+    source: python
+  maroon:
+    rgb:
+    - 128
+    - 0
+    - 0
+    lab:
+    - 25.536
+    - 48.045
+    - 38.057
+    source: python
+  mauve:
+    rgb:
+    - 224
+    - 176
+    - 255
+    lab:
+    - 78.531
+    - 31.497
+    - -32.483
+    source: python
+  mediumblue:
+    rgb:
+    - 0
+    - 0
+    - 205
+    lab:
+    - 24.971
+    - 67.177
+    - -91.5
+    source: python
+  mediumorchid:
+    rgb:
+    - 186
+    - 85
+    - 211
+    lab:
+    - 53.644
+    - 59.06
+    - -47.402
+    source: python
+  mediumpurple:
+    rgb:
+    - 147
+    - 112
+    - 219
+    lab:
+    - 54.975
+    - 36.798
+    - -50.089
+    source: python
+  mediumseagreen:
+    rgb:
+    - 60
+    - 179
+    - 113
+    lab:
+    - 65.272
+    - -48.218
+    - 24.29
+    source: python
+  mediumslateblue:
+    rgb:
+    - 123
+    - 104
+    - 238
+    lab:
+    - 52.156
+    - 41.068
+    - -65.396
+    source: python
+  mediumspringgreen:
+    rgb:
+    - 0
+    - 250
+    - 154
+    lab:
+    - 87.339
+    - -70.686
+    - 32.463
+    source: python
+  mediumturquoise:
+    rgb:
+    - 72
+    - 209
+    - 204
+    lab:
+    - 76.881
+    - -37.36
+    - -8.355
+    source: python
+  mediumvioletred:
+    rgb:
+    - 199
+    - 21
+    - 133
+    lab:
+    - 44.767
+    - 70.992
+    - -15.169
+    source: python
+  midnightblue:
+    rgb:
+    - 25
+    - 25
+    - 112
+    lab:
+    - 15.858
+    - 31.713
+    - -49.575
+    source: python
+  mistyrose:
+    rgb:
+    - 255
+    - 228
+    - 225
+    lab:
+    - 92.656
+    - 8.747
+    - 4.836
+    source: python
+  moccasin:
+    rgb:
+    - 255
+    - 228
+    - 181
+    lab:
+    - 91.723
+    - 2.439
+    - 26.36
+    source: python
+  navajowhite:
+    rgb:
+    - 255
+    - 222
+    - 173
+    lab:
+    - 90.101
+    - 4.51
+    - 28.272
+    source: python
+  navy:
+    rgb:
+    - 0
+    - 0
+    - 128
+    lab:
+    - 12.972
+    - 47.502
+    - -64.702
+    source: python
+  oldlace:
+    rgb:
+    - 253
+    - 245
+    - 230
+    lab:
+    - 96.78
+    - 0.171
+    - 8.166
+    source: python
+  olive:
+    rgb:
+    - 128
+    - 128
+    - 0
+    lab:
+    - 51.869
+    - -12.929
+    - 56.675
+    source: python
+  olivedrab:
+    rgb:
+    - 107
+    - 142
+    - 35
+    lab:
+    - 54.65
+    - -28.222
+    - 49.691
+    source: python
+  orange:
+    rgb:
+    - 255
+    - 165
+    - 0
+    lab:
+    - 74.936
+    - 23.933
+    - 78.95
+    source: python
+  orangered:
+    rgb:
+    - 255
+    - 69
+    - 0
+    lab:
+    - 57.582
+    - 67.783
+    - 68.959
+    source: python
+  orchid:
+    rgb:
+    - 218
+    - 112
+    - 214
+    lab:
+    - 62.803
+    - 55.282
+    - -34.404
+    source: python
+  palegoldenrod:
+    rgb:
+    - 238
+    - 232
+    - 170
+    lab:
+    - 91.141
+    - -7.349
+    - 30.971
+    source: python
+  palegreen:
+    rgb:
+    - 152
+    - 251
+    - 152
+    lab:
+    - 90.75
+    - -48.297
+    - 38.528
+    source: python
+  paleturquoise:
+    rgb:
+    - 175
+    - 238
+    - 238
+    lab:
+    - 90.06
+    - -19.638
+    - -6.4
+    source: python
+  palevioletred:
+    rgb:
+    - 219
+    - 112
+    - 147
+    lab:
+    - 60.568
+    - 45.519
+    - 0.402
+    source: python
+  papayawhip:
+    rgb:
+    - 255
+    - 239
+    - 213
+    lab:
+    - 95.076
+    - 1.271
+    - 14.525
+    source: python
+  peach:
+    rgb:
+    - 255
+    - 218
+    - 185
+    lab:
+    - 89.35
+    - 8.085
+    - 21.022
+    source: python
+  peachpuff:
+    rgb:
+    - 255
+    - 218
+    - 185
+    lab:
+    - 89.35
+    - 8.085
+    - 21.022
+    source: python
+  peru:
+    rgb:
+    - 205
+    - 133
+    - 63
+    lab:
+    - 61.754
+    - 21.396
+    - 47.918
+    source: python
+  pink:
+    rgb:
+    - 255
+    - 192
+    - 203
+    lab:
+    - 83.587
+    - 24.144
+    - 3.326
+    source: python
+  pink-maroon:
+    rgb:
+    - 255
+    - 192
+    - 203
+    lab:
+    - 83.587
+    - 24.144
+    - 3.326
+    source: vocabulary
+  plum:
+    rgb:
+    - 221
+    - 160
+    - 221
+    lab:
+    - 73.374
+    - 32.531
+    - -21.986
+    source: python
+  powderblue:
+    rgb:
+    - 176
+    - 224
+    - 230
+    lab:
+    - 86.132
+    - -14.093
+    - -8.008
+    source: python
+  purple:
+    rgb:
+    - 128
+    - 0
+    - 128
+    lab:
+    - 29.785
+    - 58.928
+    - -36.487
+    source: python
+  purple-maroon:
+    rgb:
+    - 128
+    - 0
+    - 128
+    lab:
+    - 29.785
+    - 58.928
+    - -36.487
+    source: vocabulary
+  red:
+    rgb:
+    - 255
+    - 0
+    - 0
+    lab:
+    - 53.241
+    - 80.092
+    - 67.203
+    source: python
+  rosybrown:
+    rgb:
+    - 188
+    - 143
+    - 143
+    lab:
+    - 63.607
+    - 17.013
+    - 6.61
+    source: python
+  royalblue:
+    rgb:
+    - 65
+    - 105
+    - 225
+    lab:
+    - 47.83
+    - 26.263
+    - -65.264
+    source: python
+  rusty-orange:
+    rgb:
+    - 255
+    - 165
+    - 0
+    lab:
+    - 74.936
+    - 23.933
+    - 78.95
+    source: vocabulary
+  saddlebrown:
+    rgb:
+    - 135
+    - 81
+    - 44
+    lab:
+    - 39.947
+    - 19.015
+    - 30.857
+    source: user
+  saddlebrown2:
+    rgb:
+    - 110
+    - 68
+    - 36
+    lab:
+    - 33.087
+    - 14.757
+    - 26.549
+    source: user
+  salmon:
+    rgb:
+    - 250
+    - 128
+    - 114
+    lab:
+    - 67.264
+    - 45.226
+    - 29.094
+    source: python
+  sandybrown:
+    rgb:
+    - 244
+    - 164
+    - 96
+    lab:
+    - 73.954
+    - 23.027
+    - 46.791
+    source: python
+  seagreen:
+    rgb:
+    - 46
+    - 139
+    - 87
+    lab:
+    - 51.534
+    - -39.715
+    - 20.052
+    source: python
+  seashell:
+    rgb:
+    - 255
+    - 245
+    - 238
+    lab:
+    - 97.121
+    - 2.162
+    - 4.554
+    source: python
+  sienna:
+    rgb:
+    - 158
+    - 107
+    - 69
+    lab:
+    - 49.757
+    - 16.095
+    - 29.367
+    source: user
+  silver:
+    rgb:
+    - 192
+    - 192
+    - 192
+    lab:
+    - 77.704
+    - -0.0
+    - 0.0
+    source: python
+  skyblue:
+    rgb:
+    - 135
+    - 206
+    - 235
+    lab:
+    - 79.207
+    - -14.839
+    - -21.277
+    source: python
+  slateblue:
+    rgb:
+    - 106
+    - 90
+    - 205
+    lab:
+    - 45.336
+    - 36.039
+    - -57.772
+    source: python
+  slategray:
+    rgb:
+    - 112
+    - 128
+    - 144
+    lab:
+    - 52.836
+    - -2.143
+    - -10.571
+    source: python
+  slategrey:
+    rgb:
+    - 112
+    - 128
+    - 144
+    lab:
+    - 52.836
+    - -2.143
+    - -10.571
+    source: python
+  snow:
+    rgb:
+    - 255
+    - 250
+    - 250
+    lab:
+    - 98.644
+    - 1.657
+    - 0.587
+    source: python
+  springgreen:
+    rgb:
+    - 0
+    - 255
+    - 127
+    lab:
+    - 88.47
+    - -76.902
+    - 47.028
+    source: python
+  steelblue:
+    rgb:
+    - 70
+    - 130
+    - 180
+    lab:
+    - 52.466
+    - -4.077
+    - -32.192
+    source: python
+  tan:
+    rgb:
+    - 210
+    - 180
+    - 140
+    lab:
+    - 74.976
+    - 5.021
+    - 24.428
+    source: python
+  teal:
+    rgb:
+    - 0
+    - 128
+    - 128
+    lab:
+    - 48.254
+    - -28.846
+    - -8.477
+    source: python
+  test:
+    rgb:
+    - 255
+    - 44
+    - 251
+    lab:
+    - 61.681
+    - 93.017
+    - -56.443
+    source: user
+  thistle:
+    rgb:
+    - 216
+    - 191
+    - 216
+    lab:
+    - 80.078
+    - 13.218
+    - -9.229
+    source: python
+  tomato:
+    rgb:
+    - 255
+    - 99
+    - 71
+    lab:
+    - 62.207
+    - 57.851
+    - 46.42
+    source: python
+  turquoise:
+    rgb:
+    - 64
+    - 224
+    - 208
+    lab:
+    - 81.264
+    - -44.082
+    - -4.028
+    source: python
+  violet:
+    rgb:
+    - 238
+    - 130
+    - 238
+    lab:
+    - 69.696
+    - 56.357
+    - -36.81
+    source: python
+  wheat:
+    rgb:
+    - 245
+    - 222
+    - 179
+    lab:
+    - 89.352
+    - 1.512
+    - 24.008
+    source: python
+  white:
+    rgb:
+    - 255
+    - 255
+    - 255
+    lab:
+    - 100.0
+    - -0.0
+    - 0.0
+    source: python
+  white-yellow:
+    rgb:
+    - 255
+    - 255
+    - 255
+    lab:
+    - 100.0
+    - -0.0
+    - 0.0
+    source: vocabulary
+  whitesmoke:
+    rgb:
+    - 245
+    - 245
+    - 245
+    lab:
+    - 96.537
+    - -0.0
+    - 0.0
+    source: python
+  yellow:
+    rgb:
+    - 255
+    - 255
+    - 0
+    lab:
+    - 97.139
+    - -21.554
+    - 94.478
+    source: python
+  yellow-white:
+    rgb:
+    - 255
+    - 255
+    - 255
+    lab:
+    - 100.0
+    - -0.0
+    - 0.0
+    source: vocabulary
+  yellowgreen:
+    rgb:
+    - 154
+    - 205
+    - 50
+    lab:
+    - 76.535
+    - -37.988
+    - 66.586
+    source: python

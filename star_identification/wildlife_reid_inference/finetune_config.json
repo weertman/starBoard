@@ -1,0 +1,279 @@
+{
+  "model_name": "microsoft/swinv2-base-patch4-window12to24-192to384-22kto1k-ft",
+  "embedding_dim": 768,
+  "dropout": 0.1,
+  "pretrained": true,
+  "star_dataset_root": "star_dataset",
+  "wildlife10k_root": "wildlifeReID",
+  "num_epochs": 5,
+  "batch_size": 48,
+  "learning_rate": 5.000000000000001e-07,
+  "weight_decay": 0.001,
+  "warmup_epochs": 1,
+  "gradient_clip": 1.0,
+  "gradient_accumulation_steps": 4,
+  "num_instances": 4,
+  "loss_weights": {
+    "id": 0.0,
+    "circle": 1.0,
+    "triplet": 0.0,
+    "center": 0.01
+  },
+  "loss_params": {
+    "arcface": {
+      "margin": 0.5,
+      "scale": 64.0
+    },
+    "circle": {
+      "scale": 64.0,
+      "margin": 0.2
+    },
+    "triplet": {
+      "margin": 0.2
+    },
+    "center": {
+      "alpha": 0.5
+    }
+  },
+  "augmentation": {
+    "rotation_degrees": 45.0,
+    "rotation_prob": 0.2,
+    "perspective_distortion": 0.1,
+    "perspective_prob": 0.2,
+    "vertical_flip_prob": 0.5,
+    "horizontal_flip_prob": 0.5,
+    "crop_scale": [
+      0.5,
+      1.5
+    ],
+    "crop_ratio": [
+      0.5,
+      1.5
+    ],
+    "grayscale_prob": 0.2,
+    "color_jitter_prob": 0.2,
+    "brightness_factor": [
+      0.9,
+      1.1
+    ],
+    "contrast_factor": [
+      0.9,
+      1.1
+    ],
+    "saturation_factor": [
+      0.9,
+      1.1
+    ],
+    "hue_factor": 0.1,
+    "gaussian_blur_prob": 0.2,
+    "gaussian_blur_kernel": 3,
+    "gaussian_blur_sigma": [
+      0.1,
+      2.0
+    ],
+    "motion_blur_prob": 0.1,
+    "motion_blur_kernel": 3,
+    "sharpness_prob": 0.2,
+    "sharpness_factor": [
+      0.5,
+      2.0
+    ],
+    "gaussian_noise_prob": 0.1,
+    "gaussian_noise_std": 0.02,
+    "random_erasing_prob": 0.2,
+    "random_erasing_scale": [
+      0.02,
+      0.1
+    ],
+    "random_erasing_ratio": [
+      0.3,
+      3.3
+    ],
+    "mixup_alpha": 0.0,
+    "cutmix_alpha": 0.0,
+    "tta_enabled": false,
+    "tta_scales": [
+      0.9,
+      1.0,
+      1.1
+    ],
+    "tta_flips": true,
+    "progressive_augmentation": false,
+    "progressive_start_epoch": 20,
+    "progressive_end_epoch": 80
+  },
+  "pretrain_augmentation": {
+    "rotation_degrees": 45.0,
+    "rotation_prob": 0.2,
+    "perspective_distortion": 0.1,
+    "perspective_prob": 0.2,
+    "vertical_flip_prob": 0.5,
+    "horizontal_flip_prob": 0.5,
+    "crop_scale": [
+      0.5,
+      1.5
+    ],
+    "crop_ratio": [
+      0.5,
+      1.5
+    ],
+    "grayscale_prob": 0.2,
+    "color_jitter_prob": 0.2,
+    "brightness_factor": [
+      0.9,
+      1.1
+    ],
+    "contrast_factor": [
+      0.9,
+      1.1
+    ],
+    "saturation_factor": [
+      0.9,
+      1.1
+    ],
+    "hue_factor": 0.1,
+    "gaussian_blur_prob": 0.2,
+    "gaussian_blur_kernel": 3,
+    "gaussian_blur_sigma": [
+      0.1,
+      2.0
+    ],
+    "motion_blur_prob": 0.1,
+    "motion_blur_kernel": 3,
+    "sharpness_prob": 0.2,
+    "sharpness_factor": [
+      0.5,
+      2.0
+    ],
+    "gaussian_noise_prob": 0.1,
+    "gaussian_noise_std": 0.02,
+    "random_erasing_prob": 0.2,
+    "random_erasing_scale": [
+      0.02,
+      0.1
+    ],
+    "random_erasing_ratio": [
+      0.3,
+      3.3
+    ],
+    "mixup_alpha": 0.0,
+    "cutmix_alpha": 0.0,
+    "tta_enabled": false,
+    "tta_scales": [
+      0.9,
+      1.0,
+      1.1
+    ],
+    "tta_flips": true,
+    "progressive_augmentation": false,
+    "progressive_start_epoch": 20,
+    "progressive_end_epoch": 80
+  },
+  "finetune_augmentation": {
+    "rotation_degrees": 45.0,
+    "rotation_prob": 0.2,
+    "perspective_distortion": 0.1,
+    "perspective_prob": 0.2,
+    "vertical_flip_prob": 0.5,
+    "horizontal_flip_prob": 0.5,
+    "crop_scale": [
+      0.5,
+      1.5
+    ],
+    "crop_ratio": [
+      0.5,
+      1.5
+    ],
+    "grayscale_prob": 0.2,
+    "color_jitter_prob": 0.2,
+    "brightness_factor": [
+      0.9,
+      1.1
+    ],
+    "contrast_factor": [
+      0.9,
+      1.1
+    ],
+    "saturation_factor": [
+      0.9,
+      1.1
+    ],
+    "hue_factor": 0.1,
+    "gaussian_blur_prob": 0.2,
+    "gaussian_blur_kernel": 3,
+    "gaussian_blur_sigma": [
+      0.1,
+      2.0
+    ],
+    "motion_blur_prob": 0.1,
+    "motion_blur_kernel": 3,
+    "sharpness_prob": 0.2,
+    "sharpness_factor": [
+      0.5,
+      2.0
+    ],
+    "gaussian_noise_prob": 0.1,
+    "gaussian_noise_std": 0.02,
+    "random_erasing_prob": 0.2,
+    "random_erasing_scale": [
+      0.02,
+      0.1
+    ],
+    "random_erasing_ratio": [
+      0.3,
+      3.3
+    ],
+    "mixup_alpha": 0.0,
+    "cutmix_alpha": 0.0,
+    "tta_enabled": false,
+    "tta_scales": [
+      0.9,
+      1.0,
+      1.1
+    ],
+    "tta_flips": true,
+    "progressive_augmentation": false,
+    "progressive_start_epoch": 20,
+    "progressive_end_epoch": 80
+  },
+  "num_workers": 16,
+  "pin_memory": true,
+  "val_every_n_epochs": 5,
+  "val_per_dataset": true,
+  "val_log_best_per_dataset": true,
+  "val_k_values": [
+    1,
+    5,
+    10
+  ],
+  "val_primary_metric": "star_mAP@1",
+  "val_compute_full_map": true,
+  "val_compute_species_metrics": true,
+  "val_star_every_epoch": true,
+  "val_star_only_for_best": true,
+  "checkpoint_dir": "run_experiment\\just_circle_acc4\\finetune_checkpoints",
+  "log_dir": "./logs",
+  "device": "cuda",
+  "use_amp": true,
+  "experiment_name": "just_circle_acc4_finetune",
+  "seed": 42,
+  "wandb_project": "wildlife-reid-extended-20250610_222254",
+  "wandb_entity": null,
+  "wandb_tags": [
+    "grayscale_aug",
+    "blur_aug",
+    "custom_circle_margin",
+    "custom_triplet_margin",
+    "species_eval",
+    "star_every_epoch",
+    "embed_768"
+  ],
+  "wandb_notes": null,
+  "wandb_log_model": false,
+  "wandb_log_code": false,
+  "wandb_log_freq": 50,
+  "expected_datasets": [
+    "star",
+    "wildlife10k"
+  ]
+}

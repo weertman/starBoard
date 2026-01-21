@@ -1,0 +1,122 @@
+# ==============================================================================
+# ARCHIVE - User-specific research data (DO NOT PUSH)
+# ==============================================================================
+archive/gallery/
+archive/querries/
+archive/reports/
+archive/logs/
+archive/vocabularies/
+archive/_dl_precompute/
+archive/*.log
+archive/*.log.*
+archive/*.csv
+archive/*.xlsx
+
+# Keep config files in archive
+!archive/color_config.yaml
+!archive/fields_config.yaml
+
+# ==============================================================================
+# MODEL CHECKPOINTS & WEIGHTS (Too large for GitHub - 100MB limit)
+# ==============================================================================
+*.pth
+*.pt
+*.onnx
+*.safetensors
+*.bin
+checkpoints/
+
+# ==============================================================================
+# LARGE DATASETS & IMAGE CACHES
+# ==============================================================================
+star_identification/wildlifeReID_resized/
+star_identification/star_dataset_resized/
+star_identification/precompute_cache/
+star_identification/checkpoints/
+star_identification/grid_search_results/
+star_identification/logs/
+star_identification/literature/
+star_identification/sensitivity_results/
+star_identification/batch_sensitivity_results/
+star_identification/temporal_sensitivity_results/
+star_identification/temporal_sensitivity_results_full/
+star_identification/verification_interpretability_figures/
+star_identification/megastar_identity_verification_validation/
+
+# ==============================================================================
+# STARMORPHOMETRICTOOL - Large files only (keep modified DA-V2 code)
+# ==============================================================================
+# Exclude model weights and large assets
+starMorphometricTool/Depth-Anything-V2/checkpoints/
+starMorphometricTool/Depth-Anything-V2/assets/examples_video/
+starMorphometricTool/Depth-Anything-V2-main.zip
+starMorphometricTool/models/
+starMorphometricTool/measurements/
+starMorphometricTool/images/
+starMorphometricTool/debug_log.txt
+
+# ==============================================================================
+# PYTHON
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==============================================================================
+# ENVIRONMENTS
+# ==============================================================================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================================================================
+# IDE & EDITORS
+# ==============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+
+# ==============================================================================
+# OS FILES
+# ==============================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==============================================================================
+# EMBEDDINGS & CACHED JSON
+# ==============================================================================
+*_embeddings*.json
+metadata_embeddings.json
+
+# ==============================================================================
+# TEMPORARY & GENERATED
+# ==============================================================================
+*.tmp
+*.temp
+python_files.json
+*.npz

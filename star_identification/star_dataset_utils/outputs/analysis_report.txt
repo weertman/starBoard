@@ -1,0 +1,48 @@
+======================================================================
+STAR DATASET ANALYSIS REPORT
+======================================================================
+
+Generated from: metadata_temporal.csv
+Total Images: 8,805
+Total Identities: 393
+Dataset Sources: 18
+
+----------------------------------------------------------------------
+TRAIN/TEST SPLIT SUMMARY
+----------------------------------------------------------------------
+Train Images: 7,081 (80.4%)
+Test Images: 1,724 (19.6%)
+
+----------------------------------------------------------------------
+NEGATIVE-ONLY IDENTITIES (Single-Outing)
+----------------------------------------------------------------------
+Negative-Only Identities: 312
+Negative-Only Images: 4,727
+Evaluable Identities: 81
+
+----------------------------------------------------------------------
+IMAGES PER IDENTITY STATISTICS
+----------------------------------------------------------------------
+Mean: 22.40
+Median: 14.00
+Std: 31.32
+Min: 1
+Max: 281
+
+----------------------------------------------------------------------
+TOP 10 DATASET SOURCES (by image count)
+----------------------------------------------------------------------
+lab_stars_pycno_deployment: 3,579 images, 46 identities, 66.6% train
+PWS_2023: 1,503 images, 126 identities, 100.0% train
+wild_stars_cama_beach_pycno_pre_deployment: 957 images, 47 identities, 100.0% train
+FHL_EAGLE_PT_PYCNOS: 866 images, 36 identities, 80.3% train
+ADULT_FHL_STARS: 489 images, 27 identities, 67.5% train
+Hakai_controls_time_sorted: 437 images, 16 identities, 79.4% train
+WILD_STARS_FHL_DOCK: 197 images, 4 identities, 74.1% train
+SeaLifeCenter: 151 images, 42 identities, 100.0% train
+HodinLab_2023_BroodInResidence: 144 images, 10 identities, 92.4% train
+HodinLab_2019-2020_Brood_In_Residence: 142 images, 12 identities, 100.0% train
+
+======================================================================
+END OF REPORT
+======================================================================

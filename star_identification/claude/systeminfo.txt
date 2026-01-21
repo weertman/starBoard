@@ -1,0 +1,153 @@
+(base) C:\Users\wlwee>systeminfo
+
+Host Name:                 DESKTOP-FSFKQFB
+OS Name:                   Microsoft Windows 10 Pro
+OS Version:                10.0.19045 N/A Build 19045
+OS Manufacturer:           Microsoft Corporation
+OS Configuration:          Standalone Workstation
+OS Build Type:             Multiprocessor Free
+Registered Owner:          wlweert@gmail.com
+Registered Organization:
+Product ID:                00330-71479-82059-AAOEM
+Original Install Date:     2/1/2023, 4:02:59 PM
+System Boot Time:          5/25/2025, 6:20:33 PM
+System Manufacturer:       Puget Systems
+System Model:              Super Server
+System Type:               x64-based PC
+Processor(s):              1 Processor(s) Installed.
+                           [01]: Intel64 Family 6 Model 106 Stepping 6 GenuineIntel ~4000 Mhz
+BIOS Version:              American Megatrends International, LLC. 1.4a, 11/24/2022
+Windows Directory:         C:\windows
+System Directory:          C:\windows\system32
+Boot Device:               \Device\HarddiskVolume6
+System Locale:             en-us;English (United States)
+Input Locale:              en-us;English (United States)
+Time Zone:                 (UTC-08:00) Pacific Time (US & Canada)
+Total Physical Memory:     1,048,188 MB
+Available Physical Memory: 995,762 MB
+Virtual Memory: Max Size:  1,099,388 MB
+Virtual Memory: Available: 1,017,197 MB
+Virtual Memory: In Use:    82,191 MB
+Page File Location(s):     C:\pagefile.sys
+Domain:                    WORKGROUP
+Logon Server:              \\DESKTOP-FSFKQFB
+Hotfix(s):                 35 Hotfix(s) Installed.
+                           [01]: KB5056578
+                           [02]: KB5028951
+                           [03]: KB5011048
+                           [04]: KB5012170
+                           [05]: KB5015684
+                           [06]: KB5020683
+                           [07]: KB5058379
+                           [08]: KB5014032
+                           [09]: KB5016705
+                           [10]: KB5020372
+                           [11]: KB5022924
+                           [12]: KB5023794
+                           [13]: KB5025315
+                           [14]: KB5026879
+                           [15]: KB5028318
+                           [16]: KB5028380
+                           [17]: KB5029709
+                           [18]: KB5031539
+                           [19]: KB5032392
+                           [20]: KB5032907
+                           [21]: KB5034224
+                           [22]: KB5036447
+                           [23]: KB5037018
+                           [24]: KB5037240
+                           [25]: KB5037995
+                           [26]: KB5039336
+                           [27]: KB5041579
+                           [28]: KB5043935
+                           [29]: KB5043130
+                           [30]: KB5046823
+                           [31]: KB5050388
+                           [32]: KB5050111
+                           [33]: KB5052916
+                           [34]: KB5054682
+                           [35]: KB5058526
+Network Card(s):           8 NIC(s) Installed.
+                           [01]: Remote NDIS based Internet Sharing Device
+                                 Connection Name: Ethernet
+                                 DHCP Enabled:    Yes
+                                 DHCP Server:     169.254.3.254
+                                 IP address(es)
+                                 [01]: 169.254.3.1
+                                 [02]: fe80::dc21:5c3e:78a9:318e
+                           [02]: Intel(R) I210 Gigabit Network Connection
+                                 Connection Name: Ethernet 3
+                                 Status:          Media disconnected
+                           [03]: Marvell AQtion 10Gbit Network Adapter
+                                 Connection Name: Ethernet 2
+                                 Status:          Media disconnected
+                           [04]: Hyper-V Virtual Ethernet Adapter
+                                 Connection Name: vEthernet (Default Switch)
+                                 DHCP Enabled:    No
+                                 IP address(es)
+                                 [01]: 172.25.160.1
+                                 [02]: fe80::6df3:8d9d:b892:ab92
+                           [05]: Intel(R) Dual Band Wireless-AC 7265
+                                 Connection Name: Wi-Fi 2
+                                 DHCP Enabled:    Yes
+                                 DHCP Server:     10.0.0.1
+                                 IP address(es)
+                                 [01]: 10.0.0.7
+                                 [02]: fe80::ed:689e:4877:bd23
+                           [06]: Hyper-V Virtual Ethernet Adapter
+                                 Connection Name: vEthernet (WSL)
+                                 DHCP Enabled:    No
+                                 IP address(es)
+                                 [01]: 172.28.240.1
+                                 [02]: fe80::8d65:aab6:13dd:88fa
+                           [07]: Bluetooth Device (Personal Area Network)
+                                 Connection Name: Bluetooth Network Connection
+                                 Status:          Media disconnected
+                           [08]: VirtualBox Host-Only Ethernet Adapter
+                                 Connection Name: Ethernet 4
+                                 DHCP Enabled:    No
+                                 IP address(es)
+                                 [01]: 192.168.56.1
+                                 [02]: fe80::ae78:ebd1:7a2c:95e4
+Hyper-V Requirements:      A hypervisor has been detected. Features required for Hyper-V will not be displayed.
+
+(base) C:\Users\wlwee>wmic cpu get name,manufacturer,maxclockspeed,numberofcores
+Manufacturer  MaxClockSpeed  Name                                   NumberOfCores
+GenuineIntel  4000           Intel(R) Xeon(R) W-3365 CPU @ 2.70GHz  32
+
+(base) C:\Users\wlwee>wmic memorychip get capacity,speed,manufacturer
+Capacity     Manufacturer  Speed
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+68719476736  Kingston      3200
+
+(base) C:\Users\wlwee>wmic baseboard get product,manufacturer,version
+Manufacturer  Product    Version
+Supermicro    X12SPA-TF  1.01
+
+
+(base) C:\Users\wlwee>wmic path win32_videocontroller get name,driverversion
+DriverVersion  Name
+31.0.15.5161   NVIDIA RTX A6000
+31.0.15.5161   NVIDIA RTX A6000
+
+(base) C:\Users\wlwee>wmic diskdrive get model,size,interfacetype
+InterfaceType  Model                                    Size
+SCSI           Sabrent SB-RKT4P-8TB                     8001560609280
+IDE            ST18000NE000-2YY101                      18000202752000
+SCSI           Sabrent SB-RKT4P-8TB                     8001560609280
+SCSI           Samsung PSSD T7 Shield SCSI Disk Device  2000396321280
+IDE            ST18000NE000-2YY101

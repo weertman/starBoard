@@ -1,0 +1,225 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+import torchvision
+import torchvision.transforms as transforms
+from torchvision.datasets.mnist import MNIST
+import numpy as np
+import pandas as pd
+import pytorch_lightning as pl
+import matplotlib.pyplot as plt
+batch_size = 32
+transform = transforms.Compose(
+    [
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ]
+)
+ds = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                        download=True, transform=transform)
+ds = torch.utils.data.Subset(ds, range(1000))
+train_loader = torch.utils.data.DataLoader(ds, batch_size=batch_size,
+                                           shuffle=True, num_workers=4)
+val_loader = torch.utils.data.DataLoader(ds, batch_size=batch_size,
+                                         shuffle=False, num_workers=4)
+Downloading https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz to ./data/cifar-10-python.tar.gz
+170499072/? [00:02<00:00, 85032440.49it/s]
+Extracting ./data/cifar-10-python.tar.gz to ./data
+Based on pytorch metric learning's implementation
+
+class ArcFaceLoss(nn.Module):
+    def __init__(self, num_classes, embedding_size, margin, scale):
+        """
+        ArcFace: Additive Angular Margin Loss for Deep Face Recognition
+        (https://arxiv.org/pdf/1801.07698.pdf)
+        Args:
+            num_classes: The number of classes in your training dataset
+            embedding_size: The size of the embeddings that you pass into
+            margin: m in the paper, the angular margin penalty in radians
+            scale: s in the paper, feature scale
+        """
+        super().__init__()
+        self.num_classes = num_classes
+        self.embedding_size = embedding_size
+        self.margin = margin
+        self.scale = scale
+        
+        self.W = torch.nn.Parameter(torch.Tensor(num_classes, embedding_size))
+        nn.init.xavier_normal_(self.W)
+        
+    def forward(self, embeddings, labels):
+        """
+        Args:
+            embeddings: (None, embedding_size)
+            labels: (None,)
+        Returns:
+            loss: scalar
+        """
+        cosine = self.get_cosine(embeddings) # (None, n_classes)
+        mask = self.get_target_mask(labels) # (None, n_classes)
+        cosine_of_target_classes = cosine[mask == 1] # (None, )
+        modified_cosine_of_target_classes = self.modify_cosine_of_target_classes(
+            cosine_of_target_classes
+        ) # (None, )
+        diff = (modified_cosine_of_target_classes - cosine_of_target_classes).unsqueeze(1) # (None,1)
+        logits = cosine + (mask * diff) # (None, n_classes)
+        logits = self.scale_logits(logits) # (None, n_classes)
+        return nn.CrossEntropyLoss()(logits, labels)
+        
+    def get_cosine(self, embeddings):
+        """
+        Args:
+            embeddings: (None, embedding_size)
+        Returns:
+            cosine: (None, n_classes)
+        """
+        cosine = F.linear(F.normalize(embeddings), F.normalize(self.W))
+        return cosine
+    
+    def get_target_mask(self, labels):
+        """
+        Args:
+            labels: (None,)
+        Returns:
+            mask: (None, n_classes)
+        """
+        batch_size = labels.size(0)
+        onehot = torch.zeros(batch_size, self.num_classes, device=labels.device)
+        onehot.scatter_(1, labels.unsqueeze(-1), 1)
+        return onehot
+        
+    def modify_cosine_of_target_classes(self, cosine_of_target_classes):
+        """
+        Args:
+            cosine_of_target_classes: (None,)
+        Returns:
+            modified_cosine_of_target_classes: (None,)
+        """
+        eps = 1e-6
+        # theta in the paper
+        angles = torch.acos(torch.clamp(cosine_of_target_classes, -1 + eps, 1 - eps))
+        return torch.cos(angles + self.margin)
+    
+    def scale_logits(self, logits):
+        """
+        Args:
+            logits: (None, n_classes)
+        Returns:
+            scaled_logits: (None, n_classes)
+        """
+        return logits * self.scale
+    
+class SoftmaxLoss(nn.Module):
+    def __init__(self, num_classes, embedding_size):
+        """
+        Regular softmax loss (1 fc layer without bias + CrossEntropyLoss)
+        Args:
+            num_classes: The number of classes in your training dataset
+            embedding_size: The size of the embeddings that you pass into
+        """
+        super().__init__()
+        self.num_classes = num_classes
+        self.embedding_size = embedding_size
+        
+        self.W = torch.nn.Parameter(torch.Tensor(num_classes, embedding_size))
+        nn.init.xavier_normal_(self.W)
+        
+    def forward(self, embeddings, labels):
+        """
+        Args:
+            embeddings: (None, embedding_size)
+            labels: (None,)
+        Returns:
+            loss: scalar
+        """
+        logits = F.linear(embeddings, self.W)
+        return nn.CrossEntropyLoss()(logits, labels)
+class Embedder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5) # (None, 16, 5, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+class Model(pl.LightningModule):
+    def __init__(self, embedding_size, loss_type, max_epochs):
+        super().__init__()
+        self.save_hyperparameters('max_epochs')
+        self.embedder = nn.Sequential(
+            nn.Conv2d(3, 6, 5),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(6, 16, 5),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Flatten(),
+            nn.LazyLinear(100),
+            nn.ReLU(),
+            nn.LazyLinear(embedding_size)
+        )
+        
+        if loss_type == 'arcface':
+            self.loss_function = ArcFaceLoss(
+                num_classes=10, 
+                embedding_size=embedding_size,
+                margin=0.3, 
+                scale=30.0
+            )
+        elif loss_type == 'softmax':
+            self.loss_function = SoftmaxLoss(num_classes=10, embedding_size=embedding_size)
+           
+    def forward(self, x):
+        return self.embedder(x) # (None, embedding_size)
+    
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        embeddings = self.embedder(x) # (None, embedding_size)
+        loss = self.loss_function(embeddings, y)
+        self.log('train_loss', loss, on_epoch=True, prog_bar=True)
+        return loss
+    
+    def predict_step(self, batch, batch_idx):
+        x, y = batch
+        embeddings = self.embedder(x) # (None, embedding_size)
+        return {'embeddings': embeddings, 'labels': y}
+    
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
+        return optimizer
+def visualize(trainer, model, loader, title):
+    outputs = trainer.predict(model, loader)
+    embeddings = F.normalize(torch.cat([output['embeddings'] for output in outputs])).numpy()
+    labels = torch.cat([output['labels'] for output in outputs]).numpy()
+    
+    colors = ["red", "black", "yellow", "green", "pink",
+              "gray", "lightgreen", "orange", "blue", "teal"]
+
+    plt.figure(figsize=(8, 8))
+    plt.scatter(embeddings[:,0], embeddings[:,1], 
+                color=[colors[label] for label in labels])
+    ax = plt.gca()
+    ax.set_xlim([-1.2, 1.2])
+    ax.set_ylim([-1.2, 1.2])
+    ax.set_aspect('equal', adjustable='box')
+    plt.title(title)
+    plt.show()
+embedding_size = 2
+max_epochs = 100
+arcface_model = Model(embedding_size=embedding_size, loss_type='arcface', max_epochs=max_epochs)
+for i in range(10):
+    arcface_trainer = pl.Trainer(log_every_n_steps=10, max_epochs=max_epochs)
+    arcface_trainer.fit(arcface_model, train_loader)
+    visualize(arcface_trainer, arcface_model, val_loader, f'arcface (epoch {max_epochs*(i+1)})')
