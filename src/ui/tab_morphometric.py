@@ -7,6 +7,7 @@ starMorphometricTool, allowing live capture and metadata entry.
 """
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from datetime import date as _date
@@ -51,6 +52,105 @@ def qdate_to_ymd(q) -> tuple:
     if hasattr(q, 'date'):
         q = q.date()
     return q.year(), q.month(), q.day()
+
+
+# =============================================================================
+# Checkerboard Preset Configuration
+# =============================================================================
+
+def _get_checkerboard_config_path() -> Path:
+    """Get path to checkerboard presets JSON file."""
+    # Store in starMorphometricTool directory
+    return Path(__file__).parent.parent.parent / "starMorphometricTool" / "checkerboard_presets.json"
+
+
+def _load_checkerboard_presets() -> Dict[str, List]:
+    """
+    Load checkerboard presets from file.
+    
+    Returns:
+        Dictionary with 'rows', 'cols', 'square_sizes_mm' lists.
+        Returns defaults if file doesn't exist.
+    """
+    defaults = {
+        "rows": [8, 6, 7, 9],
+        "cols": [10, 8, 11, 12],
+        "square_sizes_mm": [25.0, 20.0, 30.0, 15.0]
+    }
+    
+    config_path = _get_checkerboard_config_path()
+    if not config_path.exists():
+        return defaults
+    
+    try:
+        with open(config_path, 'r') as f:
+            data = json.load(f)
+        # Merge with defaults to ensure all keys exist
+        for key in defaults:
+            if key not in data or not data[key]:
+                data[key] = defaults[key]
+        return data
+    except Exception as e:
+        logger.warning("Failed to load checkerboard presets: %s", e)
+        return defaults
+
+
+def _save_checkerboard_presets(presets: Dict[str, List]) -> bool:
+    """
+    Save checkerboard presets to file.
+    
+    Args:
+        presets: Dictionary with 'rows', 'cols', 'square_sizes_mm' lists.
+    
+    Returns:
+        True if saved successfully.
+    """
+    config_path = _get_checkerboard_config_path()
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, 'w') as f:
+            json.dump(presets, f, indent=2)
+        logger.debug("Saved checkerboard presets to %s", config_path)
+        return True
+    except Exception as e:
+        logger.warning("Failed to save checkerboard presets: %s", e)
+        return False
+
+
+def _add_preset_value(presets: Dict[str, List], key: str, value) -> bool:
+    """
+    Add a new value to presets if not already present.
+    
+    Args:
+        presets: Presets dictionary to modify.
+        key: Key ('rows', 'cols', or 'square_sizes_mm').
+        value: Value to add.
+    
+    Returns:
+        True if value was added (was new).
+    """
+    if key not in presets:
+        presets[key] = []
+    
+    # Normalize value for comparison
+    if key == "square_sizes_mm":
+        value = float(value)
+        # Check if already exists (with float tolerance)
+        for existing in presets[key]:
+            if abs(float(existing) - value) < 0.001:
+                return False
+    else:
+        value = int(value)
+        if value in presets[key]:
+            return False
+    
+    # Add to front of list (most recently used first)
+    presets[key].insert(0, value)
+    
+    # Keep list reasonable size (max 10 entries)
+    presets[key] = presets[key][:10]
+    
+    return True
 
 
 class TabMorphometric(QWidget):
@@ -243,21 +343,38 @@ class TabMorphometric(QWidget):
         status_row.addStretch()
         layout.addLayout(status_row)
         
-        # Checkerboard config
+        # Checkerboard config - editable combo boxes with presets
         form = QFormLayout()
         form.setSpacing(4)
         
-        self.edit_rows = QLineEdit("8")
-        self.edit_rows.setFixedWidth(60)
-        form.addRow("Rows:", self.edit_rows)
+        presets = _load_checkerboard_presets()
         
-        self.edit_cols = QLineEdit("10")
-        self.edit_cols.setFixedWidth(60)
-        form.addRow("Columns:", self.edit_cols)
+        self.cmb_rows = QComboBox()
+        self.cmb_rows.setEditable(True)
+        self.cmb_rows.setFixedWidth(70)
+        for val in presets.get("rows", [8]):
+            self.cmb_rows.addItem(str(val))
+        if self.cmb_rows.count() == 0:
+            self.cmb_rows.addItem("8")
+        form.addRow("Rows:", self.cmb_rows)
         
-        self.edit_square_size = QLineEdit("25")
-        self.edit_square_size.setFixedWidth(60)
-        form.addRow("Square (mm):", self.edit_square_size)
+        self.cmb_cols = QComboBox()
+        self.cmb_cols.setEditable(True)
+        self.cmb_cols.setFixedWidth(70)
+        for val in presets.get("cols", [10]):
+            self.cmb_cols.addItem(str(val))
+        if self.cmb_cols.count() == 0:
+            self.cmb_cols.addItem("10")
+        form.addRow("Columns:", self.cmb_cols)
+        
+        self.cmb_square_size = QComboBox()
+        self.cmb_square_size.setEditable(True)
+        self.cmb_square_size.setFixedWidth(70)
+        for val in presets.get("square_sizes_mm", [25.0]):
+            self.cmb_square_size.addItem(str(val))
+        if self.cmb_square_size.count() == 0:
+            self.cmb_square_size.addItem("25")
+        form.addRow("Square (mm):", self.cmb_square_size)
         
         layout.addLayout(form)
         
@@ -602,9 +719,9 @@ class TabMorphometric(QWidget):
             return
         
         try:
-            rows = int(self.edit_rows.text())
-            cols = int(self.edit_cols.text())
-            square_size = float(self.edit_square_size.text())
+            rows = int(self.cmb_rows.currentText())
+            cols = int(self.cmb_cols.currentText())
+            square_size = float(self.cmb_square_size.currentText())
             
             success, info = self._detection_adapter.detect_checkerboard(
                 self._last_frame, rows, cols, square_size
@@ -612,12 +729,53 @@ class TabMorphometric(QWidget):
             
             if success:
                 self.btn_clear_board.setEnabled(True)
+                
+                # Save any new preset values
+                presets = _load_checkerboard_presets()
+                changed = False
+                if _add_preset_value(presets, "rows", rows):
+                    changed = True
+                if _add_preset_value(presets, "cols", cols):
+                    changed = True
+                if _add_preset_value(presets, "square_sizes_mm", square_size):
+                    changed = True
+                
+                if changed:
+                    _save_checkerboard_presets(presets)
+                    # Update combo boxes with new values
+                    self._refresh_checkerboard_combos(presets)
+                
                 QMessageBox.information(self, "Success", "Checkerboard detected!")
             else:
                 QMessageBox.warning(self, "Detection Failed", "Checkerboard not detected.")
                 
         except ValueError as e:
             QMessageBox.warning(self, "Input Error", f"Invalid input: {e}")
+    
+    def _refresh_checkerboard_combos(self, presets: Dict[str, List]):
+        """Refresh combo boxes with updated presets while preserving current selection."""
+        # Store current values
+        curr_rows = self.cmb_rows.currentText()
+        curr_cols = self.cmb_cols.currentText()
+        curr_square = self.cmb_square_size.currentText()
+        
+        # Update rows combo
+        self.cmb_rows.clear()
+        for val in presets.get("rows", []):
+            self.cmb_rows.addItem(str(val))
+        self.cmb_rows.setCurrentText(curr_rows)
+        
+        # Update cols combo
+        self.cmb_cols.clear()
+        for val in presets.get("cols", []):
+            self.cmb_cols.addItem(str(val))
+        self.cmb_cols.setCurrentText(curr_cols)
+        
+        # Update square size combo
+        self.cmb_square_size.clear()
+        for val in presets.get("square_sizes_mm", []):
+            self.cmb_square_size.addItem(str(val))
+        self.cmb_square_size.setCurrentText(curr_square)
     
     def _on_clear_checkerboard(self):
         """Clear checkerboard calibration."""
