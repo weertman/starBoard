@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        tabs.addTab(t_setup, "Setup")
+        tabs.addTab(t_setup, "Data Entry")
         
         # Morphometric tab (inserted between Setup and First-order)
         t_morph = None

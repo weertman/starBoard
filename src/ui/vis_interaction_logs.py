@@ -42,7 +42,7 @@ COLORS = {
 TAB_COLORS = {
     "First Order": "#2E86AB",
     "Second Order": "#A23B72",
-    "Setup": "#F18F01",
+    "Data Entry": "#F18F01",
     "DL": "#C73E1D",
     "Past": "#1b9e77",
     "Other": "#888888",
