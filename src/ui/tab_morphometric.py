@@ -153,6 +153,85 @@ def _add_preset_value(presets: Dict[str, List], key: str, value) -> bool:
     return True
 
 
+# =============================================================================
+# User Initials Configuration
+# =============================================================================
+
+def _get_initials_config_path() -> Path:
+    """Get path to user initials JSON file."""
+    return Path(__file__).parent.parent.parent / "starMorphometricTool" / "user_initials.json"
+
+
+def _load_saved_initials() -> List[str]:
+    """
+    Load saved user initials from file.
+    
+    Returns:
+        List of initials strings (uppercase, 3 letters).
+    """
+    config_path = _get_initials_config_path()
+    if not config_path.exists():
+        return []
+    
+    try:
+        with open(config_path, 'r') as f:
+            data = json.load(f)
+        return data.get("initials", [])
+    except Exception as e:
+        logger.warning("Failed to load user initials: %s", e)
+        return []
+
+
+def _save_initials(initials_list: List[str]) -> bool:
+    """
+    Save user initials to file.
+    
+    Args:
+        initials_list: List of initials strings.
+    
+    Returns:
+        True if saved successfully.
+    """
+    config_path = _get_initials_config_path()
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, 'w') as f:
+            json.dump({"initials": initials_list}, f, indent=2)
+        logger.debug("Saved user initials to %s", config_path)
+        return True
+    except Exception as e:
+        logger.warning("Failed to save user initials: %s", e)
+        return False
+
+
+def _add_initials(initials: str) -> bool:
+    """
+    Add new initials to saved list if not already present.
+    
+    Args:
+        initials: 3-letter initials string (will be uppercased).
+    
+    Returns:
+        True if initials were added (was new).
+    """
+    initials = initials.strip().upper()
+    if not initials or len(initials) != 3:
+        return False
+    
+    saved = _load_saved_initials()
+    if initials in saved:
+        return False
+    
+    # Add to front (most recently used first)
+    saved.insert(0, initials)
+    
+    # Keep reasonable size
+    saved = saved[:20]
+    
+    _save_initials(saved)
+    return True
+
+
 class TabMorphometric(QWidget):
     """
     Morphometric capture tab integrating starMorphometricTool functionality.
@@ -830,10 +909,15 @@ class TabMorphometric(QWidget):
         self._on_id_changed()
     
     def _populate_initials(self):
-        """Populate initials combobox from existing metadata."""
+        """Populate initials combobox from saved initials and existing metadata."""
         initials_set = set()
         
-        # Gather from both Gallery and Queries metadata
+        # Load from saved initials file first (these are prioritized)
+        saved_initials = _load_saved_initials()
+        for init in saved_initials:
+            initials_set.add(init.upper())
+        
+        # Also gather from both Gallery and Queries metadata
         for target in ["Gallery", "Queries"]:
             try:
                 csv_paths = ap.metadata_csv_paths_for_read(target)
@@ -845,10 +929,20 @@ class TabMorphometric(QWidget):
             except Exception as e:
                 logger.debug("Could not read metadata for %s: %s", target, e)
         
+        # Sort but keep saved initials at the front
+        all_initials = []
+        # Add saved initials first (in order)
+        for init in saved_initials:
+            if init.upper() in initials_set:
+                all_initials.append(init.upper())
+                initials_set.discard(init.upper())
+        # Add remaining from metadata (sorted)
+        all_initials.extend(sorted(initials_set))
+        
         # Populate initials combobox
         self.cmb_initials.blockSignals(True)
         self.cmb_initials.clear()
-        self.cmb_initials.addItems(sorted(initials_set))
+        self.cmb_initials.addItems(all_initials)
         self.cmb_initials.completer().setModel(self.cmb_initials.model())
         self.cmb_initials.setCurrentText("")  # Allow new entries
         self.cmb_initials.blockSignals(False)
@@ -1267,6 +1361,11 @@ class TabMorphometric(QWidget):
             # 4. Notify First-order tab to refresh
             self._notify_first_order_refresh()
             self.dataSaved.emit()
+            
+            # 5. Save initials if new
+            if _add_initials(initials):
+                self._populate_initials()
+                self.cmb_initials.setCurrentText(initials)
             
             # Refresh ID list if new ID
             if self.cmb_id.currentIndex() == 0:
