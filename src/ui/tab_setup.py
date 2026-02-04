@@ -1040,6 +1040,16 @@ class TabSetup(QWidget):
         date_row.addStretch(1)
         lay.addLayout(date_row)
 
+        # Location row
+        loc_row = QHBoxLayout()
+        loc_row.addWidget(QLabel("Location:"))
+        self.cmb_location_batch = QComboBox()
+        self.cmb_location_batch.setEditable(True)
+        self.cmb_location_batch.lineEdit().setPlaceholderText("optional - applies to all new IDs")
+        self.cmb_location_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        loc_row.addWidget(self.cmb_location_batch)
+        lay.addLayout(loc_row)
+
         # Results list
         self.list_discovered = QListWidget()
         self.list_discovered.setMinimumHeight(120)
@@ -1105,8 +1115,9 @@ class TabSetup(QWidget):
         self.cmb_target_batch.currentIndexChanged.connect(self._refresh_batch_history)
         self.cmb_target_batch.currentIndexChanged.connect(self._update_id_preview)
         
-        # Initial load of batch history
+        # Initial load of batch history and locations
         QTimer.singleShot(100, self._refresh_batch_history)
+        QTimer.singleShot(150, self._populate_batch_locations)
         
         return gb
 
@@ -1115,6 +1126,27 @@ class TabSetup(QWidget):
         selected = self.date_batch.date()
         is_today = (selected == QDate.currentDate())
         self.lbl_date_warning.setVisible(is_today)
+
+    def _populate_batch_locations(self):
+        """Populate location combo with existing locations from metadata."""
+        locations = set()
+        for target in ["Gallery", "Queries"]:
+            try:
+                csv_paths = ap.metadata_csv_paths_for_read(target)
+                rows = read_rows_multi(csv_paths)
+                for row in rows:
+                    loc = row.get('location', '').strip()
+                    if loc:
+                        locations.add(loc)
+            except Exception:
+                pass
+        
+        current_text = self.cmb_location_batch.currentText()
+        self.cmb_location_batch.blockSignals(True)
+        self.cmb_location_batch.clear()
+        self.cmb_location_batch.addItems(sorted(locations))
+        self.cmb_location_batch.setCurrentText(current_text)
+        self.cmb_location_batch.blockSignals(False)
 
     def _on_discover(self):
         self._ilog.log("button_click", "btn_discover", value="clicked")
@@ -1199,6 +1231,10 @@ class TabSetup(QWidget):
                     new_ids.add(id_str)
                     row = {col: "" for col in header}
                     row[id_col] = id_str
+                    # Apply batch location if specified
+                    batch_location = self.cmb_location_batch.currentText().strip()
+                    if batch_location:
+                        row['location'] = batch_location
                     append_row(csv_path, header, row)
                     
                     # Record metadata history for new Gallery IDs
@@ -1356,6 +1392,10 @@ class TabSetup(QWidget):
                 new_ids.add(id_str)
                 row = {col: "" for col in header}
                 row[id_col] = id_str
+                # Apply batch location if specified
+                batch_location = self.cmb_location_batch.currentText().strip()
+                if batch_location:
+                    row['location'] = batch_location
                 append_row(csv_path, header, row)
                 
                 # Record metadata history for new Gallery IDs (create action)
