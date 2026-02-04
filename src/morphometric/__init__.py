@@ -85,7 +85,6 @@ def get_measurements_root() -> Path:
 _camera_adapter: Optional["CameraAdapter"] = None
 _detection_adapter: Optional["DetectionAdapter"] = None
 _analysis_adapter: Optional["AnalysisAdapter"] = None
-_depth_adapter: Optional["DepthAdapter"] = None
 
 
 def get_camera_adapter() -> "CameraAdapter":
@@ -142,47 +141,9 @@ def get_analysis_adapter() -> "AnalysisAdapter":
     return _analysis_adapter
 
 
-def is_depth_available() -> bool:
-    """
-    Check if depth estimation (Depth-Anything-V2) is available.
-    
-    This is separate from is_available() because depth estimation
-    has additional dependencies (PyTorch, Depth-Anything-V2 model).
-    
-    Returns:
-        True if depth estimation can be used.
-    """
-    if not _ensure_morphometric_path():
-        return False
-    
-    try:
-        from .depth_adapter import DepthAdapter
-        return DepthAdapter.is_available()
-    except ImportError:
-        return False
-
-
-def get_depth_adapter() -> "DepthAdapter":
-    """
-    Get the depth adapter instance (lazy-loaded).
-    
-    Returns:
-        DepthAdapter instance for depth estimation and volume computation.
-    
-    Raises:
-        ImportError: If depth dependencies are not available.
-    """
-    global _depth_adapter
-    if _depth_adapter is None:
-        _ensure_morphometric_path()
-        from .depth_adapter import DepthAdapter
-        _depth_adapter = DepthAdapter()
-    return _depth_adapter
-
-
 def clear_adapters() -> None:
     """Clear all cached adapter instances (useful for testing or cleanup)."""
-    global _camera_adapter, _detection_adapter, _analysis_adapter, _depth_adapter
+    global _camera_adapter, _detection_adapter, _analysis_adapter
     
     if _camera_adapter is not None:
         try:
@@ -190,13 +151,6 @@ def clear_adapters() -> None:
         except Exception:
             pass
         _camera_adapter = None
-    
-    if _depth_adapter is not None:
-        try:
-            _depth_adapter.clear()
-        except Exception:
-            pass
-        _depth_adapter = None
     
     _detection_adapter = None
     _analysis_adapter = None
@@ -208,5 +162,4 @@ if TYPE_CHECKING:
     from .camera_adapter import CameraAdapter
     from .detection_adapter import DetectionAdapter
     from .analysis_adapter import AnalysisAdapter
-    from .depth_adapter import DepthAdapter
 

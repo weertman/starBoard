@@ -70,13 +70,6 @@ def extract_starboard_fields(morphometrics: Dict[str, Any]) -> Dict[str, str]:
         if tip_to_tip is not None:
             fields['morph_tip_to_tip_mm'] = f"{tip_to_tip:.2f}"
     
-    # morph_volume_mm3 - From volume estimation if available
-    volume_est = morphometrics.get('volume_estimation', {})
-    if volume_est:
-        volume = volume_est.get('volume_mm3')
-        if volume is not None:
-            fields['morph_volume_mm3'] = f"{float(volume):.2f}"
-    
     logger.debug("extract_starboard_fields: Output fields: %s", fields)
     return fields
 

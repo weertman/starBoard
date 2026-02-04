@@ -9,7 +9,6 @@ The starMorphometricTool provides webcam-based morphometric measurements for sun
 - **Live data capture**: Enter metadata while taking images
 - **Quick comparison**: Compare captured stars with the database immediately  
 - **Automated measurements**: YOLO-detected arm counts and calibrated measurements
-- **Volume estimation**: Optional 3D volume calculation using Depth-Anything-V2
 - **Dual storage**: Preserves full morphometric data while adding images to starBoard archive
 
 ---
@@ -35,7 +34,6 @@ The starMorphometricTool provides webcam-based morphometric measurements for sun
 │               │  camera_adapter │         │                          │
 │               │  detection_adpt │         │                          │
 │               │  analysis_adpt  │         │                          │
-│               │  depth_adapter  │         │                          │
 │               │  data_bridge    │         │                          │
 │               └────────┬────────┘         │                          │
 │                        │                  │                          │
@@ -47,7 +45,6 @@ The starMorphometricTool provides webcam-based morphometric measurements for sun
            │  camera/      Camera HAL   │   │
            │  detection/   YOLO + CB    │   │
            │  morphometrics/ Analysis   │   │
-           │  depth/       DA-V2 Volume │   │
            │  ui/          PolarCanvas  │   │
            └─────────────┬──────────────┘   │
                          │                  │
@@ -63,9 +60,7 @@ The starMorphometricTool provides webcam-based morphometric measurements for sun
            │                    ├─raw_frame.png                 │
            │                    ├─corrected_*.png    metadata/  │
            │                    ├─morphometrics.json   └─*.csv  │
-           │                    ├─corrected_detection.json      │
-           │                    ├─calibrated_depth.npy (opt)    │
-           │                    └─elevation_visualization.png   │
+           │                    └─corrected_detection.json      │
            │                                                    │
            └────────────────────────────────────────────────────┘
 ```
@@ -124,25 +119,6 @@ The starMorphometricTool provides webcam-based morphometric measurements for sun
 - Signal `peaksChanged` triggers measurement recalculation
 - Visual feedback of arm detection results
 
-### Depth Module (Optional)
-
-| MorphometricTool Component | starBoard Integration | Purpose |
-|---------------------------|----------------------|---------|
-| `depth/depth_handler.py` | `DepthAdapter.run_volume_estimation()` | Depth-Anything-V2 model loading and inference |
-| `depth/volume_estimation.py` | Via DepthAdapter | Depth calibration and volume computation |
-
-**Integration Points:**
-- Uses Depth-Anything-V2 (vitb encoder by default) for monocular depth estimation
-- Calibrates depth using checkerboard corners as reference plane
-- Computes volume from elevation above reference plane
-- Saves depth data (calibrated_depth.npy, elevation_visualization.png) to mFolder
-- Graceful fallback when Depth-Anything-V2 is not installed
-
-**Requirements:**
-- `Depth-Anything-V2/` directory alongside starMorphometricTool
-- Model checkpoint at `Depth-Anything-V2/checkpoints/depth_anything_v2_vitb.pth`
-- PyTorch (CUDA optional, falls back to CPU)
-
 ---
 
 ## Data Flow
@@ -191,7 +167,6 @@ The starMorphometricTool provides webcam-based morphometric measurements for sun
 | `arm_data[*][3]` | `morph_mean_arm_length_mm` | FLOAT | Average arm length |
 | `max(arm_data[*][3])` | `morph_max_arm_length_mm` | FLOAT | Longest arm |
 | *calculated* | `morph_tip_to_tip_mm` | FLOAT | Max opposing tip distance |
-| `volume_estimation.volume_mm3` | `morph_volume_mm3` | FLOAT | Optional volume estimate |
 | *mFolder path* | `morph_source_folder` | TEXT | Traceability reference |
 
 ### arm_data Structure
@@ -240,20 +215,10 @@ matplotlib>=3.5.0
 numpy>=1.21.0
 ```
 
-### Optional for Volume Estimation
-
-```
-torch>=2.0.0           # PyTorch (CUDA optional)
-Depth-Anything-V2/     # Clone from GitHub
-  └─ checkpoints/
-      └─ depth_anything_v2_vitb.pth  # Download from HuggingFace
-```
-
 ### Graceful Degradation
 
 If dependencies are missing:
 - Morphometric tab shows installation instructions
-- Volume estimation button shows error if Depth-Anything-V2 unavailable
 - Other starBoard functionality unaffected
 - No error on application startup
 
@@ -270,14 +235,13 @@ src/
       ├─ camera_adapter.py    # Camera subsystem wrapper
       ├─ detection_adapter.py # YOLO/checkerboard wrapper
       ├─ analysis_adapter.py  # Morphometrics wrapper
-      ├─ depth_adapter.py     # Depth-Anything-V2 wrapper (optional)
       └─ data_bridge.py       # JSON → starBoard field mapping
 
   └─ ui/
       └─ tab_morphometric.py  # Main tab UI (new)
 
   └─ data/
-      └─ annotation_schema.py # +9 morph_* fields, +1 field group
+      └─ annotation_schema.py # +8 morph_* fields, +1 field group
 ```
 
 ### Modified Files
@@ -298,9 +262,8 @@ src/ui/main_window.py  # Conditional tab insertion
 6. **Analyze**: Click "Run Analysis" to measure morphometrics
 7. **Adjust**: Use sliders to refine arm detection
 8. **Edit Tips**: Click polar plot to add/remove arm tips
-9. **Volume** (optional): Click "Estimate Volume" for 3D volume calculation
-10. **Enter Metadata**: Fill in ID, location, initials
-11. **Save**: Click "Save to starBoard" for dual-save
+9. **Enter Metadata**: Fill in ID, location, initials
+10. **Save**: Click "Save to starBoard" for dual-save
 
 ---
 
@@ -309,5 +272,4 @@ src/ui/main_window.py  # Conditional tab insertion
 - **Batch Processing**: Load existing mFolders into starBoard
 - **Auto-population**: Use morph_num_arms to suggest num_total_arms
 - **Model Updates**: Support for custom YOLO models per deployment
-- **Depth Camera**: Direct depth camera integration (RealSense, Kinect) for improved accuracy
 

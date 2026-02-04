@@ -78,15 +78,12 @@ class TabMorphometric(QWidget):
         self._camera_adapter = None
         self._detection_adapter = None
         self._analysis_adapter = None
-        self._depth_adapter = None
         self._stream_active = False
         self._yolo_active = False
         self._last_frame = None
         self._captured_frame = None  # Frame captured during detection (frozen)
         self._corrected_detection = None
         self._current_mfolder = None
-        self._volume_data: Optional[Dict[str, Any]] = None
-        self._depth_arrays: Optional[Dict[str, Any]] = None
         
         # Visualization state
         self._corrected_object_rgb: Optional[np.ndarray] = None
@@ -422,9 +419,9 @@ class TabMorphometric(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(12)
         
-        # Run All button
+        # Run All button (Detect → Morph sequence)
         self.btn_run_all = QPushButton("Run All")
-        self.btn_run_all.setToolTip("Run Detect → Morph → Volume in sequence")
+        self.btn_run_all.setToolTip("Run Detect → Morph in sequence")
         self.btn_run_all.clicked.connect(self._on_run_all)
         self.btn_run_all.setEnabled(False)
         self.btn_run_all.setStyleSheet("QPushButton { background-color: #7b1fa2; color: white; }")
@@ -476,13 +473,6 @@ class TabMorphometric(QWidget):
         self.polar_widget.setMinimumSize(250, 250)
         self.polar_widget.setStyleSheet("QLabel { background-color: #1a1a1a; color: #666; }")
         h_splitter.addWidget(self.polar_widget)
-        
-        # Depth/elevation map display
-        self.lbl_depth = QLabel("Depth Map")
-        self.lbl_depth.setAlignment(Qt.AlignCenter)
-        self.lbl_depth.setMinimumSize(250, 250)
-        self.lbl_depth.setStyleSheet("QLabel { background-color: #1a1a1a; color: #666; }")
-        h_splitter.addWidget(self.lbl_depth)
         
         # Try to create actual PolarCanvas
         self._init_polar_canvas()
@@ -999,7 +989,7 @@ class TabMorphometric(QWidget):
     # =========================================================================
     
     def _on_run_all(self):
-        """Run Detect → Morph → Volume in sequence."""
+        """Run Detect → Morph in sequence."""
         from PySide6.QtWidgets import QApplication
         
         # Step 1: Capture Detection
@@ -1020,166 +1010,8 @@ class TabMorphometric(QWidget):
         
         self._on_analyze()
         
-        if self._analysis_adapter is None or not self._analysis_adapter.arm_data:
-            self.btn_run_all.setText("Run All")
-            self.btn_run_all.setEnabled(True)
-            return
-        
-        # Step 3: Estimate Volume (if available)
-        from src.morphometric import is_depth_available
-        if is_depth_available():
-            self.btn_run_all.setText("Volume...")
-            QApplication.processEvents()
-            self._on_estimate_volume()
-        
         self.btn_run_all.setText("Run All")
         self.btn_run_all.setEnabled(True)
-    
-    # =========================================================================
-    # Volume Estimation Handler
-    # =========================================================================
-    
-    def _on_estimate_volume(self):
-        """Run depth estimation and volume computation."""
-        if self._corrected_detection is None or self._analysis_adapter is None:
-            QMessageBox.warning(self, "Error", "Please run analysis first.")
-            return
-        
-        if self._detection_adapter is None or not self._detection_adapter.has_checkerboard:
-            QMessageBox.warning(self, "Error", "Checkerboard calibration required.")
-            return
-        
-        if self._last_frame is None:
-            QMessageBox.warning(self, "Error", "No frame available.")
-            return
-        
-        try:
-            from src.morphometric import is_depth_available, get_depth_adapter
-            
-            # Check if depth estimation is available
-            if not is_depth_available():
-                QMessageBox.warning(
-                    self, "Depth Not Available",
-                    "Depth estimation requires:\n\n"
-                    "1. Depth-Anything-V2 directory alongside starMorphometricTool\n"
-                    "2. Model checkpoint in Depth-Anything-V2/checkpoints/\n"
-                    "3. PyTorch installed\n\n"
-                    "Volume estimation is optional and can be skipped."
-                )
-                return
-            
-            # Get depth adapter
-            if self._depth_adapter is None:
-                self._depth_adapter = get_depth_adapter()
-            
-            # Get required data
-            corrected_mask = self._corrected_detection.get('corrected_mask')
-            homography = self._corrected_detection.get('homography_matrix')
-            mm_per_pixel = self._corrected_detection.get('mm_per_pixel', 1.0)
-            
-            if corrected_mask is None or homography is None:
-                QMessageBox.warning(self, "Error", "Missing detection data for volume estimation.")
-                return
-            
-            # Convert homography to numpy if needed
-            if isinstance(homography, list):
-                homography = np.array(homography, dtype=np.float32)
-            
-            # Build checkerboard info from detection adapter
-            cb_info = self._detection_adapter.checkerboard_info
-            
-            # Get camera intrinsics if available
-            intrinsics = None
-            camera_id = None
-            if hasattr(self._detection_adapter, 'get_camera_intrinsics'):
-                intrinsics = self._detection_adapter.get_camera_intrinsics()
-            if hasattr(self._detection_adapter, '_get_camera_id'):
-                camera_id = self._detection_adapter._get_camera_id()
-            
-            # Run volume estimation - use the captured frame from detection time
-            frame_for_volume = self._captured_frame if self._captured_frame is not None else self._last_frame
-            result = self._depth_adapter.run_volume_estimation(
-                raw_frame=frame_for_volume,
-                corrected_mask=corrected_mask,
-                checkerboard_info=cb_info,
-                homography_matrix=homography,
-                mm_per_pixel=mm_per_pixel,
-                encoder='vitb',
-                input_size=518,
-                intrinsics=intrinsics,
-                camera_id=camera_id
-            )
-            
-            if not result['success']:
-                QMessageBox.warning(
-                    self, "Volume Estimation Failed",
-                    f"Error: {result.get('error', 'Unknown error')}"
-                )
-                return
-            
-            # Store volume data for save
-            self._volume_data = result.get('volume_estimation_data')
-            
-            # Store depth arrays for saving to files later
-            calibration_result = result.get('calibration_result') or {}
-            self._depth_arrays = {
-                'calibrated_depth': calibration_result.get('calibrated_depth'),
-                'elevation_map': result.get('elevation_map'),
-                'mask': corrected_mask,
-                'raw_depth_map': result.get('raw_depth_map'),
-            }
-            
-            # Display elevation visualization
-            elevation_viz = result.get('elevation_visualization')
-            if elevation_viz is not None:
-                self._display_frame(elevation_viz, self.lbl_depth)
-            
-            # Update morph_volume_mm3 field in form
-            volume_mm3 = result.get('volume_mm3', 0)
-            volume_ml = result.get('volume_ml', 0)
-            self.meta_form.apply_values({'morph_volume_mm3': f"{volume_mm3:.2f}"})
-            
-            # Show success message with calibration status
-            mean_elev = result.get('mean_elevation_mm', 0)
-            max_elev = result.get('max_elevation_mm', 0)
-            calibration_status = result.get('calibration_status', 'provisional')
-            
-            # Build message with calibration status
-            status_note = ""
-            if calibration_status == 'provisional':
-                # Get calibration progress if available
-                calib_status = self._detection_adapter.get_calibration_status() if hasattr(self._detection_adapter, 'get_calibration_status') else {}
-                detection_count = calib_status.get('detection_count', 0)
-                min_required = calib_status.get('min_required', 10)
-                status_note = f"\n\n⚠️ PROVISIONAL ESTIMATE\nCamera calibration: {detection_count}/{min_required} detections\nVolume will be recomputed when calibration is complete."
-            
-            QMessageBox.information(
-                self, "Volume Estimation Complete",
-                f"Volume: {volume_ml:.3f} mL ({volume_mm3:.1f} mm³)\n"
-                f"Mean elevation: {mean_elev:.2f} mm\n"
-                f"Max elevation: {max_elev:.2f} mm"
-                f"{status_note}"
-            )
-            
-            logger.info("Volume estimation complete: %.1f mm³ [%s]", volume_mm3, calibration_status)
-            
-        except ImportError as e:
-            QMessageBox.warning(
-                self, "Import Error",
-                f"Failed to import depth module: {e}\n\n"
-                "Ensure PyTorch and Depth-Anything-V2 are installed."
-            )
-            logger.exception("Import error in volume estimation")
-        except MemoryError:
-            QMessageBox.warning(
-                self, "Memory Error",
-                "Out of memory during volume estimation.\n"
-                "Try closing other applications or using a smaller model."
-            )
-            logger.exception("Memory error in volume estimation")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Volume estimation failed:\n{e}")
-            logger.exception("Error in volume estimation")
     
     # =========================================================================
     # Save Handler
@@ -1220,9 +1052,7 @@ class TabMorphometric(QWidget):
                 user_notes="",  # Notes removed from UI
                 raw_frame=frame_to_save,
                 corrected_detection=self._corrected_detection,
-                arm_rotation=self.slider_rotation.value(),
-                volume_data=self._volume_data,  # Pass volume data if available
-                depth_arrays=self._depth_arrays  # Pass depth arrays for file saving
+                arm_rotation=self.slider_rotation.value()
             )
             
             if mfolder is None:
@@ -1293,11 +1123,9 @@ class TabMorphometric(QWidget):
                                    f"Morphometric data: {mfolder}\n"
                                    f"Raw frame copied to starBoard archive.")
             
-            # Reset for next capture (keep volume visualization visible)
+            # Reset for next capture
             self.btn_save.setEnabled(False)
             self._corrected_detection = None
-            self._volume_data = None
-            self._depth_arrays = None
             
         except Exception as e:
             logger.exception("Error saving: %s", e)

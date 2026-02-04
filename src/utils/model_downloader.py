@@ -28,7 +28,6 @@ MODEL_FILES: List[Tuple[str, str]] = [
     ("verification_circleloss.pth", "star_identification/checkpoints/verification/extended_training/circleloss/nofreeze_inat1_neg0_20260109_050432/best.pth"),
     ("starseg_best.pt", "star_identification/wildlife_reid_inference/starseg_best.pt"),
     ("morphometric_yolo.pt", "starMorphometricTool/models/best.pt"),
-    ("depth_anything_v2_vitb.pth", "starMorphometricTool/Depth-Anything-V2/checkpoints/depth_anything_v2_vitb.pth"),
 ]
 
 
@@ -130,7 +129,6 @@ def download_models(project_root: Path = None, interactive: bool = True) -> Tupl
         "verification_circleloss.pth": 624,
         "starseg_best.pt": 53,
         "morphometric_yolo.pt": 20,
-        "depth_anything_v2_vitb.pth": 372,
     }
     total_mb = sum(size_estimates.get(name, 100) for name, _, _ in missing)
     

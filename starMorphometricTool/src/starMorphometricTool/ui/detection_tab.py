@@ -37,10 +37,6 @@ from morphometrics.visualization import create_morphometrics_visualization, rend
 from ui.components.polar_canvas import PolarCanvas
 from ui.camera_config_dialog import CameraConfigDialog
 
-# Depth estimation imports (lazy loaded to avoid startup overhead)
-# from depth import run_volume_estimation_pipeline, save_depth_data, clear_model_cache, create_volume_estimation_data
-
-
 class DetectionTab(QWidget):
     """
     Detection tab for morphometric analysis.
@@ -286,9 +282,7 @@ class DetectionTab(QWidget):
         self.save_detection_button = QPushButton("Get Detection")
         self.run_morphometrics_button = QPushButton("Run Morphometrics")
         self.save_numbering_button = QPushButton("Save Morphometrics")
-        self.quick_save_button = QPushButton("Detect + Morph + Volume + Save")
-        self.estimate_volume_button = QPushButton("Estimate Volume")
-        self.estimate_volume_button.setToolTip("Run depth estimation to calculate volume (slow)")
+        self.quick_save_button = QPushButton("Detect + Morph + Save")
 
         # Set initial button states
         self.clear_button.setEnabled(False)
@@ -298,7 +292,6 @@ class DetectionTab(QWidget):
         self.run_morphometrics_button.setEnabled(False)
         self.save_numbering_button.setEnabled(False)
         self.quick_save_button.setEnabled(False)
-        self.estimate_volume_button.setEnabled(False)
 
         # Sliders for morphometrics
         self.smoothing_label = QLabel("Smoothing Factor: 5")
@@ -376,7 +369,6 @@ class DetectionTab(QWidget):
         self.run_morphometrics_button.clicked.connect(self.run_morphometrics)
         self.save_numbering_button.clicked.connect(self.save_updated_morphometrics)
         self.quick_save_button.clicked.connect(self.quick_detect_morph_save)
-        self.estimate_volume_button.clicked.connect(self.estimate_volume)
 
         self.id_type_combo.currentIndexChanged.connect(self.on_identity_type_changed)
         self.location_combo.currentTextChanged.connect(self.on_location_changed)
@@ -397,7 +389,6 @@ class DetectionTab(QWidget):
         left_panel_layout.addWidget(sliders_scroll_area)
         left_panel_layout.addWidget(self.save_numbering_button)
         left_panel_layout.addWidget(self.quick_save_button)
-        left_panel_layout.addWidget(self.estimate_volume_button)
         left_panel_layout.addStretch()
 
         # -------------------- Right Panel --------------------
@@ -429,17 +420,10 @@ class DetectionTab(QWidget):
         self.polar_canvas = PolarCanvas()
         self.polar_canvas.peaksChanged.connect(self.on_peaks_changed)
 
-        # Depth visualization label
-        self.depth_label = QLabel("Depth Map")
-        self.depth_label.setAlignment(Qt.AlignCenter)
-        self.depth_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.depth_label.setMinimumSize(200, 200)
-
         # Create splitters for resizable panels
         bottom_splitter = QSplitter(Qt.Horizontal)
         bottom_splitter.addWidget(self.result_label)
         bottom_splitter.addWidget(self.polar_canvas)
-        bottom_splitter.addWidget(self.depth_label)
 
         # Camera panel with header
         camera_panel = QWidget()
@@ -761,7 +745,7 @@ class DetectionTab(QWidget):
 
     # ------------------- Quick Save Workflow -------------------
     def quick_detect_morph_save(self):
-        """Quick workflow: Get Detection -> Run Morphometrics -> Volume -> Save"""
+        """Quick workflow: Get Detection -> Run Morphometrics -> Save"""
         # Call save_corrected_detection (captures and saves detection)
         self.save_corrected_detection(show_message=False)
         
@@ -776,11 +760,8 @@ class DetectionTab(QWidget):
         if not hasattr(self, 'arm_data') or not self.arm_data:
             return
         
-        # Save morphometrics (this enables the volume button)
-        self.save_updated_morphometrics(show_message=False)
-        
-        # Run volume estimation (with combined message)
-        self.estimate_volume(show_combined_message=True)
+        # Save morphometrics
+        self.save_updated_morphometrics(show_message=True)
 
     # ------------------- Detection Saving -------------------
     def save_corrected_detection(self, show_message=True):
@@ -1422,218 +1403,9 @@ class DetectionTab(QWidget):
         with open(morphometrics_json_path, 'w') as f:
             json.dump(self.morphometrics_data, f, indent=4)
 
-        # Enable volume estimation button now that morphometrics are saved
-        self.estimate_volume_button.setEnabled(True)
-
         if show_message:
             QMessageBox.information(self, "Save Successful",
                                     f"Updated morphometrics data saved to {morphometrics_json_path}")
-
-    # ------------------- Volume Estimation -------------------
-    def estimate_volume(self, show_combined_message=False):
-        """
-        Run depth estimation and volume computation.
-        This is a computationally expensive operation that runs after morphometrics.
-        
-        Args:
-            show_combined_message: If True, show a combined message for the full workflow
-        """
-        if not self.current_measurement_folder:
-            QMessageBox.warning(self, "Volume Error", "No measurement folder selected.")
-            return
-
-        # Disable button while processing
-        self.estimate_volume_button.setEnabled(False)
-        self.estimate_volume_button.setText("Estimating...")
-        
-        # Force UI update
-        from PySide6.QtWidgets import QApplication
-        QApplication.processEvents()
-
-        try:
-            # Lazy import depth module to avoid startup overhead
-            from depth import (
-                run_volume_estimation_pipeline,
-                save_depth_data,
-                clear_model_cache
-            )
-            from depth.volume_estimation import create_volume_estimation_data
-
-            # Load raw frame
-            raw_frame_path = os.path.join(self.current_measurement_folder, 'raw_frame.png')
-            if not os.path.exists(raw_frame_path):
-                QMessageBox.warning(self, "Volume Error", f"Raw frame not found: {raw_frame_path}")
-                return
-
-            raw_image = cv2.imread(raw_frame_path)
-            if raw_image is None:
-                QMessageBox.warning(self, "Volume Error", "Failed to load raw frame image.")
-                return
-
-            # Load corrected detection info (contains checkerboard data)
-            detection_json_path = os.path.join(self.current_measurement_folder, 'corrected_detection.json')
-            if not os.path.exists(detection_json_path):
-                QMessageBox.warning(self, "Volume Error", 
-                    "Detection info not found. Please re-save detection with updated app.")
-                return
-
-            with open(detection_json_path, 'r') as f:
-                detection_info = json.load(f)
-
-            # Check for required checkerboard data
-            if 'checkerboard_corners' not in detection_info:
-                QMessageBox.warning(self, "Volume Error",
-                    "Checkerboard corners not found in detection data.\n"
-                    "This measurement was saved with an older version.\n"
-                    "Please re-capture the detection to enable volume estimation.")
-                return
-
-            # Load mask
-            mask_path = os.path.join(self.current_measurement_folder, 'corrected_mask.png')
-            if not os.path.exists(mask_path):
-                QMessageBox.warning(self, "Volume Error", f"Mask not found: {mask_path}")
-                return
-
-            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-            if mask is None:
-                QMessageBox.warning(self, "Volume Error", "Failed to load mask image.")
-                return
-
-            # Get mm_per_pixel from detection info
-            mm_per_pixel = detection_info.get('mm_per_pixel', 1.0)
-
-            # Get homography matrix for warping depth to corrected coordinates
-            homography_matrix = detection_info.get('homography_matrix')
-            if homography_matrix is None:
-                QMessageBox.warning(self, "Volume Error",
-                    "Homography matrix not found in detection data.")
-                return
-
-            # Prepare checkerboard info dict
-            checkerboard_info = {
-                'checkerboard_corners': detection_info['checkerboard_corners'],
-                'checkerboard_dims': detection_info['checkerboard_dims'],
-                'checkerboard_square_size': detection_info['checkerboard_square_size']
-            }
-
-            # Run volume estimation pipeline
-            logging.info("Starting volume estimation pipeline...")
-            result = run_volume_estimation_pipeline(
-                raw_image=raw_image,
-                mask=mask,
-                checkerboard_info=checkerboard_info,
-                mm_per_pixel=mm_per_pixel,
-                homography_matrix=homography_matrix,
-                mask_shape=mask.shape,
-                encoder='vitb',  # Use base model for balance of speed/quality
-                input_size=518
-            )
-
-            if not result['success']:
-                QMessageBox.warning(self, "Volume Estimation Failed", 
-                    f"Error: {result['error']}")
-                return
-
-            # Extract results
-            depth_result = result['depth_result']
-            calibration_result = result['calibration_result']
-            volume_result = result['volume_result']
-
-            # Save depth data files
-            # Save depth data with mask for proper visualization
-            saved_files = save_depth_data(
-                self.current_measurement_folder,
-                calibration_result['calibrated_depth'],
-                volume_result['elevation_map'],
-                volume_result,
-                calibration_result,
-                mask=mask  # Pass mask for masked visualization
-            )
-
-            # Create volume estimation data for morphometrics.json
-            volume_data = create_volume_estimation_data(
-                volume_result, calibration_result, depth_result, 'vitb'
-            )
-
-            # Update morphometrics.json
-            morphometrics_path = os.path.join(self.current_measurement_folder, 'morphometrics.json')
-            if os.path.exists(morphometrics_path):
-                with open(morphometrics_path, 'r') as f:
-                    morphometrics = json.load(f)
-            else:
-                morphometrics = self.morphometrics_data if hasattr(self, 'morphometrics_data') else {}
-
-            morphometrics['volume_estimation'] = volume_data
-
-            with open(morphometrics_path, 'w') as f:
-                json.dump(morphometrics, f, indent=4)
-
-            # Display elevation visualization (shows height above checkerboard, masked)
-            elev_vis_path = saved_files.get('elevation_image')
-            if elev_vis_path and os.path.exists(elev_vis_path):
-                elev_img = cv2.imread(elev_vis_path)
-                if elev_img is not None:
-                    elev_rgb = cv2.cvtColor(elev_img, cv2.COLOR_BGR2RGB)
-                    h, w, ch = elev_rgb.shape
-                    bytes_per_line = ch * w
-                    q_img = QImage(elev_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
-                    scaled = q_img.scaled(
-                        self.depth_label.width(), self.depth_label.height(),
-                        Qt.KeepAspectRatio
-                    )
-                    self.depth_label.setPixmap(QPixmap.fromImage(scaled))
-
-            # Clear model cache to free memory
-            clear_model_cache()
-
-            # Show success message with volume info
-            volume_mm3 = volume_result['volume_mm3']
-            volume_ml = volume_mm3 / 1000.0  # Convert mm³ to mL (cm³)
-            mean_elev = volume_result['mean_elevation_mm']
-            max_elev = volume_result['max_elevation_mm']
-
-            if show_combined_message:
-                # Combined message for the all-in-one workflow
-                area_mm2 = self.morphometrics_data.get('area_mm2', 0) if hasattr(self, 'morphometrics_data') else 0
-                num_arms = len(self.arm_data) if hasattr(self, 'arm_data') else 0
-                QMessageBox.information(self, "Measurement Complete",
-                    f"Detection, morphometrics, and volume saved!\n\n"
-                    f"Area: {area_mm2:.1f} mm²\n"
-                    f"Arms detected: {num_arms}\n"
-                    f"Volume: {volume_ml:.3f} mL\n"
-                    f"Mean elevation: {mean_elev:.2f} mm\n\n"
-                    f"All data saved to:\n{self.current_measurement_folder}")
-            else:
-                QMessageBox.information(self, "Volume Estimation Complete",
-                    f"Volume: {volume_ml:.3f} mL\n"
-                    f"Mean elevation: {mean_elev:.2f} mm\n"
-                    f"Max elevation: {max_elev:.2f} mm\n\n"
-                    f"Results saved to morphometrics.json\n"
-                    f"Depth maps saved to measurement folder.")
-
-            logging.info(f"Volume estimation complete: {volume_mm3:.1f} mm³")
-
-        except ImportError as e:
-            QMessageBox.critical(self, "Import Error",
-                f"Failed to import depth module: {e}\n\n"
-                "Make sure Depth-Anything-V2 is installed and torch is available.")
-            logging.exception("Import error in volume estimation")
-
-        except MemoryError:
-            QMessageBox.critical(self, "Memory Error",
-                "Out of memory during volume estimation.\n"
-                "Try closing other applications or using a smaller model.")
-            logging.exception("Memory error in volume estimation")
-
-        except Exception as e:
-            QMessageBox.critical(self, "Volume Estimation Error",
-                f"An unexpected error occurred:\n{str(e)}")
-            logging.exception("Error in volume estimation")
-
-        finally:
-            # Re-enable button
-            self.estimate_volume_button.setText("Estimate Volume")
-            self.estimate_volume_button.setEnabled(True)
 
     def closeEvent(self, event):
         """Clean up resources when closing"""

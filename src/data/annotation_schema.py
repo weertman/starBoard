@@ -422,15 +422,6 @@ FIELD_DEFINITIONS: List[FieldDefinition] = [
         tooltip="Maximum diameter between opposing arm tips in mm (auto-populated)",
     ),
     FieldDefinition(
-        name="morph_volume_mm3",
-        display_name="Volume (mm³)",
-        annotation_type=AnnotationType.NUMERIC_FLOAT,
-        group="morphometric_auto",
-        min_value=0.0,
-        max_value=1000000.0,
-        tooltip="Estimated 3D volume in cubic millimeters (auto-populated, requires depth estimation)",
-    ),
-    FieldDefinition(
         name="morph_source_folder",
         display_name="Source mFolder",
         annotation_type=AnnotationType.TEXT_FREE,
@@ -531,7 +522,6 @@ FIELD_GROUPS: List[FieldGroup] = [
             "morph_mean_arm_length_mm",
             "morph_max_arm_length_mm",
             "morph_tip_to_tip_mm",
-            "morph_volume_mm3",
             "morph_source_folder",
         ],
         start_expanded=False,  # Collapsed by default since auto-populated

@@ -360,9 +360,7 @@ class AnalysisAdapter:
         user_notes: str,
         raw_frame: np.ndarray,
         corrected_detection: Dict[str, Any],
-        arm_rotation: int = 0,
-        volume_data: Optional[Dict[str, Any]] = None,
-        depth_arrays: Optional[Dict[str, Any]] = None
+        arm_rotation: int = 0
     ) -> Optional[Path]:
         """
         Save all measurement data to mFolder structure.
@@ -376,8 +374,6 @@ class AnalysisAdapter:
             raw_frame: Original camera frame
             corrected_detection: Corrected detection data from DetectionAdapter
             arm_rotation: Arm rotation offset
-            volume_data: Optional volume estimation data
-            depth_arrays: Optional depth arrays (calibrated_depth, elevation_map, mask)
         
         Returns:
             Path to created mFolder or None on failure
@@ -472,27 +468,8 @@ class AnalysisAdapter:
             morph_data['identity_type'] = identity_type
             morph_data['identity_id'] = identity_id
             
-            if volume_data:
-                morph_data['volume_estimation'] = volume_data
-            
             with open(mfolder / "morphometrics.json", 'w') as f:
                 json.dump(self._convert_numpy_types(morph_data), f, indent=4)
-            
-            # Save depth data files if available
-            if depth_arrays and depth_arrays.get('calibrated_depth') is not None:
-                try:
-                    from depth import save_depth_data
-                    save_depth_data(
-                        str(mfolder),
-                        depth_arrays['calibrated_depth'],
-                        depth_arrays.get('elevation_map'),
-                        volume_data or {},
-                        {},  # calibration_info not needed for file saving
-                        mask=depth_arrays.get('mask')
-                    )
-                    logger.info("Saved depth data files to %s", mfolder)
-                except Exception as e:
-                    logger.warning("Failed to save depth files: %s", e)
             
             logger.info("Saved measurement to %s", mfolder)
             return mfolder
