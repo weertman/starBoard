@@ -73,14 +73,14 @@ def ensure_header(csv_path: Path, header: List[str]) -> None:
     ex_norm = [normalize_key(x) for x in existing]
     want_norm = [normalize_key(x) for x in header]
 
-    # Unknown/extra columns in file?
+    # Legacy/extra columns in file — strip them and rewrite
     extras = [x for x in ex_norm if x and x not in want_norm]
     if extras:
-        raise ValueError(
-            "CSV header contains columns not present in canonical header.\n"
-            f"File: {csv_path}\nExtra columns: {extras}\n"
-            f"Canonical header: {header}"
+        log.warning(
+            "Stripping legacy columns from %s: %s", csv_path, extras
         )
+        _rewrite_with_upgraded_header(csv_path, header, existing)
+        return
 
     # If existing is empty, treat as subset (upgrade)
     if not ex_norm:
