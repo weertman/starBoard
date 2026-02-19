@@ -62,6 +62,29 @@ def warn(msg: str, parent: Optional[QWidget] = None) -> None:
     QMessageBox.warning(parent, "starBoard", msg)
 
 
+UPLOADED_LEDGER = "_starboard_uploaded.csv"
+
+
+def _read_uploaded_ledger(source_dir: Path) -> set:
+    ledger = source_dir / UPLOADED_LEDGER
+    if not ledger.exists():
+        return set()
+    names = set()
+    with ledger.open("r", encoding="utf-8") as f:
+        for line in f:
+            name = line.strip()
+            if name:
+                names.add(name)
+    return names
+
+
+def _append_to_uploaded_ledger(source_dir: Path, filenames: list) -> None:
+    ledger = source_dir / UPLOADED_LEDGER
+    with ledger.open("a", encoding="utf-8") as f:
+        for name in filenames:
+            f.write(name + "\n")
+
+
 def _csv_paths_for_read(target: str) -> List[Path]:
     """
     Get all plausible metadata CSVs to READ from.
@@ -715,6 +738,7 @@ class TabSetup(QWidget):
         self._edit_loaded_once = False
         self._last_edit_id: str = ""
         self._carry_over: Dict[str, str] = {}
+        self._single_upload_source_dir: Optional[Path] = None
         self._ilog = get_interaction_logger()
 
         # Scroll container
@@ -784,8 +808,16 @@ class TabSetup(QWidget):
         self.chk_move = QCheckBox("Move files (instead of copy)")
         self.chk_move.toggled.connect(
             lambda checked: self._ilog.log("checkbox_toggle", "chk_move", value=str(checked)))
+        self.chk_ignore_uploaded = QCheckBox("Ignore already uploaded")
+        self.chk_ignore_uploaded.setToolTip(
+            "Skip files already recorded in the source folder's _starboard_uploaded.csv"
+        )
+        self.chk_ignore_uploaded.setChecked(True)
+        self.chk_ignore_uploaded.toggled.connect(
+            lambda checked: self._ilog.log("checkbox_toggle", "chk_ignore_uploaded", value=str(checked)))
         row0.addWidget(self.btn_choose_files)
         row0.addWidget(self.chk_move)
+        row0.addWidget(self.chk_ignore_uploaded)
         lay.addLayout(row0)
         lay.addWidget(self.list_files)
 
@@ -879,6 +911,20 @@ class TabSetup(QWidget):
         files, _ = QFileDialog.getOpenFileNames(
             self, "Select images", "", "Images (*.jpg *.jpeg *.png *.tif *.tiff *.bmp)"
         )
+
+        if files:
+            self._single_upload_source_dir = Path(files[0]).parent
+        else:
+            self._single_upload_source_dir = None
+
+        if self.chk_ignore_uploaded.isChecked() and files:
+            already = _read_uploaded_ledger(self._single_upload_source_dir)
+            before = len(files)
+            files = [f for f in files if Path(f).name not in already]
+            skipped = before - len(files)
+            if skipped:
+                self._log_single(f"Skipped {skipped} already-uploaded file(s).")
+
         self.list_files.clear()
         for f in files:
             self.list_files.addItem(QListWidgetItem(f))
@@ -985,6 +1031,11 @@ class TabSetup(QWidget):
             self._log_single(f"Saved: {n_ops} files to {root / id_val / enc_name} ({n_renamed} renamed).")
             if report.errors:
                 self._log_single("Errors:\n - " + "\n - ".join(report.errors))
+            if report.ops and self._single_upload_source_dir:
+                _append_to_uploaded_ledger(
+                    self._single_upload_source_dir,
+                    [op.src.name for op in report.ops],
+                )
         else:
             logger.info("Metadata-only save: target=%s id=%s (no images)", target, id_val)
             self._log_single(f"Metadata saved for {target} ID '{id_val}' (no images).")

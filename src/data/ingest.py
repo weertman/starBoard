@@ -75,6 +75,7 @@ def place_images(
     Returns:
         IngestReport with operation details and any errors
     """
+    id_str = (id_str or "").strip()
     report = IngestReport(target_root=target_root, id_str=id_str, encounter_name=encounter_dir_name, ops=[], errors=[])
 
     v = validate_mmddyy_string(encounter_dir_name)

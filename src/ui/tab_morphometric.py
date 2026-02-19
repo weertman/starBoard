@@ -1002,7 +1002,7 @@ class TabMorphometric(QWidget):
         """Get the current ID value."""
         if self.cmb_id.currentIndex() == 0:
             return self.edit_new_id.text().strip()
-        return self.cmb_id.currentText()
+        return self.cmb_id.currentText().strip()
     
     # =========================================================================
     # Analysis Handlers

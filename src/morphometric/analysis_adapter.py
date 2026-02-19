@@ -382,6 +382,8 @@ class AnalysisAdapter:
             logger.error("No morphometric data to save")
             return None
         
+        identity_id = (identity_id or "").strip()
+        
         try:
             root_dir = get_measurements_root()
             

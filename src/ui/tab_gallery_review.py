@@ -25,6 +25,7 @@ from src.ui.query_state_delegate import QueryStateDelegate, apply_quality_to_com
 from src.ui.tab_first_order import _MetadataEditPopup
 from src.ui.tab_setup import _RenameIdDialog
 from src.data.rename_id import rename_id
+from src.data.encounter_info import get_encounter_date_from_path, format_encounter_date
 from src.utils.interaction_logger import get_interaction_logger
 
 
@@ -121,6 +122,13 @@ class TabGalleryReview(QWidget):
         gallery_layout.setContentsMargins(0, 0, 0, 0)
         gallery_layout.setSpacing(4)
 
+        self._gallery_encounter_info = QLabel("")
+        self._gallery_encounter_info.setStyleSheet(
+            "QLabel { color: #e67e22; font-size: 12px; font-weight: bold; padding: 2px 4px; }"
+        )
+        self._gallery_encounter_info.setToolTip("Encounter date for the current image")
+        gallery_layout.addWidget(self._gallery_encounter_info)
+
         self.view_gallery = AnnotatorViewSecond(target="Gallery", title="Gallery")
         gallery_layout.addWidget(self.view_gallery, 1)
 
@@ -168,6 +176,7 @@ class TabGalleryReview(QWidget):
 
         # ---- Signals ----
         self.cmb_gallery.currentIndexChanged.connect(self._on_gallery_changed)
+        self.view_gallery.currentImageChanged.connect(self._update_encounter_info)
 
         # ---- Populate gallery IDs ----
         self._refresh_ids()
@@ -208,6 +217,8 @@ class TabGalleryReview(QWidget):
         # Update image quality panel
         if hasattr(self, 'gallery_quality_panel'):
             self.gallery_quality_panel.load_for_id("Gallery", gid)
+
+        self._update_encounter_info()
 
     def _on_prev_gallery_clicked(self) -> None:
         """Navigate to the previous gallery in the combo box list."""
@@ -380,9 +391,25 @@ class TabGalleryReview(QWidget):
             self.view_gallery.set_files(files)
             if new_idx >= 0 and new_idx < len(files):
                 self.view_gallery.strip.idx = new_idx
-                self.view_gallery.strip._show_current()
+                self.view_gallery.strip._show_current(reset_view=True)
         else:
             self.view_gallery.set_files(files)
+
+        self._update_encounter_info()
+
+    def _update_encounter_info(self, *_) -> None:
+        """Update the encounter date label for the currently displayed image."""
+        try:
+            current_path = self.view_gallery.current_path()
+            gid = self.cmb_gallery.currentText() or ""
+            if not current_path or not gid:
+                self._gallery_encounter_info.setText("")
+                return
+            enc_date = get_encounter_date_from_path(current_path)
+            date_str = format_encounter_date(enc_date) if enc_date else ""
+            self._gallery_encounter_info.setText(date_str)
+        except Exception:
+            self._gallery_encounter_info.setText("")
 
     def _on_edit_metadata_clicked(self) -> None:
         """Open metadata edit popup for the current gallery member."""
