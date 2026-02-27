@@ -255,19 +255,33 @@ pip install -r requirements-dl.txt
 
 ### Step 5: Download Model Weights
 
-**YOLO Segmentation Model:**
-Place `starseg_best.pt` in:
-```
-star_identification/wildlife_reid_inference/starseg_best.pt
+Model weights are hosted on GitHub Releases:
+
+**[Download Models from GitHub Releases](https://github.com/weertman/starBoard/releases/tag/v1.0-models)**
+
+#### Option A: Automatic Download (Recommended)
+
+Run the built-in model downloader, which will check for missing models and download them automatically:
+
+```bash
+python -m src.utils.model_downloader
 ```
 
-**MegaStarID Re-ID Model:**
-Place checkpoint files in:
-```
-star_identification/checkpoints/megastarid/
-```
+The app also checks for missing models on startup and offers to download them.
 
-> Contact the development team or check project releases for model weight downloads.
+#### Option B: Manual Download
+
+Download the following files from the [v1.0-models release](https://github.com/weertman/starBoard/releases/tag/v1.0-models) and place them in the specified locations:
+
+| Download File | Size | Place In |
+|---------------|------|----------|
+| `starseg_best.pt` | 53 MB | `star_identification/wildlife_reid_inference/starseg_best.pt` |
+| `megastarid_default.pth` | 336 MB | `star_identification/checkpoints/default/best.pth` |
+| `megastarid_finetune.pth` | 336 MB | `star_identification/checkpoints/megastarid/finetune/best.pth` |
+| `verification_circleloss.pth` | 623 MB | `star_identification/checkpoints/verification/extended_training/circleloss/nofreeze_inat1_neg0_20260109_050432/best.pth` |
+| `morphometric_yolo.pt` | 20 MB | `starMorphometricTool/models/best.pt` |
+
+> **Note:** At minimum, download `starseg_best.pt` and `megastarid_default.pth` for basic re-identification functionality.
 
 ### Step 6: Verify Installation
 
