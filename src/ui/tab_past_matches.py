@@ -227,14 +227,12 @@ class TabPastMatches(QWidget):
 
     def _export_master(self):
         self._ilog.log("button_click", "btn_export_master", value="clicked")
-        ds = self._ds or build_past_matches_dataset()
-        path = export_past_matches_master_csv(ds)
+        path = export_past_matches_master_csv()
         QMessageBox.information(self, "starBoard", f"Master CSV exported:\n{path}")
 
     def _export_summaries(self):
         self._ilog.log("button_click", "btn_export_summaries", value="clicked")
-        ds = self._ds or build_past_matches_dataset()
-        p_q, p_g, p_t = export_past_matches_summaries_csv(ds)
+        p_q, p_g, p_t = export_past_matches_summaries_csv()
         QMessageBox.information(
             self, "starBoard",
             "Summary CSVs exported:\n"
