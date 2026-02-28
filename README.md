@@ -81,7 +81,7 @@ Sunflower sea stars exhibit several characteristics that make them suitable for 
 | | Short Arm Coding | Position-specific notation for regenerating arms |
 | | Extensible Vocabularies | User-defined color and location terms |
 | | Best Photo Selection | Mark representative images for each individual |
-| **Search & Matching** | First-Order Search | Rank gallery by metadata similarity to query |
+| **Search & Matching** | First-order Search | Rank gallery by metadata similarity to query |
 | | Field-Weighted Scoring | Customize importance of each annotation field |
 | | Visual Similarity | Deep learning-based appearance matching |
 | | Fusion Ranking | Blend metadata and visual scores with adjustable weighting |
@@ -111,10 +111,10 @@ Sunflower sea stars exhibit several characteristics that make them suitable for 
 ```mermaid
 flowchart TB
     subgraph UI [User Interface - PySide6/Qt]
-        MainWindow --> TabSetup[Setup Tab]
+        MainWindow --> TabSetup[Data Entry Tab]
         MainWindow --> TabMorph[Morphometric Tab - Lab]
-        MainWindow --> TabFirst[First-Order Tab]
-        MainWindow --> TabSecond[Second-Order Tab]
+        MainWindow --> TabFirst[First-order Tab]
+        MainWindow --> TabSecond[Second-order Tab]
         MainWindow --> TabPast[Analytics & History Tab]
         MainWindow --> TabDL[Deep Learning Tab]
     end
@@ -192,6 +192,39 @@ flowchart TB
 - **8GB+ RAM** (16GB recommended for deep learning features)
 - **NVIDIA GPU with CUDA** (optional but recommended for deep learning)
 
+### Start Here (10-Minute Setup)
+
+If you want the fastest path to first launch:
+
+```bash
+# Get the code
+git clone https://github.com/weertman/starBoard.git
+cd starBoard
+
+# Create and activate environment
+conda create -n starboard python=3.9 -y
+conda activate starboard
+
+# Install core dependencies
+pip install PySide6 pandas numpy pillow scipy tqdm sentence-transformers
+
+# Optional: install deep learning dependencies
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-dl.txt
+
+# Launch app (startup will prompt automatic model download if missing)
+python main.py
+```
+
+### Step 0: Get the Code
+
+If you have not already downloaded this repository:
+
+```bash
+git clone https://github.com/weertman/starBoard.git
+cd starBoard
+```
+
 ### Step 1: Install Anaconda
 
 If you don't have Anaconda installed:
@@ -255,21 +288,23 @@ pip install -r requirements-dl.txt
 
 ### Step 5: Download Model Weights
 
-Model weights are hosted on GitHub Releases:
+Try the automatic startup download first (recommended).
 
-**[Download Models from GitHub Releases](https://github.com/weertman/starBoard/releases/tag/v1.0-models)**
+When you launch the app in Step 6 (`python main.py`), starBoard checks for missing model weights and prompts you to download them automatically. Most users should stop here and let startup download the required files.
 
-#### Option A: Automatic Download (Recommended)
+#### If automatic startup download does not run
 
-Run the built-in model downloader, which will check for missing models and download them automatically:
+Run the built-in model downloader manually:
 
 ```bash
 python -m src.utils.model_downloader
 ```
 
-The app also checks for missing models on startup and offers to download them.
+#### Manual Download (fallback)
 
-#### Option B: Manual Download
+Model weights are hosted on GitHub Releases:
+
+**[Download Models from GitHub Releases](https://github.com/weertman/starBoard/releases/tag/v1.0-models)**
 
 Download the following files from the [v1.0-models release](https://github.com/weertman/starBoard/releases/tag/v1.0-models) and place them in the specified locations:
 
@@ -312,16 +347,17 @@ starBoard uses a tabbed interface:
 
 | Tab | Purpose | Use Context |
 |-----|---------|-------------|
-| **Setup** | Upload images, create new IDs, edit metadata | Field & Lab |
+| **Data Entry** | Upload images, create new IDs, edit metadata | Field & Lab |
 | **Morphometric** | Measure specimens via calibrated webcam | Laboratory only |
-| **First-Order** | Search gallery by metadata/visual similarity | Field & Lab |
-| **Second-Order** | Detailed side-by-side comparison | Field & Lab |
+| **First-order** | Search gallery by metadata/visual similarity | Field & Lab |
+| **Second-order** | Detailed side-by-side comparison | Field & Lab |
+| **Gallery Review** | Review gallery records and triage candidates | Field & Lab |
 | **Analytics & History** | Review decision history, merge confirmed matches | Field & Lab |
 | **Deep Learning** | Manage models, run precomputation | Field & Lab |
 
 ### 3. Upload Your First Images
 
-1. Go to **Setup** tab
+1. Go to **Data Entry** tab
 2. Select **Single Upload Mode**
 3. Choose target: **Gallery** (known individual) or **Queries** (unknown)
 4. Click **Choose Files** and select images
@@ -331,7 +367,7 @@ starBoard uses a tabbed interface:
 
 ### 4. Annotate Morphological Features
 
-1. Stay in **Setup** tab, switch to **Metadata Edit Mode**
+1. Stay in **Data Entry** tab, switch to **Metadata Edit Mode**
 2. Select the ID you just created
 3. Fill in observable features:
    - **Number of arms** (apparent and total)
@@ -353,7 +389,7 @@ starBoard uses a tabbed interface:
 
 ### 6. Search for Matches
 
-1. Go to **First-Order** tab
+1. Go to **First-order** tab
 2. Select a **Query ID** to search for
 3. Adjust search settings:
    - Check/uncheck annotation fields to include
@@ -365,7 +401,7 @@ starBoard uses a tabbed interface:
 ### 7. Compare and Decide
 
 1. Click **Pin for Compare** on promising candidates
-2. Go to **Second-Order** tab
+2. Go to **Second-order** tab
 3. Select the Query and Gallery IDs to compare
 4. Use synchronized pan/zoom viewers to examine details
 5. Record your decision: **Yes** (match), **No** (different), or **Maybe** (uncertain)
@@ -531,7 +567,7 @@ These fields are automatically populated when measurements are imported from the
 
 ### Search Engine
 
-The First-Order search engine computes similarity scores between a query and all gallery individuals.
+The First-order search engine computes similarity scores between a query and all gallery individuals.
 
 #### Scoring Algorithm
 
@@ -750,7 +786,7 @@ Start with known individuals from previous studies, captive animals, or distinct
 
 1. **Gather reference photos** - Best images of each known individual
 2. **Create consistent IDs** - Use memorable names or systematic codes
-3. **Batch upload** - Use Setup tab's batch mode for efficient import
+3. **Batch upload** - Use Data Entry tab's batch mode for efficient import
 4. **Annotate thoroughly** - Complete all observable fields for best matching
 
 **Recommended minimum per individual:**
@@ -767,7 +803,7 @@ Start with known individuals from previous studies, captive animals, or distinct
 After returning from fieldwork:
 
 1. Transfer images from camera/phone
-2. Open starBoard, go to **Setup** tab
+2. Open starBoard, go to **Data Entry** tab
 3. For each new sighting:
    - Select **Queries** as target (unknown until confirmed)
    - Create new Query ID (e.g., `Q_2024_047`)
@@ -798,7 +834,7 @@ Focus on the most discriminating features first:
 
 #### Step 4: Run Searches
 
-1. Go to **First-Order** tab
+1. Go to **First-order** tab
 2. Select your Query ID
 3. Initial search settings:
    - Enable: arm counts, short arm code, overall color
@@ -809,7 +845,7 @@ Focus on the most discriminating features first:
 
 #### Step 5: Detailed Comparison
 
-1. Go to **Second-Order** tab
+1. Go to **Second-order** tab
 2. For each pinned candidate:
    - Synchronize viewers on same features
    - Compare arm-by-arm
@@ -924,7 +960,7 @@ STARBOARD_LOG_LEVEL=DEBUG python main.py
 
 ### Fields Configuration
 
-Access via **First-Order** tab → **Config** button:
+Access via **First-order** tab -> **Config** button:
 
 | Setting | Description |
 |---------|-------------|
@@ -1103,12 +1139,19 @@ def _build_scorers(self, use_bge: bool) -> None:
 **Symptoms:** Error message when accessing DL features
 
 **Solutions:**
-1. Check checkpoint path exists:
+1. Relaunch the app and allow automatic model download, or run:
+   ```bash
+   python -m src.utils.model_downloader
    ```
-   star_identification/checkpoints/megastarid/best.pth
+2. Check at least one re-ID checkpoint path exists:
+   - `star_identification/checkpoints/default/best.pth`
+   - `star_identification/checkpoints/megastarid/finetune/best.pth`
+3. Check YOLO model path exists:
    ```
-2. Verify PyTorch version compatibility
-3. Check logs for specific error: `archive/starboard.log`
+   star_identification/wildlife_reid_inference/starseg_best.pt
+   ```
+4. Verify PyTorch version compatibility
+5. Check logs for specific error: `archive/starboard.log`
 
 #### "YOLO preprocessor not available"
 
@@ -1196,7 +1239,7 @@ Contributions are welcome! Areas of interest:
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/weertman/starBoard.git
 cd starBoard
 
 # Create development environment
@@ -1204,6 +1247,7 @@ conda create -n starboard-dev python=3.9 -y
 conda activate starboard-dev
 
 # Install all dependencies
+pip install PySide6 pandas numpy pillow scipy tqdm sentence-transformers
 pip install -r requirements-dl.txt
 pip install pytest black flake8
 
@@ -1230,7 +1274,7 @@ If you use starBoard in your research, please cite:
 @software{starboard2024,
   title = {starBoard: Photo-ID and Morphometric Analysis Platform for Sea Star Conservation},
   year = {2024},
-  url = {https://github.com/[repository]}
+  url = {https://github.com/weertman/starBoard}
 }
 ```
 
@@ -1251,9 +1295,12 @@ If you use starBoard in your research, please cite:
 
 ## License
 
-[License information to be added]
+No project-wide license file is currently included at repository root.
+For reuse or redistribution questions, please contact the maintainers.
+
+The morphometric component includes a separate license at `starMorphometricTool/LICENSE`.
 
 ---
 
-*starBoard is developed for sunflower sea star conservation research. For questions or collaborations, please contact the development team.*
+*starBoard is developed for sunflower sea star conservation research. For questions, bug reports, or collaborations, open an issue at https://github.com/weertman/starBoard/issues.*
 
