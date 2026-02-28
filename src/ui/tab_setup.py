@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QCheckBox, QPlainTextEdit, QScrollArea, QSizePolicy,
     QTabWidget, QCompleter, QDialog, QDialogButtonBox,
     QRadioButton, QButtonGroup, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView,
+    QAbstractItemView, QSpinBox,
 )
 
 from src.ui.collapsible import CollapsibleSection  # existing utility for collapsible panels
@@ -35,6 +35,11 @@ from src.data.archive_paths import last_observation_for_all
 from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from src.data.image_index import list_image_files
 from src.data.encounter_info import list_encounters_for_id, get_encounter_date, set_encounter_date
+from src.data.negative_outings import (
+    append_negative_outing,
+    get_negative_outing_locations,
+    read_negative_outings,
+)
 from src.data.archive_merge import (
     scan_external_archive, build_merge_plan, execute_merge,
     MergeItem, MergePlan, MergeReport,
@@ -759,6 +764,7 @@ class TabSetup(QWidget):
 
         # Build inner groups (title-less QGroupBox used for visual framing)
         gb_single = self._build_single_upload_group()   # title-less
+        gb_negative = self._build_negative_outing_group()  # title-less
         gb_batch  = self._build_batch_upload_group()    # title-less
         gb_id_manage = self._build_id_management_group()  # title-less
         gb_edit   = self._build_editing_group()         # title-less
@@ -767,6 +773,8 @@ class TabSetup(QWidget):
         # Wrap each group with an expandable panel (collapsed by default)
         sec_single = CollapsibleSection("Single Upload", start_collapsed=True)
         sec_single.setContent(gb_single)
+        sec_negative = CollapsibleSection("Outing Entry", start_collapsed=True)
+        sec_negative.setContent(gb_negative)
         sec_batch = CollapsibleSection("Batch Upload IDs", start_collapsed=True)
         sec_batch.setContent(gb_batch)
         sec_id_manage = CollapsibleSection("ID Management", start_collapsed=True)
@@ -776,8 +784,8 @@ class TabSetup(QWidget):
         sec_merge = CollapsibleSection("Merge External Archive", start_collapsed=True)
         sec_merge.setContent(gb_merge)
 
-        # Single/Batch/ID Management sections stay compact; Metadata Editing expands to fill space
-        for sec in (sec_single, sec_batch, sec_id_manage):
+        # Outing Entry/Single/Batch/ID Management sections stay compact; Metadata Editing expands to fill space
+        for sec in (sec_negative, sec_single, sec_batch, sec_id_manage):
             sec.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
             lay.addWidget(sec)
         
@@ -1048,6 +1056,179 @@ class TabSetup(QWidget):
         logger.info(msg)
         self.log_single.appendPlainText(msg)
 
+    # -------------------- Negative Outings --------------------
+    def _build_negative_outing_group(self) -> QGroupBox:
+        gb = QGroupBox("")  # title provided by CollapsibleSection
+        lay = QVBoxLayout(gb)
+
+        # Date + location + effort duration
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("Outing date:"))
+        self.date_negative_outing = QDateEdit()
+        self.date_negative_outing.setCalendarPopup(True)
+        self.date_negative_outing.setDate(QDate.currentDate())
+        row1.addWidget(self.date_negative_outing)
+
+        row1.addWidget(QLabel("Location:"))
+        self.cmb_location_negative = QComboBox()
+        self.cmb_location_negative.setEditable(True)
+        self.cmb_location_negative.lineEdit().setPlaceholderText("optional but recommended")
+        row1.addWidget(self.cmb_location_negative, 1)
+
+        row1.addWidget(QLabel("Effort (min):"))
+        self.spin_negative_duration = QSpinBox()
+        self.spin_negative_duration.setRange(0, 1440)
+        self.spin_negative_duration.setSpecialValueText("optional")
+        self.spin_negative_duration.setValue(0)
+        row1.addWidget(self.spin_negative_duration)
+        lay.addLayout(row1)
+
+        # Observer row + action button
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel("Observers:"))
+        self.edit_negative_observers = QLineEdit()
+        self.edit_negative_observers.setPlaceholderText("optional")
+        row2.addWidget(self.edit_negative_observers, 1)
+
+        self.btn_log_negative_outing = QPushButton("Log Outing Entry")
+        self.btn_log_negative_outing.clicked.connect(self._on_log_negative_outing)
+        row2.addWidget(self.btn_log_negative_outing)
+        lay.addLayout(row2)
+
+        # Notes field
+        lay.addWidget(QLabel("Notes:"))
+        self.txt_negative_notes = QPlainTextEdit()
+        self.txt_negative_notes.setPlaceholderText(
+            "Optional context (weather, visibility, dive effort, transect details)."
+        )
+        self.txt_negative_notes.setMaximumHeight(80)
+        lay.addWidget(self.txt_negative_notes)
+
+        # Recent outings table
+        self.tbl_negative_outings = QTableWidget(0, 5)
+        self.tbl_negative_outings.setHorizontalHeaderLabels(
+            ["Date", "Location", "Effort (min)", "Observers", "Notes"]
+        )
+        self.tbl_negative_outings.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tbl_negative_outings.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tbl_negative_outings.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tbl_negative_outings.verticalHeader().setVisible(False)
+        self.tbl_negative_outings.horizontalHeader().setStretchLastSection(True)
+        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tbl_negative_outings.setMinimumHeight(130)
+        lay.addWidget(self.tbl_negative_outings)
+
+        # Log pane
+        self.log_negative_outings = QPlainTextEdit()
+        self.log_negative_outings.setReadOnly(True)
+        self.log_negative_outings.setMaximumHeight(90)
+        lay.addWidget(self.log_negative_outings)
+
+        QTimer.singleShot(120, self._populate_negative_outing_locations)
+        QTimer.singleShot(160, self._refresh_negative_outings_table)
+        return gb
+
+    def _collect_known_locations(self) -> List[str]:
+        locations = set()
+        for target in ["Gallery", "Queries"]:
+            try:
+                csv_paths = ap.metadata_csv_paths_for_read(target)
+                rows = read_rows_multi(csv_paths)
+                for row in rows:
+                    loc = (row.get("location") or "").strip()
+                    if loc:
+                        locations.add(loc)
+            except Exception:
+                pass
+
+        try:
+            locations.update(get_negative_outing_locations())
+        except Exception:
+            pass
+
+        return sorted(locations)
+
+    def _populate_negative_outing_locations(self) -> None:
+        current_text = self.cmb_location_negative.currentText()
+        self.cmb_location_negative.blockSignals(True)
+        self.cmb_location_negative.clear()
+        self.cmb_location_negative.addItems(self._collect_known_locations())
+        self.cmb_location_negative.setCurrentText(current_text)
+        self.cmb_location_negative.blockSignals(False)
+
+    def _refresh_negative_outings_table(self) -> None:
+        outings = read_negative_outings(limit=50)
+        self.tbl_negative_outings.setRowCount(len(outings))
+        for r, outing in enumerate(outings):
+            values = [
+                outing.outing_date.isoformat() if outing.outing_date else "",
+                outing.location,
+                str(outing.duration_minutes) if outing.duration_minutes is not None else "",
+                outing.observers,
+                outing.notes,
+            ]
+            for c, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(value)
+                self.tbl_negative_outings.setItem(r, c, item)
+
+    def _on_log_negative_outing(self) -> None:
+        qd = self.date_negative_outing.date()
+        outing_date = _date(qd.year(), qd.month(), qd.day())
+        location = self.cmb_location_negative.currentText().strip()
+        observers = self.edit_negative_observers.text().strip()
+        notes = self.txt_negative_notes.toPlainText().strip()
+        duration_val = self.spin_negative_duration.value()
+        duration_minutes = duration_val if duration_val > 0 else None
+
+        if not location and not observers and not notes and duration_minutes is None:
+            warn(
+                "Please fill at least one of location, observers, notes, or effort minutes.",
+                self,
+            )
+            return
+
+        append_negative_outing(
+            outing_date=outing_date,
+            location=location,
+            observers=observers,
+            duration_minutes=duration_minutes,
+            notes=notes,
+        )
+
+        self._ilog.log(
+            "button_click",
+            "btn_log_negative_outing",
+            value="saved",
+            context={
+                "outing_date": outing_date.isoformat(),
+                "location": location,
+                "has_observers": bool(observers),
+                "has_notes": bool(notes),
+                "duration_minutes": duration_minutes or 0,
+            },
+        )
+
+        self.edit_negative_observers.clear()
+        self.txt_negative_notes.clear()
+        self.spin_negative_duration.setValue(0)
+        self._refresh_negative_outings_table()
+        self._populate_negative_outing_locations()
+        self._populate_batch_locations()
+
+        msg = f"Logged outing entry for {outing_date.isoformat()}."
+        if location:
+            msg += f" Location: {location}."
+        self._log_negative_outings(msg)
+        info("Outing entry logged.", self)
+
+    def _log_negative_outings(self, msg: str) -> None:
+        logger.info(msg)
+        self.log_negative_outings.appendPlainText(msg)
+
     # -------------------- Batch Upload IDs --------------------
     def _build_batch_upload_group(self) -> QGroupBox:
         gb = QGroupBox("")  # title provided by CollapsibleSection
@@ -1179,23 +1360,11 @@ class TabSetup(QWidget):
         self.lbl_date_warning.setVisible(is_today)
 
     def _populate_batch_locations(self):
-        """Populate location combo with existing locations from metadata."""
-        locations = set()
-        for target in ["Gallery", "Queries"]:
-            try:
-                csv_paths = ap.metadata_csv_paths_for_read(target)
-                rows = read_rows_multi(csv_paths)
-                for row in rows:
-                    loc = row.get('location', '').strip()
-                    if loc:
-                        locations.add(loc)
-            except Exception:
-                pass
-        
+        """Populate batch location combo from known metadata + outing locations."""
         current_text = self.cmb_location_batch.currentText()
         self.cmb_location_batch.blockSignals(True)
         self.cmb_location_batch.clear()
-        self.cmb_location_batch.addItems(sorted(locations))
+        self.cmb_location_batch.addItems(self._collect_known_locations())
         self.cmb_location_batch.setCurrentText(current_text)
         self.cmb_location_batch.blockSignals(False)
 
