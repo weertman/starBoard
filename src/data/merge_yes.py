@@ -10,6 +10,7 @@ import shutil, uuid, json, csv, logging
 from .archive_paths import gallery_root, queries_root, roots_for_read, metadata_csv_paths_for_read
 from .csv_io import normalize_id_value, read_rows_multi, last_row_per_id
 from .id_registry import list_ids, invalidate_id_cache
+from .image_index import invalidate_image_cache
 from .metadata_history import record_merge_import
 from .compare_labels import load_latest_map_for_query
 from .validators import validate_mmddyy_string
@@ -178,6 +179,16 @@ def _remove_silent_batch(query_id: str, batch_id: str) -> None:
                 p.unlink(missing_ok=True)
             except Exception:
                 pass
+
+
+def _mark_gallery_pending_for_dl(gallery_id: str) -> None:
+    """Best-effort mark of a gallery ID as pending for DL precomputation."""
+    try:
+        from src.dl.registry import DLRegistry
+        registry = DLRegistry.load()
+        registry.add_pending_id("Gallery", gallery_id)
+    except Exception as e:
+        log.debug("Could not mark gallery pending for DL (%s): %s", gallery_id, e)
 
 
 # ---------------------------- discovery helpers ----------------------------
@@ -412,6 +423,9 @@ def merge_yeses_for_gallery(gallery_id: str, *, dry_run: bool = False) -> MergeR
         _append_rows(_history_path(gallery_id), hist_rows)
         # Silence flags changed; invalidate ID cache so list_ids(exclude_silent=True) refreshes
         invalidate_id_cache()
+        # Encounter directories changed under Gallery -> invalidate image listing cache.
+        invalidate_image_cache()
+        _mark_gallery_pending_for_dl(gallery_id)
 
     return MergeReport(
         batch_id=batch_id,
@@ -518,6 +532,9 @@ def revert_merge_batch_for_gallery(gallery_id: str, batch_id: str) -> MergeRepor
     _append_rows(_history_path(gallery_id), hist_rows)
     # Silence flags changed (restored); invalidate ID cache
     invalidate_id_cache()
+    # Encounter directories changed under Gallery -> invalidate image listing cache.
+    invalidate_image_cache()
+    _mark_gallery_pending_for_dl(gallery_id)
 
     return MergeReport(
         batch_id=batch_id,

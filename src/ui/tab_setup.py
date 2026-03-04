@@ -735,6 +735,8 @@ class TabSetup(QWidget):
     Setup tab with Single Upload, Batch Upload IDs, and Metadata Editing Mode.
     All content is inside a QScrollArea to remain usable at small sizes.
     """
+    archiveDataChanged = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("TabSetup")
@@ -769,6 +771,7 @@ class TabSetup(QWidget):
         gb_id_manage = self._build_id_management_group()  # title-less
         gb_edit   = self._build_editing_group()         # title-less
         gb_merge  = self._build_archive_merge_group()   # title-less
+        gb_batch_location = self._build_batch_edit_location_group()  # title-less
 
         # Wrap each group with an expandable panel (collapsed by default)
         sec_single = CollapsibleSection("Single Upload", start_collapsed=True)
@@ -783,6 +786,8 @@ class TabSetup(QWidget):
         sec_edit.setContent(gb_edit)
         sec_merge = CollapsibleSection("Merge External Archive", start_collapsed=True)
         sec_merge.setContent(gb_merge)
+        sec_batch_location = CollapsibleSection("Batch Edit Location", start_collapsed=True)
+        sec_batch_location.setContent(gb_batch_location)
 
         # Outing Entry/Single/Batch/ID Management sections stay compact; Metadata Editing expands to fill space
         for sec in (sec_negative, sec_single, sec_batch, sec_id_manage):
@@ -796,6 +801,10 @@ class TabSetup(QWidget):
         # Merge External Archive section stays compact
         sec_merge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         lay.addWidget(sec_merge)
+
+        # Batch Edit Location section stays compact at the bottom
+        sec_batch_location.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        lay.addWidget(sec_batch_location)
 
         scroll.setWidget(content)
         outer.addWidget(scroll)
@@ -1050,6 +1059,8 @@ class TabSetup(QWidget):
 
         # Notify First‑order so it reflects new metadata immediately
         self._notify_first_order_refresh()
+        if not metadata_only:
+            self.archiveDataChanged.emit()
         self._refresh_id_list_single()
 
     def _log_single(self, msg: str):
@@ -1488,6 +1499,7 @@ class TabSetup(QWidget):
         
         # Refresh UI
         self._notify_first_order_refresh()
+        self.archiveDataChanged.emit()
         self._refresh_batch_history()
 
     def _transform_id(self, original_id: str) -> str:
@@ -1643,6 +1655,7 @@ class TabSetup(QWidget):
         info("Batch complete.", self)
         # First‑order refresh: new IDs/rows may be available
         self._notify_first_order_refresh()
+        self.archiveDataChanged.emit()
         # Refresh batch history combo
         self._refresh_batch_history()
 
@@ -1722,6 +1735,7 @@ class TabSetup(QWidget):
         self._log_batch(f"Batch {'purged' if permanent else 'undone'}: {report.files_removed} files removed.")
         self._refresh_batch_history()
         self._notify_first_order_refresh()
+        self.archiveDataChanged.emit()
 
     def _on_redo_batch(self):
         """Show redo confirmation dialog and process."""
@@ -1758,6 +1772,7 @@ class TabSetup(QWidget):
         self._log_batch(f"Batch redone: {report.files_restored} files restored.")
         self._refresh_batch_history()
         self._notify_first_order_refresh()
+        self.archiveDataChanged.emit()
 
     # -------------------- ID Management --------------------
     def _build_id_management_group(self) -> QGroupBox:
@@ -2690,6 +2705,272 @@ class TabSetup(QWidget):
         except Exception as e:
             logger.debug("Error searching measurements directory: %s", e)
         return ""
+
+    # -------------------- Batch Edit Location --------------------
+    def _build_batch_edit_location_group(self) -> QGroupBox:
+        gb = QGroupBox("")  # title provided by CollapsibleSection
+        lay = QVBoxLayout(gb)
+
+        # Target + refresh row
+        top_row = QHBoxLayout()
+        top_row.addWidget(QLabel("Archive:"))
+        self.cmb_target_batch_edit_location = QComboBox()
+        self.cmb_target_batch_edit_location.addItems(["Gallery", "Queries"])
+        self.cmb_target_batch_edit_location.currentIndexChanged.connect(
+            self._on_batch_edit_location_target_changed
+        )
+        top_row.addWidget(self.cmb_target_batch_edit_location)
+
+        self.btn_refresh_batch_edit_location = QPushButton("Refresh")
+        self.btn_refresh_batch_edit_location.clicked.connect(self._refresh_batch_edit_location_table)
+        top_row.addWidget(self.btn_refresh_batch_edit_location)
+        top_row.addStretch(1)
+        lay.addLayout(top_row)
+
+        # Selection helpers
+        sel_row = QHBoxLayout()
+        self.btn_select_all_batch_edit_location = QPushButton("Select all")
+        self.btn_select_all_batch_edit_location.clicked.connect(
+            lambda: self.tbl_batch_edit_location.selectAll()
+        )
+        sel_row.addWidget(self.btn_select_all_batch_edit_location)
+
+        self.btn_clear_batch_edit_location_selection = QPushButton("Clear selection")
+        self.btn_clear_batch_edit_location_selection.clicked.connect(
+            lambda: self.tbl_batch_edit_location.clearSelection()
+        )
+        sel_row.addWidget(self.btn_clear_batch_edit_location_selection)
+        sel_row.addStretch(1)
+
+        self.lbl_batch_edit_location_status = QLabel("0 rows, 0 selected")
+        self.lbl_batch_edit_location_status.setStyleSheet("color: gray; font-style: italic;")
+        sel_row.addWidget(self.lbl_batch_edit_location_status)
+        lay.addLayout(sel_row)
+
+        # Multi-select ID table
+        self.tbl_batch_edit_location = QTableWidget(0, 3)
+        self.tbl_batch_edit_location.setHorizontalHeaderLabels(
+            ["ID", "Last Observation", "Current Location"]
+        )
+        self.tbl_batch_edit_location.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tbl_batch_edit_location.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tbl_batch_edit_location.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tbl_batch_edit_location.verticalHeader().setVisible(False)
+        self.tbl_batch_edit_location.horizontalHeader().setStretchLastSection(True)
+        self.tbl_batch_edit_location.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tbl_batch_edit_location.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tbl_batch_edit_location.setMinimumHeight(170)
+        self.tbl_batch_edit_location.itemSelectionChanged.connect(
+            self._on_batch_edit_location_selection_changed
+        )
+        lay.addWidget(self.tbl_batch_edit_location)
+
+        # New location + apply row
+        apply_row = QHBoxLayout()
+        apply_row.addWidget(QLabel("New location:"))
+        self.cmb_location_batch_edit = QComboBox()
+        self.cmb_location_batch_edit.setEditable(True)
+        self.cmb_location_batch_edit.lineEdit().setPlaceholderText(
+            "applies to all selected IDs"
+        )
+        self.cmb_location_batch_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        apply_row.addWidget(self.cmb_location_batch_edit, 1)
+
+        self.btn_apply_batch_edit_location = QPushButton("Apply to Selected")
+        self.btn_apply_batch_edit_location.setEnabled(False)
+        self.btn_apply_batch_edit_location.clicked.connect(self._on_apply_batch_edit_location)
+        apply_row.addWidget(self.btn_apply_batch_edit_location)
+        lay.addLayout(apply_row)
+
+        # Log pane
+        self.log_batch_edit_location = QPlainTextEdit()
+        self.log_batch_edit_location.setReadOnly(True)
+        self.log_batch_edit_location.setMaximumHeight(90)
+        lay.addWidget(self.log_batch_edit_location)
+
+        QTimer.singleShot(220, self._populate_batch_edit_location_choices)
+        QTimer.singleShot(260, self._refresh_batch_edit_location_table)
+        return gb
+
+    def _populate_batch_edit_location_choices(self) -> None:
+        current_text = self.cmb_location_batch_edit.currentText()
+        self.cmb_location_batch_edit.blockSignals(True)
+        self.cmb_location_batch_edit.clear()
+        self.cmb_location_batch_edit.addItems(self._collect_known_locations())
+        self.cmb_location_batch_edit.setCurrentText(current_text)
+        self.cmb_location_batch_edit.blockSignals(False)
+
+    def _selected_batch_edit_location_ids(self) -> List[str]:
+        selected_rows = sorted({idx.row() for idx in self.tbl_batch_edit_location.selectedIndexes()})
+        selected_ids: List[str] = []
+        for row in selected_rows:
+            item = self.tbl_batch_edit_location.item(row, 0)
+            if item is None:
+                continue
+            id_val = item.text().strip()
+            if id_val:
+                selected_ids.append(id_val)
+        return selected_ids
+
+    def _on_batch_edit_location_target_changed(self) -> None:
+        self._ilog.log(
+            "combo_change",
+            "cmb_target_batch_edit_location",
+            value=self.cmb_target_batch_edit_location.currentText(),
+        )
+        self._refresh_batch_edit_location_table()
+
+    def _on_batch_edit_location_selection_changed(self) -> None:
+        total_rows = self.tbl_batch_edit_location.rowCount()
+        selected_count = len(self._selected_batch_edit_location_ids())
+        self.lbl_batch_edit_location_status.setText(
+            f"{total_rows} rows, {selected_count} selected"
+        )
+        self.btn_apply_batch_edit_location.setEnabled(selected_count > 0)
+
+    def _refresh_batch_edit_location_table(self) -> None:
+        target = self.cmb_target_batch_edit_location.currentText()
+        id_col = ap.id_column_name(target)
+
+        rows = read_rows_multi(_csv_paths_for_read(target))
+        latest_by_id = last_row_per_id(rows, id_col)
+        last_obs_by_id = last_observation_for_all(target)
+        ids = list_ids(target)
+
+        entries: List[Tuple[str, Optional[_date], str]] = []
+        for id_val in ids:
+            key = normalize_id_value(id_val)
+            row = latest_by_id.get(key, {})
+            location = (row.get("location") or "").strip()
+            entries.append((id_val, last_obs_by_id.get(id_val), location))
+
+        entries.sort(
+            key=lambda item: (
+                item[1] is None,
+                -(item[1].toordinal()) if item[1] else 0,
+                item[0].lower(),
+            )
+        )
+
+        self.tbl_batch_edit_location.setRowCount(len(entries))
+        for r, (id_val, last_obs, location) in enumerate(entries):
+            self.tbl_batch_edit_location.setItem(r, 0, QTableWidgetItem(id_val))
+            date_text = last_obs.isoformat() if last_obs else ""
+            date_item = QTableWidgetItem(date_text or "—")
+            date_item.setTextAlignment(Qt.AlignCenter)
+            self.tbl_batch_edit_location.setItem(r, 1, date_item)
+            self.tbl_batch_edit_location.setItem(r, 2, QTableWidgetItem(location))
+
+        self.tbl_batch_edit_location.clearSelection()
+        self._on_batch_edit_location_selection_changed()
+
+    def _on_apply_batch_edit_location(self) -> None:
+        target = self.cmb_target_batch_edit_location.currentText()
+        new_location = self.cmb_location_batch_edit.currentText().strip()
+        selected_ids = self._selected_batch_edit_location_ids()
+
+        if not selected_ids:
+            warn("Please select one or more IDs to edit.", self)
+            return
+        if not new_location:
+            warn("Please enter a location to apply.", self)
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Batch Location Edit",
+            (
+                f"Apply location '{new_location}' to {len(selected_ids)} "
+                f"{target.lower()} ID(s)?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._ilog.log(
+            "button_click",
+            "btn_apply_batch_edit_location",
+            value=target,
+            context={
+                "selected_count": len(selected_ids),
+                "new_location": new_location,
+            },
+        )
+
+        id_col = ap.id_column_name(target)
+        csv_path, header = ap.metadata_csv_for(target)
+        latest_rows = last_row_per_id(read_rows_multi(_csv_paths_for_read(target)), id_col)
+
+        changed_count = 0
+        skipped_count = 0
+        errors: List[str] = []
+
+        for id_val in selected_ids:
+            key = normalize_id_value(id_val)
+            latest_row = latest_rows.get(key, {})
+            row = {col: latest_row.get(col, "") for col in header}
+            row[id_col] = id_val
+
+            old_location = (row.get("location") or "").strip()
+            if old_location == new_location:
+                skipped_count += 1
+                continue
+
+            row["location"] = new_location
+
+            try:
+                old_values = {}
+                if target == "Gallery":
+                    old_values = get_current_metadata_for_gallery(id_val)
+
+                append_row(csv_path, header, row)
+
+                if target == "Gallery":
+                    record_bulk_update(
+                        gallery_id=id_val,
+                        old_values=old_values,
+                        new_values=row,
+                        source=SOURCE_UI,
+                        source_ref="batch_edit_location",
+                    )
+
+                changed_count += 1
+            except Exception as e:
+                errors.append(f"{id_val}: {e}")
+
+        if changed_count:
+            self._notify_first_order_refresh()
+            self.archiveDataChanged.emit()
+            self._refresh_id_list_single()
+            self._refresh_id_manage_combo()
+            self._populate_negative_outing_locations()
+            self._populate_batch_locations()
+            self._populate_batch_edit_location_choices()
+            self._refresh_batch_edit_location_table()
+
+        msg = (
+            f"Batch location edit complete for {target}: "
+            f"updated={changed_count}, skipped={skipped_count}, errors={len(errors)}"
+        )
+        self._log_batch_edit_location(msg)
+        for err in errors[:10]:
+            self._log_batch_edit_location(f"  - {err}")
+
+        if errors:
+            warn(
+                f"Batch update finished with {len(errors)} error(s). See log for details.",
+                self,
+            )
+        elif changed_count:
+            info(f"Updated location for {changed_count} {target.lower()} ID(s).", self)
+        else:
+            info("No changes were needed (locations already matched).", self)
+
+    def _log_batch_edit_location(self, msg: str) -> None:
+        logger.info(msg)
+        self.log_batch_edit_location.appendPlainText(msg)
 
     # -------------------- Archive Merge --------------------
     def _build_archive_merge_group(self) -> QGroupBox:

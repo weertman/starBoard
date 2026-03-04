@@ -96,6 +96,12 @@ class CameraConfigDialog(QDialog):
             self.backend_combo.addItem(name)
         self.backend_combo.currentIndexChanged.connect(self.on_backend_changed)
         settings_layout.addRow("Backend:", self.backend_combo)
+
+        # Codec dropdown (FOURCC)
+        self.codec_combo = QComboBox()
+        for name, _ in OpenCVCamera.get_available_codecs():
+            self.codec_combo.addItem(name)
+        settings_layout.addRow("Codec:", self.codec_combo)
         
         # Resolution dropdown
         self.resolution_combo = QComboBox()
@@ -187,9 +193,15 @@ class CameraConfigDialog(QDialog):
             if self.fps_combo.itemData(i) == int(fps):
                 self.fps_combo.setCurrentIndex(i)
                 break
+
+        # Set codec
+        codec = config.get("codec", "Auto")
+        idx = self.codec_combo.findText(codec)
+        if idx >= 0:
+            self.codec_combo.setCurrentIndex(idx)
         
         # Camera index will be set after refresh
-        self._pending_camera_index = config.get("camera_index", 0)
+        self._pending_camera_index = config.get("device_index", config.get("camera_index", 0))
     
     def refresh_camera_list(self):
         """Refresh the list of available cameras"""
@@ -245,6 +257,7 @@ class CameraConfigDialog(QDialog):
             "provider": "opencv",
             "device_index": camera_index,
             "backend": self.backend_combo.currentText(),
+            "codec": self.codec_combo.currentText(),
             "width": resolution[0],
             "height": resolution[1],
             "fps": fps,
@@ -267,7 +280,8 @@ class CameraConfigDialog(QDialog):
         camera = create_camera(
             "opencv",
             device_index=settings["device_index"],
-            backend_name=settings["backend"]
+            backend_name=settings["backend"],
+            codec=settings["codec"],
         )
         
         if camera and camera.open():
@@ -351,7 +365,8 @@ class CameraConfigDialog(QDialog):
         camera = create_camera(
             "opencv",
             device_index=settings["device_index"],
-            backend_name=settings["backend"]
+            backend_name=settings["backend"],
+            codec=settings["codec"],
         )
         
         if camera and camera.open():

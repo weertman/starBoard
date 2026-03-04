@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import subprocess
+from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 from datetime import date as _date
 
@@ -39,6 +40,7 @@ from .query_state_delegate import (
 )
 from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from src.data.archive_paths import last_observation_for_all
+from src.data.encounter_info import get_encounter_date_from_path, format_encounter_date
 from src.data.csv_io import read_rows_multi, last_row_per_id, append_row
 from src.data.metadata_history import (
     record_bulk_update, get_current_metadata_for_gallery,
@@ -781,6 +783,13 @@ class TabFirstOrder(QWidget):
         self.lbl_fusion = QLabel("50%")
         self.lbl_fusion.setFixedWidth(35)
         controls_row2.addWidget(self.lbl_fusion)
+        self.chk_visual_only_debug = QCheckBox("Visual-only debug")
+        self.chk_visual_only_debug.setToolTip(
+            "Temporary diagnostic mode.\n"
+            "Forces fusion to 100% visual so you can inspect raw visual ranking."
+        )
+        self.chk_visual_only_debug.toggled.connect(self._on_visual_only_debug_toggled)
+        controls_row2.addWidget(self.chk_visual_only_debug)
 
         # ---- Verification controls (P(same) from verification model) ----
         controls_row2.addSpacing(16)
@@ -817,6 +826,7 @@ class TabFirstOrder(QWidget):
         self._visual_available = False
         self._visual_lookup = None
         self._image_lookup = None  # For image-based mode
+        self._fusion_value_before_debug: Optional[int] = None
         # {gallery_id: (local_idx, path)} - both for robustness (try index, fallback to path)
         self._closest_gallery_image: Dict[str, Tuple[int, str]] = {}
         self._init_visual_controls()
@@ -834,6 +844,10 @@ class TabFirstOrder(QWidget):
         controls_row2.addWidget(self.lbl_excluded)
         self.lbl_pinned = QLabel("Pinned: 0")
         controls_row2.addWidget(self.lbl_pinned)
+        self.lbl_post_fusion_hint = QLabel("")
+        self.lbl_post_fusion_hint.setStyleSheet("color: #b26a00;")
+        self.lbl_post_fusion_hint.setVisible(False)
+        controls_row2.addWidget(self.lbl_post_fusion_hint)
         outer.addLayout(controls_row2)
 
         # ------------- Include fields panel (now placed raw; outer scroll wraps both) -------------
@@ -938,6 +952,13 @@ class TabFirstOrder(QWidget):
         self.lbl_query_id = QLabel("—")
         id_row.addWidget(self.lbl_query_id)
         id_row.addSpacing(12)
+        self.lbl_query_encounter = QLabel("")
+        self.lbl_query_encounter.setStyleSheet(
+            "QLabel { color: #e67e22; font-size: 12px; font-weight: bold; }"
+        )
+        self.lbl_query_encounter.setToolTip("Encounter date for the currently displayed query image")
+        id_row.addWidget(self.lbl_query_encounter)
+        id_row.addSpacing(12)
         self.lbl_suggested_match = QLabel("")
         self.lbl_suggested_match.setStyleSheet("color: #1b9e77; font-weight: bold;")
         self.lbl_suggested_match.setToolTip("Top suggested match from evaluation")
@@ -1011,6 +1032,9 @@ class TabFirstOrder(QWidget):
 
         # Keep gallery cards' minimum image height in sync with the Query view
         self.query_strip.pixmapResized.connect(self._on_query_pixmap_resized)
+        self.query_strip.btn_prev.clicked.connect(self._update_query_encounter_info)
+        self.query_strip.btn_next.clicked.connect(self._update_query_encounter_info)
+        self.query_strip.btn_best.clicked.connect(self._update_query_encounter_info)
         QTimer.singleShot(0, self._sync_card_min_height_from_query)  # first sync after layout
 
         qwrap_l.addWidget(self.query_vsplit, 1)
@@ -1194,6 +1218,7 @@ class TabFirstOrder(QWidget):
             # no queries after filter
             self._current_query = ""
             self.lbl_query_id.setText("—")
+            self.lbl_query_encounter.setText("")
             self.query_strip.set_files([])
             self._set_cards([])
 
@@ -1474,6 +1499,7 @@ class TabFirstOrder(QWidget):
         files = list_image_files("Queries", qid) if qid else []
         files = reorder_files_with_best("Queries", qid, files) if qid else files
         self.query_strip.set_files(files)
+        self._update_query_encounter_info()
         # Query changed: make sure gallery cards adhere to this query view's height
         QTimer.singleShot(0, self._sync_card_min_height_from_query)
 
@@ -1519,6 +1545,7 @@ class TabFirstOrder(QWidget):
         save_best_for_id("Queries", qid, self.query_strip.files[idx])
         files = reorder_files_with_best("Queries", qid, list(self.query_strip.files))
         self.query_strip.set_files(files)
+        self._update_query_encounter_info()
 
     def _on_query_quality_saved(self, target: str, id_value: str) -> None:
         """Handle image quality saved for the query.
@@ -1580,6 +1607,7 @@ class TabFirstOrder(QWidget):
     def _refresh_results(self):
         qid = self._current_query
         if not qid:
+            self._set_post_fusion_hint(None, set())
             self._set_cards([])
             return
 
@@ -1758,6 +1786,7 @@ class TabFirstOrder(QWidget):
         # Don't demote the gallery that is the query's own match - it will be promoted instead
         if promote_gid:
             demote_ids.discard(promote_gid)
+        self._set_post_fusion_hint(promote_gid, demote_ids)
 
         kept, demoted, promoted = [], [], []
         for it in results:
@@ -2395,6 +2424,7 @@ class TabFirstOrder(QWidget):
                 self.spin_roll_limit.setEnabled(False)
                 self.slider_fusion.setEnabled(False)
                 self.lbl_fusion.setEnabled(False)
+                self.chk_visual_only_debug.setEnabled(False)
                 return
             
             registry = DLRegistry.load()
@@ -2411,6 +2441,7 @@ class TabFirstOrder(QWidget):
                 self.spin_roll_limit.setEnabled(False)
                 self.slider_fusion.setEnabled(False)
                 self.lbl_fusion.setEnabled(False)
+                self.chk_visual_only_debug.setEnabled(False)
                 return
             
             # Populate model combo
@@ -2443,19 +2474,22 @@ class TabFirstOrder(QWidget):
             self.spin_roll_limit.setEnabled(False)
             self.slider_fusion.setEnabled(False)
             self.lbl_fusion.setEnabled(False)
+            self.chk_visual_only_debug.setEnabled(False)
     
     def _update_visual_widgets_enabled(self):
         """Update visual widget enabled states based on checkbox."""
         on = self.chk_visual.isChecked() and self._visual_available
         is_image_mode = self.cmb_visual_mode.currentData() == "image"
         roll_enabled = on and is_image_mode and self.chk_roll_to_closest.isChecked()
+        debug_locked = self.chk_visual_only_debug.isChecked()
         self.cmb_model.setEnabled(on and self.cmb_model.count() > 1)
         self.cmb_visual_mode.setEnabled(on)
         self.btn_refresh_visual.setEnabled(on and is_image_mode)
         self.chk_roll_to_closest.setEnabled(on and is_image_mode)
         self.spin_roll_limit.setEnabled(roll_enabled)
-        self.slider_fusion.setEnabled(on)
+        self.slider_fusion.setEnabled(on and not debug_locked)
         self.lbl_fusion.setEnabled(on)
+        self.chk_visual_only_debug.setEnabled(on)
     
     def _on_visual_toggled(self, checked: bool):
         """Handle visual checkbox toggle."""
@@ -2479,6 +2513,47 @@ class TabFirstOrder(QWidget):
         self.lbl_fusion.setText(f"{value}%")
         if self.chk_visual.isChecked():
             self._refresh_results()
+
+    def _on_visual_only_debug_toggled(self, checked: bool):
+        """Temporarily force visual-only ranking for diagnostics."""
+        self._ilog.log("checkbox_toggle", "chk_visual_only_debug", value=str(checked))
+        if checked:
+            self._fusion_value_before_debug = self.slider_fusion.value()
+            self.slider_fusion.blockSignals(True)
+            self.slider_fusion.setValue(100)
+            self.slider_fusion.blockSignals(False)
+            self.lbl_fusion.setText("100%")
+        else:
+            restore = self._fusion_value_before_debug if self._fusion_value_before_debug is not None else 50
+            self._fusion_value_before_debug = None
+            self.slider_fusion.blockSignals(True)
+            self.slider_fusion.setValue(int(restore))
+            self.slider_fusion.blockSignals(False)
+            self.lbl_fusion.setText(f"{int(restore)}%")
+        self._update_visual_widgets_enabled()
+        if self.chk_visual.isChecked():
+            self._refresh_results()
+
+    def _set_post_fusion_hint(self, promote_gid: Optional[str], demote_ids: Set[str]) -> None:
+        """Show when post-score reorder rules are affecting visible rank order."""
+        if not hasattr(self, "lbl_post_fusion_hint"):
+            return
+        parts: List[str] = []
+        if promote_gid:
+            parts.append(f"promoted YES: {promote_gid}")
+        if demote_ids:
+            parts.append(f"demoted same-day YES: {len(demote_ids)}")
+        if parts:
+            self.lbl_post_fusion_hint.setText("Post-score reorder active (" + "; ".join(parts) + ")")
+            self.lbl_post_fusion_hint.setToolTip(
+                "Final order includes score fusion plus rule-based reorder "
+                "(same-day demotion and/or explicit YES promotion)."
+            )
+            self.lbl_post_fusion_hint.setVisible(True)
+        else:
+            self.lbl_post_fusion_hint.setText("")
+            self.lbl_post_fusion_hint.setToolTip("")
+            self.lbl_post_fusion_hint.setVisible(False)
     
     def _load_visual_lookup(self):
         """Load the similarity lookup for the selected model."""
@@ -2537,11 +2612,16 @@ class TabFirstOrder(QWidget):
         # Get current query image path
         current_image_path = self._get_current_query_image_path()
         if not current_image_path:
-            return {}
+            # No current image available; degrade to centroid ranking by identity ID.
+            return self._get_centroid_scores(self._current_query) if self._current_query else {}
         
         # Get ranked gallery by best-match to current image
         # Returns: List[Tuple[gallery_id, best_score, best_gallery_image_path, local_idx]]
         ranked = self._image_lookup.rank_gallery_by_query_image(current_image_path)
+        if not ranked:
+            # If the current image is not in the precomputed image index (e.g., image replaced
+            # after precompute), fall back to centroid scores so recommendations are still shown.
+            return self._get_centroid_scores(self._current_query) if self._current_query else {}
         
         # Build score dict and closest image mapping (both index and path for robustness)
         scores: Dict[str, float] = {}
@@ -2564,6 +2644,20 @@ class TabFirstOrder(QWidget):
             pass
         
         return None
+
+    def _update_query_encounter_info(self, *_) -> None:
+        """Update query encounter date label from the current query image path."""
+        try:
+            current_image_path = self._get_current_query_image_path()
+            if not current_image_path:
+                self.lbl_query_encounter.setText("")
+                return
+
+            enc_date = get_encounter_date_from_path(Path(current_image_path))
+            date_str = format_encounter_date(enc_date) if enc_date else ""
+            self.lbl_query_encounter.setText(date_str)
+        except Exception:
+            self.lbl_query_encounter.setText("")
     
     def _on_visual_mode_changed(self, index: int):
         """Handle visual mode selection change."""

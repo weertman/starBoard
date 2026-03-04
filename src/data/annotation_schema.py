@@ -334,14 +334,15 @@ FIELD_DEFINITIONS: List[FieldDefinition] = [
         tooltip="Quality of the star's posture for re-identification purposes",
     ),
 
-    # --- Group 5: Text Annotations ---
+    # --- Group 5a: Location ---
     FieldDefinition(
         name="location",
         display_name="Location",
         annotation_type=AnnotationType.TEXT_HISTORY,
-        group="notes",
+        group="location",
         tooltip="Written description of the star's location",
     ),
+    # --- Group 5b: Text Annotations ---
     FieldDefinition(
         name="unusual_observation",
         display_name="Unusual observation",
@@ -440,6 +441,12 @@ FIELD_BY_NAME = {f.name: f for f in FIELD_DEFINITIONS}
 
 FIELD_GROUPS: List[FieldGroup] = [
     FieldGroup(
+        name="location",
+        display_name="Location",
+        fields=["location"],
+        start_expanded=True,
+    ),
+    FieldGroup(
         name="numeric",
         display_name="Numeric Measurements",
         fields=["num_apparent_arms", "num_total_arms", "tip_to_tip_size_cm"],
@@ -507,8 +514,8 @@ FIELD_GROUPS: List[FieldGroup] = [
     ),
     FieldGroup(
         name="notes",
-        display_name="Notes & Location",
-        fields=["location", "unusual_observation", "health_observation"],
+        display_name="Notes",
+        fields=["unusual_observation", "health_observation"],
         start_expanded=True,
     ),
     FieldGroup(

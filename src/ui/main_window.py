@@ -73,6 +73,12 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         
+        # Refresh DL pending/index state when setup mutates archive data.
+        try:
+            t_setup.archiveDataChanged.connect(t_dl._refresh_all)
+        except Exception:
+            pass
+        
         # Wire DL verification precompute completion to refresh First-order verification controls
         try:
             t_dl.verificationPrecomputeCompleted.connect(t_first.refresh_verification_state)
@@ -137,6 +143,7 @@ class MainWindow(QMainWindow):
         # Track tab changes for interaction logging
         self._tabs = tabs
         self._interaction_logger = get_interaction_logger()
+        self._t_dl = t_dl
         tabs.currentChanged.connect(self._on_tab_changed)
         # Set initial tab context
         self._on_tab_changed(tabs.currentIndex())
@@ -149,6 +156,12 @@ class MainWindow(QMainWindow):
         """Handle tab change - update interaction logger context."""
         tab_name = self._tabs.tabText(index) if index >= 0 else ""
         self._interaction_logger.set_current_tab(tab_name)
+        # Ensure DL tab reflects latest pending IDs when opened.
+        if tab_name == "Deep Learning":
+            try:
+                self._t_dl._refresh_all()
+            except Exception:
+                pass
         self._interaction_logger.log(
             "tab_switch",
             "main_tabs",

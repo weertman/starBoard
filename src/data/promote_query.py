@@ -224,6 +224,12 @@ def promote_query_to_gallery(
     # Invalidate caches
     invalidate_id_cache()
     invalidate_image_cache()
+    try:
+        from src.dl.registry import DLRegistry
+        registry = DLRegistry.load()
+        registry.add_pending_id("Gallery", gallery_id)
+    except Exception as e:
+        log.debug("Could not mark promoted gallery pending for DL (%s): %s", gallery_id, e)
     
     success = num_encounter_dirs > 0 and len(errors) == 0
     

@@ -7,6 +7,7 @@ Structure mirrors archive/gallery and archive/queries but with preprocessed imag
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import shutil
@@ -45,9 +46,15 @@ def get_cached_image_path(target: str, id_str: str, original_path: Path) -> Path
         Path where the cached image should be stored
     """
     cache_dir = CACHE_ROOT / target.lower() / id_str
-    # Use same filename but always save as PNG for consistency
+    # Deterministic source token keeps duplicate stems (across encounters) distinct.
+    try:
+        source_key = str(original_path.resolve())
+    except Exception:
+        source_key = str(original_path)
+    token = hashlib.sha1(source_key.encode("utf-8")).hexdigest()[:12]
+    # Keep original stem so similarity lookup can still map by filename stem.
     cached_name = original_path.stem + ".png"
-    return cache_dir / cached_name
+    return cache_dir / token / cached_name
 
 
 def is_cached(target: str, id_str: str, original_path: Path) -> bool:
@@ -71,7 +78,52 @@ def get_cached_images(target: str, id_str: str) -> List[Path]:
     if not cache_dir.exists():
         return []
     
-    return sorted(cache_dir.glob("*.png"))
+    return sorted(p for p in cache_dir.rglob("*.png") if p.is_file())
+
+
+def sync_identity_cache(
+    target: str,
+    id_str: str,
+    *,
+    remove_stale: bool = True,
+) -> Tuple[int, int, int]:
+    """
+    Sync one identity cache against current archive files.
+
+    Returns:
+        (live_count, cached_count_after_sync, stale_removed_count)
+    """
+    original_images = list_image_files(target, id_str)
+    expected = {get_cached_image_path(target, id_str, p) for p in original_images}
+    live_count = len(expected)
+
+    cache_dir = CACHE_ROOT / target.lower() / id_str
+    if not cache_dir.exists():
+        return live_count, 0, 0
+
+    cached_paths = [p for p in cache_dir.rglob("*.png") if p.is_file()]
+    removed = 0
+
+    if remove_stale:
+        for p in cached_paths:
+            if p not in expected:
+                try:
+                    p.unlink()
+                    removed += 1
+                except Exception as e:
+                    log.warning("Failed removing stale cache file %s: %s", p, e)
+
+        # Remove empty hashed subfolders after pruning stale files.
+        for d in sorted([p for p in cache_dir.rglob("*") if p.is_dir()], key=lambda p: len(p.parts), reverse=True):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
+            except Exception as e:
+                log.debug("Failed pruning empty cache dir %s: %s", d, e)
+
+    cached_after = len([p for p in cache_dir.rglob("*.png") if p.is_file()])
+    return live_count, cached_after, removed
 
 
 def get_cache_status() -> Dict[str, any]:
@@ -261,7 +313,7 @@ class CacheBuilder:
             progress_callback: Callable(message, current, total)
             
         Returns:
-            (total_cached, total_failed, total_skipped)
+            (total_cached, total_failed, total_stale_removed)
         """
         gallery_ids = list_ids("Gallery") if include_gallery else []
         query_ids = list_ids("Queries") if include_queries else []
@@ -271,16 +323,24 @@ class CacheBuilder:
         
         total_cached = 0
         total_failed = 0
-        total_skipped = 0
+        total_stale_removed = 0
         
         # Process gallery
         for gid in gallery_ids:
             if self._cancelled:
-                return total_cached, total_failed, total_skipped
+                return total_cached, total_failed, total_stale_removed
             
             current += 1
             if progress_callback:
                 progress_callback(f"Caching Gallery: {gid}", current, total_ids)
+
+            live_n, cached_n, stale_removed = sync_identity_cache("Gallery", gid)
+            if stale_removed > 0:
+                total_stale_removed += stale_removed
+                log.info(
+                    "Pruned stale cache files target=Gallery id=%s removed=%d live=%d cached_after=%d",
+                    gid, stale_removed, live_n, cached_n
+                )
             
             cached, failed = build_cache_for_identity(
                 "Gallery", gid, self.yolo_preprocessor, force
@@ -291,11 +351,19 @@ class CacheBuilder:
         # Process queries
         for qid in query_ids:
             if self._cancelled:
-                return total_cached, total_failed, total_skipped
+                return total_cached, total_failed, total_stale_removed
             
             current += 1
             if progress_callback:
                 progress_callback(f"Caching Queries: {qid}", current, total_ids)
+
+            live_n, cached_n, stale_removed = sync_identity_cache("Queries", qid)
+            if stale_removed > 0:
+                total_stale_removed += stale_removed
+                log.info(
+                    "Pruned stale cache files target=Queries id=%s removed=%d live=%d cached_after=%d",
+                    qid, stale_removed, live_n, cached_n
+                )
             
             cached, failed = build_cache_for_identity(
                 "Queries", qid, self.yolo_preprocessor, force
@@ -303,9 +371,12 @@ class CacheBuilder:
             total_cached += cached
             total_failed += failed
         
-        log.info("Cache build complete: %d cached, %d failed", total_cached, total_failed)
+        log.info(
+            "Cache build complete: %d cached, %d failed, %d stale_removed",
+            total_cached, total_failed, total_stale_removed
+        )
         
-        return total_cached, total_failed, total_skipped
+        return total_cached, total_failed, total_stale_removed
     
     def ensure_cached(self, target: str, id_str: str) -> List[Path]:
         """

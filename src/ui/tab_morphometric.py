@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QScrollArea,
     QLabel, QPushButton, QLineEdit, QComboBox, QDateEdit,
     QFormLayout, QSlider, QTextEdit, QMessageBox, QGroupBox,
-    QSizePolicy, QCompleter, QFrame,
+    QSizePolicy, QCompleter, QFrame, QDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 
 import numpy as np
@@ -43,6 +44,7 @@ from src.data.metadata_history import (
 )
 from src.data.ingest import ensure_encounter_name, place_images
 from src.utils.interaction_logger import get_interaction_logger
+from src.morphometric.data_bridge import list_mfolders, load_morphometrics_from_mfolder
 
 logger = logging.getLogger("starBoard.ui.tab_morphometric")
 
@@ -259,10 +261,15 @@ class TabMorphometric(QWidget):
         self._analysis_adapter = None
         self._stream_active = False
         self._yolo_active = False
+        self._camera_config_prompted = False
         self._last_frame = None
         self._captured_frame = None  # Frame captured during detection (frozen)
         self._corrected_detection = None
         self._current_mfolder = None
+        self._edit_mfolder: Optional[Path] = None
+        self._measurement_rows: List[Dict[str, Any]] = []
+        self._filtered_measurement_rows: List[Dict[str, Any]] = []
+        self._loading_measurement = False
         
         # Visualization state
         self._corrected_object_rgb: Optional[np.ndarray] = None
@@ -298,13 +305,10 @@ class TabMorphometric(QWidget):
             # Initialize camera
             if self._camera_adapter.initialize():
                 self._update_camera_status(True)
-                # Pass camera info to detection adapter for calibration fingerprinting
-                if hasattr(self._detection_adapter, 'set_camera_info'):
-                    config = self._camera_adapter.config or {}
-                    device_info = self._camera_adapter.get_device_info() if hasattr(self._camera_adapter, 'get_device_info') else {}
-                    self._detection_adapter.set_camera_info(config, device_info)
+                self._sync_detection_camera_info()
             else:
                 self._update_camera_status(False)
+                self._prompt_configure_camera_once()
             
             # Load YOLO model
             if self._detection_adapter.load_yolo_model():
@@ -385,6 +389,11 @@ class TabMorphometric(QWidget):
         sec_archive = CollapsibleSection("Archive Selection", start_collapsed=False)
         sec_archive.setContent(self._build_archive_selection())
         layout.addWidget(sec_archive)
+
+        # Saved Measurements Section
+        sec_saved = CollapsibleSection("Saved Measurements", start_collapsed=True)
+        sec_saved.setContent(self._build_saved_measurements())
+        layout.addWidget(sec_saved)
         
         # Metadata Form Section
         sec_metadata = CollapsibleSection("Metadata", start_collapsed=False)
@@ -420,6 +429,11 @@ class TabMorphometric(QWidget):
         self.lbl_camera_status.setStyleSheet("color: orange; font-size: 10px;")
         status_row.addWidget(self.lbl_camera_status)
         status_row.addStretch()
+        self.btn_config_camera = QPushButton("Configure Camera")
+        self.btn_config_camera.setToolTip("Choose camera device, backend, codec, and resolution")
+        self.btn_config_camera.clicked.connect(self._on_configure_camera)
+        self.btn_config_camera.setEnabled(False)
+        status_row.addWidget(self.btn_config_camera)
         layout.addLayout(status_row)
         
         # Checkerboard config - editable combo boxes with presets
@@ -562,6 +576,307 @@ class TabMorphometric(QWidget):
         layout.addLayout(btn_row)
         
         return widget
+
+    def _build_saved_measurements(self) -> QWidget:
+        """Build saved-measurement browser widgets."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        search_row = QHBoxLayout()
+        search_row.setSpacing(4)
+        self.edit_measurement_search = QLineEdit()
+        self.edit_measurement_search.setPlaceholderText("Search ID, location, folder...")
+        self.edit_measurement_search.textChanged.connect(self._apply_saved_measurement_filter)
+        search_row.addWidget(self.edit_measurement_search, 1)
+
+        self.cmb_measurement_filter = QComboBox()
+        self.cmb_measurement_filter.addItems(["All", "Gallery", "Query"])
+        self.cmb_measurement_filter.currentIndexChanged.connect(self._apply_saved_measurement_filter)
+        search_row.addWidget(self.cmb_measurement_filter)
+        layout.addLayout(search_row)
+
+        self.tbl_measurements = QTableWidget(0, 4)
+        self.tbl_measurements.setHorizontalHeaderLabels(["Date", "ID", "Location", "Folder"])
+        self.tbl_measurements.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tbl_measurements.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tbl_measurements.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tbl_measurements.setAlternatingRowColors(True)
+        self.tbl_measurements.verticalHeader().setVisible(False)
+        header = self.tbl_measurements.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.tbl_measurements.doubleClicked.connect(self._open_selected_measurement)
+        layout.addWidget(self.tbl_measurements)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(4)
+        self.btn_refresh_measurements = QPushButton("Refresh")
+        self.btn_refresh_measurements.clicked.connect(self._refresh_saved_measurements)
+        btn_row.addWidget(self.btn_refresh_measurements)
+
+        self.btn_open_measurement = QPushButton("Open Selected")
+        self.btn_open_measurement.clicked.connect(self._open_selected_measurement)
+        btn_row.addWidget(self.btn_open_measurement)
+        layout.addLayout(btn_row)
+
+        self.lbl_measurement_status = QLabel("Not editing a historical measurement.")
+        self.lbl_measurement_status.setWordWrap(True)
+        self.lbl_measurement_status.setStyleSheet("color: #999; font-size: 10px;")
+        layout.addWidget(self.lbl_measurement_status)
+
+        self._refresh_saved_measurements()
+        return widget
+
+    def _refresh_saved_measurements(self):
+        """Refresh the saved-measurements cache from disk."""
+        self._measurement_rows = []
+        try:
+            from src.morphometric import get_measurements_root
+            for mfolder in list_mfolders(get_measurements_root()):
+                row = self._build_measurement_row(mfolder)
+                if row:
+                    self._measurement_rows.append(row)
+        except Exception as e:
+            logger.warning("Failed to refresh saved measurements: %s", e)
+        self._apply_saved_measurement_filter()
+
+    def _build_measurement_row(self, mfolder: Path) -> Optional[Dict[str, Any]]:
+        """Build one row for the saved-measurements table."""
+        try:
+            identity_type = mfolder.parents[2].name.lower()
+            identity_id = mfolder.parents[1].name
+            date_label = mfolder.parents[0].name
+        except IndexError:
+            return None
+
+        morph_data = load_morphometrics_from_mfolder(mfolder) or {}
+        location = str(morph_data.get("location", "")).strip()
+        if not location:
+            detection_path = mfolder / "corrected_detection.json"
+            if detection_path.exists():
+                try:
+                    with detection_path.open("r", encoding="utf-8") as f:
+                        detection_data = json.load(f)
+                    location = str(detection_data.get("location", "")).strip()
+                except Exception:
+                    location = ""
+
+        return {
+            "mfolder": mfolder,
+            "identity_type": identity_type,
+            "identity_id": identity_id,
+            "date_label": date_label,
+            "location": location,
+            "folder_name": mfolder.name,
+            "identity_label": f"{identity_type.title()}:{identity_id}",
+        }
+
+    def _apply_saved_measurement_filter(self):
+        """Apply target/search filter to saved measurements."""
+        if not hasattr(self, "tbl_measurements"):
+            return
+
+        query = self.edit_measurement_search.text().strip().lower()
+        scope_text = self.cmb_measurement_filter.currentText().strip().lower()
+        scope = None if scope_text == "all" else scope_text
+
+        filtered: List[Dict[str, Any]] = []
+        for row in self._measurement_rows:
+            if scope and row["identity_type"] != scope:
+                continue
+            haystack = " ".join([
+                row.get("identity_id", ""),
+                row.get("identity_label", ""),
+                row.get("location", ""),
+                row.get("folder_name", ""),
+                row.get("date_label", ""),
+            ]).lower()
+            if query and query not in haystack:
+                continue
+            filtered.append(row)
+
+        self._filtered_measurement_rows = filtered
+        self.tbl_measurements.setRowCount(len(filtered))
+
+        for r, row in enumerate(filtered):
+            values = [
+                row["date_label"],
+                row["identity_label"],
+                row["location"],
+                row["folder_name"],
+            ]
+            for c, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if c == 0:
+                    item.setData(Qt.UserRole, str(row["mfolder"]))
+                self.tbl_measurements.setItem(r, c, item)
+
+        self.btn_open_measurement.setEnabled(len(filtered) > 0)
+        if filtered:
+            self.tbl_measurements.selectRow(0)
+
+    def _selected_saved_measurement(self) -> Optional[Dict[str, Any]]:
+        """Return selected saved-measurement row metadata."""
+        if not hasattr(self, "tbl_measurements"):
+            return None
+        selection_model = self.tbl_measurements.selectionModel()
+        if selection_model is None:
+            return None
+        selected = selection_model.selectedRows()
+        if not selected:
+            return None
+        row_index = selected[0].row()
+        if row_index < 0 or row_index >= len(self._filtered_measurement_rows):
+            return None
+        return self._filtered_measurement_rows[row_index]
+
+    def _open_selected_measurement(self, *_args):
+        """Open selected historical measurement into active analysis state."""
+        selected = self._selected_saved_measurement()
+        if not selected:
+            QMessageBox.information(self, "Open Measurement", "Select a saved measurement first.")
+            return
+        self._load_measurement_folder(selected["mfolder"])
+
+    def _set_edit_context(self, mfolder: Optional[Path]):
+        """Set or clear edit context for historical measurement mode."""
+        self._edit_mfolder = mfolder
+        if mfolder is None:
+            self.lbl_measurement_status.setText("Not editing a historical measurement.")
+            self.lbl_measurement_status.setStyleSheet("color: #999; font-size: 10px;")
+            self.btn_save.setText("Save to starBoard")
+            return
+
+        self.lbl_measurement_status.setText(f"Editing historical measurement:\n{mfolder}")
+        self.lbl_measurement_status.setStyleSheet("color: #2e7d32; font-size: 10px;")
+        self.btn_save.setText("Resave to starBoard")
+
+    def _clear_edit_context(self):
+        """Exit historical edit context safely."""
+        if self._edit_mfolder is None:
+            return
+        self._set_edit_context(None)
+
+    def _set_corrected_object_rgb(self, corrected_object: Optional[np.ndarray]):
+        """Normalize corrected-object image to RGB visualization buffer."""
+        if corrected_object is None:
+            self._corrected_object_rgb = None
+            return
+        if len(corrected_object.shape) == 2:
+            self._corrected_object_rgb = cv2.cvtColor(corrected_object, cv2.COLOR_GRAY2RGB)
+        elif corrected_object.shape[2] == 4:
+            self._corrected_object_rgb = cv2.cvtColor(corrected_object, cv2.COLOR_BGRA2RGB)
+        else:
+            self._corrected_object_rgb = cv2.cvtColor(corrected_object, cv2.COLOR_BGR2RGB)
+
+    def _load_measurement_folder(self, mfolder: Path):
+        """Load saved measurement files into current tab analysis pipeline."""
+        mfolder = Path(mfolder)
+        if not mfolder.exists():
+            QMessageBox.warning(self, "Open Measurement", f"Folder not found:\n{mfolder}")
+            return
+
+        required_paths = [
+            mfolder / "corrected_detection.json",
+            mfolder / "corrected_mask.png",
+            mfolder / "corrected_object.png",
+            mfolder / "morphometrics.json",
+        ]
+        missing = [p.name for p in required_paths if not p.exists()]
+        if missing:
+            QMessageBox.warning(
+                self,
+                "Open Measurement",
+                "Selected folder is missing required files:\n" + "\n".join(missing),
+            )
+            return
+
+        try:
+            with (mfolder / "corrected_detection.json").open("r", encoding="utf-8") as f:
+                detection_data = json.load(f)
+            morph_data = load_morphometrics_from_mfolder(mfolder) or {}
+
+            corrected_mask = cv2.imread(str(mfolder / "corrected_mask.png"), cv2.IMREAD_GRAYSCALE)
+            corrected_object = cv2.imread(str(mfolder / "corrected_object.png"), cv2.IMREAD_UNCHANGED)
+            raw_frame = cv2.imread(str(mfolder / "raw_frame.png"), cv2.IMREAD_COLOR)
+
+            if corrected_mask is None or corrected_object is None:
+                QMessageBox.warning(self, "Open Measurement", "Failed to read corrected images from folder.")
+                return
+
+            corrected_detection = dict(detection_data)
+            corrected_detection["corrected_mask"] = (corrected_mask > 0).astype(np.uint8)
+            corrected_detection["corrected_object"] = corrected_object
+            corrected_detection["mm_per_pixel"] = float(corrected_detection.get("mm_per_pixel", 1.0) or 1.0)
+
+            self._corrected_detection = corrected_detection
+            self._captured_frame = raw_frame
+            self._current_mfolder = mfolder
+            self._set_corrected_object_rgb(corrected_object)
+            self._display_result_fallback()
+
+            identity_type = str(
+                morph_data.get("identity_type")
+                or detection_data.get("identity_type")
+                or mfolder.parents[2].name
+            ).lower()
+            identity_id = str(
+                morph_data.get("identity_id")
+                or detection_data.get("identity_id")
+                or mfolder.parents[1].name
+            ).strip()
+
+            self._loading_measurement = True
+            try:
+                self.cmb_target.setCurrentText("Gallery" if identity_type == "gallery" else "Queries")
+                idx = self.cmb_id.findText(identity_id)
+                if idx >= 0:
+                    self.cmb_id.setCurrentIndex(idx)
+                else:
+                    self.cmb_id.setCurrentIndex(0)
+                    self.edit_new_id.setText(identity_id)
+                    self.meta_form.set_id_value(identity_id)
+
+                loaded_location = str(
+                    morph_data.get("location") or detection_data.get("location") or ""
+                ).strip()
+                if loaded_location:
+                    self.meta_form.apply_values({"location": loaded_location})
+
+                initials = str(morph_data.get("user_initials", "")).strip().upper()
+                if initials:
+                    self.cmb_initials.setCurrentText(initials)
+
+                date_text = mfolder.parents[0].name
+                date_val = QDate.fromString(date_text, "MM_dd_yyyy")
+                if date_val.isValid():
+                    self.date_encounter.setDate(date_val)
+            finally:
+                self._loading_measurement = False
+
+            self._on_analyze()
+            if self._arm_data is None:
+                return
+
+            saved_rotation = int(morph_data.get("arm_rotation", 0) or 0)
+            self.slider_rotation.setValue(max(0, min(saved_rotation, self.slider_rotation.maximum())))
+
+            self._set_edit_context(mfolder)
+            self.btn_save.setEnabled(True)
+
+            QMessageBox.information(
+                self,
+                "Measurement Loaded",
+                "Historical measurement loaded.\n"
+                "You can now edit arm peaks/rotation and resave in place.",
+            )
+        except Exception as e:
+            logger.exception("Failed to load historical measurement %s: %s", mfolder, e)
+            QMessageBox.critical(self, "Open Measurement", f"Failed to load measurement:\n{e}")
     
     def _build_analysis_controls(self) -> QWidget:
         """Build analysis control widgets."""
@@ -714,9 +1029,40 @@ class TabMorphometric(QWidget):
     # =========================================================================
     # Camera Control Handlers
     # =========================================================================
+
+    def _sync_detection_camera_info(self) -> None:
+        """Pass camera config/device info to detection adapter for calibration identity."""
+        if self._camera_adapter is None or self._detection_adapter is None:
+            return
+        try:
+            if hasattr(self._detection_adapter, "set_camera_info"):
+                config = self._camera_adapter.config or {}
+                device_info = (
+                    self._camera_adapter.get_device_info()
+                    if hasattr(self._camera_adapter, "get_device_info")
+                    else {}
+                )
+                self._detection_adapter.set_camera_info(config, device_info)
+        except Exception as e:
+            logger.debug("Unable to sync camera info to detection adapter: %s", e)
+
+    def _prompt_configure_camera_once(self) -> None:
+        """Show a one-time guidance prompt when auto-detection fails."""
+        if self._camera_config_prompted:
+            return
+        self._camera_config_prompted = True
+        QMessageBox.information(
+            self,
+            "Camera Not Detected",
+            "No camera was auto-detected.\n\n"
+            "Click 'Configure Camera' to select a device and capture settings.",
+        )
     
     def _update_camera_status(self, available: bool):
         """Update camera status indicator."""
+        if hasattr(self, "btn_config_camera"):
+            self.btn_config_camera.setEnabled(self._camera_adapter is not None)
+
         if available:
             self.lbl_camera_status.setText("● Camera Ready")
             self.lbl_camera_status.setStyleSheet("color: green; font-size: 10px;")
@@ -725,12 +1071,76 @@ class TabMorphometric(QWidget):
             self.lbl_camera_status.setText("● No Camera")
             self.lbl_camera_status.setStyleSheet("color: red; font-size: 10px;")
             self.btn_start_stream.setEnabled(False)
-            self.lbl_camera.setText("No camera detected.\nConnect a webcam and restart.")
+            self.lbl_camera.setText("No camera detected.\nUse 'Configure Camera' to set up a device.")
+
+    def _on_configure_camera(self):
+        """Open camera configuration dialog and apply settings."""
+        self._ilog.log("button_click", "btn_config_camera", value="clicked")
+
+        if self._camera_adapter is None:
+            QMessageBox.warning(self, "Camera Error", "Camera subsystem is not initialized yet.")
+            return
+
+        try:
+            from src.morphometric import _ensure_morphometric_path
+
+            _ensure_morphometric_path()
+            from ui.camera_config_dialog import CameraConfigDialog
+        except Exception as e:
+            logger.exception("Failed to load camera configuration dialog: %s", e)
+            QMessageBox.warning(
+                self,
+                "Camera Error",
+                "Camera configuration UI is unavailable.\nCheck morphometric camera dependencies.",
+            )
+            return
+
+        was_stream_active = self._stream_active
+        was_yolo_active = self._yolo_active
+
+        if self._yolo_active:
+            self._on_stop_yolo()
+        if self._stream_active:
+            self._on_stop_stream()
+
+        dialog = CameraConfigDialog(self._camera_adapter.config, parent=self)
+        if dialog.exec() != QDialog.Accepted:
+            if was_stream_active and self._camera_adapter.is_available:
+                self._on_start_stream()
+                if was_yolo_active:
+                    self._on_start_yolo()
+            return
+
+        config = dialog.get_config()
+        if not config:
+            return
+
+        if self._camera_adapter.initialize_with_config(config):
+            self._camera_adapter.save_config()
+            self._update_camera_status(True)
+            self._sync_detection_camera_info()
+            QMessageBox.information(self, "Camera Configured", "Camera settings applied successfully.")
+
+            if was_stream_active:
+                self._on_start_stream()
+                if was_yolo_active:
+                    self._on_start_yolo()
+        else:
+            self._update_camera_status(False)
+            QMessageBox.warning(
+                self,
+                "Camera Error",
+                "Failed to open camera with selected settings.",
+            )
     
     def _on_start_stream(self):
         """Start camera stream."""
         if self._camera_adapter is None or not self._camera_adapter.is_available:
-            QMessageBox.warning(self, "Camera Error", "No camera available.")
+            QMessageBox.warning(
+                self,
+                "Camera Error",
+                "No camera available. Click 'Configure Camera' to select a device.",
+            )
             return
         
         self._timer.start(33)  # ~30fps
@@ -885,6 +1295,8 @@ class TabMorphometric(QWidget):
     
     def _on_target_changed(self):
         """Handle target (Gallery/Queries) change."""
+        if not self._loading_measurement:
+            self._clear_edit_context()
         target = self.cmb_target.currentText()
         self.meta_form.set_target(target)
         self._refresh_id_list()
@@ -949,6 +1361,8 @@ class TabMorphometric(QWidget):
     
     def _on_id_changed(self):
         """Handle ID selection change."""
+        if not self._loading_measurement:
+            self._clear_edit_context()
         is_new = (self.cmb_id.currentIndex() == 0)
         self.edit_new_id.setVisible(is_new)
         
@@ -964,6 +1378,7 @@ class TabMorphometric(QWidget):
     
     def _on_new_query(self):
         """Create a new query entry."""
+        self._clear_edit_context()
         # Switch to Queries target
         self.cmb_target.setCurrentText("Queries")
         # This triggers _on_target_changed() which refreshes the ID list
@@ -1032,6 +1447,7 @@ class TabMorphometric(QWidget):
             QMessageBox.warning(self, "Error", "Failed to correct detection.")
             return
         
+        self._clear_edit_context()
         self._corrected_detection = corrected
         # CRITICAL: Store a copy of the frame used for this detection
         # This ensures raw_frame.png matches the corrected_object.png
@@ -1039,13 +1455,7 @@ class TabMorphometric(QWidget):
         
         # Store corrected object as RGB for visualization
         if corrected.get('corrected_object') is not None:
-            obj = corrected['corrected_object']
-            if len(obj.shape) == 2:
-                self._corrected_object_rgb = cv2.cvtColor(obj, cv2.COLOR_GRAY2RGB)
-            elif obj.shape[2] == 4:
-                self._corrected_object_rgb = cv2.cvtColor(obj, cv2.COLOR_BGRA2RGB)
-            else:
-                self._corrected_object_rgb = cv2.cvtColor(obj, cv2.COLOR_BGR2RGB)
+            self._set_corrected_object_rgb(corrected['corrected_object'])
             
             # Display the corrected object (without annotations yet)
             self._display_result_fallback()
@@ -1292,26 +1702,44 @@ class TabMorphometric(QWidget):
         location = row.get('location', '').strip()
         
         try:
-            # 1. Save to morphometric storage (mFolder)
             identity_type = "gallery" if target == "Gallery" else "query"
-            # Use the captured frame from detection time, not the live frame
-            frame_to_save = self._captured_frame if self._captured_frame is not None else self._last_frame
-            mfolder = self._analysis_adapter.save_measurement(
-                identity_type=identity_type,
-                identity_id=id_val,
-                location=location,
-                user_initials=initials,
-                user_notes="",  # Notes removed from UI
-                raw_frame=frame_to_save,
-                corrected_detection=self._corrected_detection,
-                arm_rotation=self.slider_rotation.value()
-            )
-            
-            if mfolder is None:
-                QMessageBox.warning(self, "Save Error", "Failed to save morphometric data.")
-                return
-            
+            edit_mode = self._edit_mfolder is not None
+
+            # 1. Save to morphometric storage (new mFolder or in-place overwrite)
+            if edit_mode:
+                mfolder = Path(self._edit_mfolder)
+                ok = self._analysis_adapter.overwrite_measurement(
+                    mfolder=mfolder,
+                    identity_type=identity_type,
+                    identity_id=id_val,
+                    location=location,
+                    user_initials=initials,
+                    user_notes="",
+                    arm_rotation=self.slider_rotation.value(),
+                )
+                if not ok:
+                    QMessageBox.warning(self, "Save Error", "Failed to overwrite existing morphometric data.")
+                    return
+            else:
+                # Use the captured frame from detection time, not the live frame.
+                frame_to_save = self._captured_frame if self._captured_frame is not None else self._last_frame
+                mfolder = self._analysis_adapter.save_measurement(
+                    identity_type=identity_type,
+                    identity_id=id_val,
+                    location=location,
+                    user_initials=initials,
+                    user_notes="",  # Notes removed from UI
+                    raw_frame=frame_to_save,
+                    corrected_detection=self._corrected_detection,
+                    arm_rotation=self.slider_rotation.value()
+                )
+                if mfolder is None:
+                    QMessageBox.warning(self, "Save Error", "Failed to save morphometric data.")
+                    return
+
             self._current_mfolder = mfolder
+            if edit_mode:
+                self._set_edit_context(mfolder)
             
             # 2. Copy raw_frame to starBoard archive
             raw_frame_src = mfolder / "raw_frame.png"
@@ -1375,14 +1803,29 @@ class TabMorphometric(QWidget):
                 if idx >= 0:
                     self.cmb_id.setCurrentIndex(idx)
             
-            QMessageBox.information(self, "Saved", 
-                                   f"Data saved!\n\n"
-                                   f"Morphometric data: {mfolder}\n"
-                                   f"Raw frame copied to starBoard archive.")
-            
-            # Reset for next capture
-            self.btn_save.setEnabled(False)
-            self._corrected_detection = None
+            if edit_mode:
+                QMessageBox.information(
+                    self,
+                    "Saved",
+                    f"Historical measurement updated in place.\n\n"
+                    f"Morphometric data updated: {mfolder}\n"
+                    f"Metadata row appended to starBoard archive.",
+                )
+                self.btn_save.setEnabled(True)
+            else:
+                QMessageBox.information(
+                    self,
+                    "Saved",
+                    f"Data saved!\n\n"
+                    f"Morphometric data: {mfolder}\n"
+                    f"Raw frame copied to starBoard archive.",
+                )
+
+                # Reset for next capture
+                self.btn_save.setEnabled(False)
+                self._corrected_detection = None
+
+            self._refresh_saved_measurements()
             
         except Exception as e:
             logger.exception("Error saving: %s", e)

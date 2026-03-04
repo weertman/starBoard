@@ -26,7 +26,13 @@ from src.data.image_index import list_image_files
 from . import DL_AVAILABLE, DEVICE
 from .registry import DLRegistry
 from .reid_adapter import get_adapter
-from .image_cache import CacheBuilder, get_cached_images, get_cache_status
+from .image_cache import (
+    CacheBuilder,
+    get_cached_images,
+    get_cache_status,
+    sync_identity_cache,
+    build_cache_for_identity,
+)
 from .outlier_detection import detect_outliers
 
 log = logging.getLogger("starBoard.dl.precompute")
@@ -174,6 +180,8 @@ class PrecomputeWorker(QThread):
         self._start_time: Optional[float] = None
         self._images_processed = 0
         self._total_images_estimate = 0
+        self._incremental_dirty_gallery_ids: List[str] = []
+        self._incremental_dirty_query_ids: List[str] = []
     
     def cancel(self):
         """Request cancellation of the worker."""
@@ -257,19 +265,28 @@ class PrecomputeWorker(QThread):
         if self._cancelled:
             self.finished.emit(False, "Cancelled")
             return
+
+        # True incremental path: embed only pending IDs, then rebuild comparison
+        # artifacts from merged stored embeddings (no re-embedding unchanged IDs).
+        if self.only_pending:
+            ok, msg = self._run_incremental_precomputation(
+                registry=registry,
+                model_entry=model_entry,
+                adapter=adapter,
+                yolo_preprocessor=yolo_preprocessor,
+            )
+            self.finished.emit(ok, msg)
+            return
         
         # Collect IDs to process
         gallery_ids = []
         query_ids = []
         
-        if self.only_pending:
-            gallery_ids = list(registry.pending_ids.gallery) if self.include_gallery else []
-            query_ids = list(registry.pending_ids.queries) if self.include_queries else []
-        else:
-            if self.include_gallery:
-                gallery_ids = list_ids("Gallery")
-            if self.include_queries:
-                query_ids = list_ids("Queries")
+        # Full rebuild path always builds against current dataset scope.
+        if self.include_gallery:
+            gallery_ids = list_ids("Gallery")
+        if self.include_queries:
+            query_ids = list_ids("Queries")
         
         total_ids = len(gallery_ids) + len(query_ids)
         if total_ids == 0:
@@ -285,7 +302,7 @@ class PrecomputeWorker(QThread):
         self._start_time = time.time()
         
         log.info("Phase 1: Building image cache for %d identities", total_ids)
-        cached, failed, _ = cache_builder.build_full_cache(
+        cached, failed, stale_removed = cache_builder.build_full_cache(
             include_gallery=self.include_gallery,
             include_queries=self.include_queries,
             force=False,  # Don't rebuild existing cache
@@ -293,7 +310,10 @@ class PrecomputeWorker(QThread):
         )
         
         cache_time = time.time() - self._start_time
-        log.info("Phase 1 complete: %d cached, %d failed in %.1fs", cached, failed, cache_time)
+        log.info(
+            "Phase 1 complete: %d cached, %d failed, %d stale_removed in %.1fs",
+            cached, failed, stale_removed, cache_time
+        )
         
         if self._cancelled:
             self.finished.emit(False, "Cancelled")
@@ -335,6 +355,8 @@ class PrecomputeWorker(QThread):
         gallery_image_paths: Dict[str, List[str]] = {}
         query_image_paths: Dict[str, List[str]] = {}
         total_images = 0
+        cache_coverage_mismatches = 0
+        phase2_stale_removed = 0
         
         current = 0
         
@@ -346,8 +368,17 @@ class PrecomputeWorker(QThread):
             
             current += 1
             
+            # Sync cache against current archive view before consuming cached files.
+            live_count, _cached_after_sync, stale_removed_now = sync_identity_cache("Gallery", gid)
+            phase2_stale_removed += stale_removed_now
             # Use cached images instead of originals
             cached_images = get_cached_images("Gallery", gid)
+            if live_count and len(cached_images) < live_count:
+                cache_coverage_mismatches += 1
+                log.warning(
+                    "Cache coverage mismatch target=Gallery id=%s live=%d cached=%d",
+                    gid, live_count, len(cached_images)
+                )
             
             self._emit_progress(f"Phase 2 - Gallery: {gid} ({len(cached_images)} imgs)", 
                                total_ids + current, total_ids * 2, self._images_processed)
@@ -390,8 +421,17 @@ class PrecomputeWorker(QThread):
             
             current += 1
             
+            # Sync cache against current archive view before consuming cached files.
+            live_count, _cached_after_sync, stale_removed_now = sync_identity_cache("Queries", qid)
+            phase2_stale_removed += stale_removed_now
             # Use cached images
             cached_images = get_cached_images("Queries", qid)
+            if live_count and len(cached_images) < live_count:
+                cache_coverage_mismatches += 1
+                log.warning(
+                    "Cache coverage mismatch target=Queries id=%s live=%d cached=%d",
+                    qid, live_count, len(cached_images)
+                )
             
             self._emit_progress(f"Phase 2 - Query: {qid} ({len(cached_images)} imgs)", 
                                total_ids + current, total_ids * 2, self._images_processed)
@@ -433,6 +473,12 @@ class PrecomputeWorker(QThread):
         if not gallery_embeddings or not query_embeddings:
             self.finished.emit(False, "No embeddings extracted")
             return
+
+        if phase2_stale_removed > 0 or cache_coverage_mismatches > 0:
+            log.info(
+                "Phase 2 cache integrity: stale_removed=%d coverage_mismatch_ids=%d",
+                phase2_stale_removed, cache_coverage_mismatches
+            )
         
         # Build matrices
         self.progress.emit("Computing similarity matrix...", total_ids, total_ids)
@@ -595,6 +641,367 @@ class PrecomputeWorker(QThread):
             True, 
             f"Completed: {len(gallery_embeddings)} gallery, {len(query_embeddings)} queries{verification_msg}"
         )
+
+    def _run_incremental_precomputation(
+        self,
+        *,
+        registry: DLRegistry,
+        model_entry,
+        adapter,
+        yolo_preprocessor,
+    ) -> tuple[bool, str]:
+        """
+        Incremental update path:
+        - re-embed only pending IDs
+        - merge with stored embeddings
+        - recompute comparison artifacts from merged stores (no re-embedding unchanged IDs)
+        """
+        live_gallery_ids = set(list_ids("Gallery"))
+        live_query_ids = set(list_ids("Queries"))
+        pending_gallery_ids = (
+            sorted({gid for gid in registry.pending_ids.gallery if gid in live_gallery_ids})
+            if self.include_gallery else []
+        )
+        pending_query_ids = (
+            sorted({qid for qid in registry.pending_ids.queries if qid in live_query_ids})
+            if self.include_queries else []
+        )
+        if not pending_gallery_ids and not pending_query_ids:
+            return True, "No pending IDs to process"
+
+        if not adapter.load_model(model_entry.checkpoint_path):
+            return False, "Failed to load model"
+
+        model_dir = DLRegistry.get_model_data_dir(self.model_key)
+        embeddings_dir = model_dir / "embeddings"
+        similarity_dir = model_dir / "similarity"
+        embeddings_dir.mkdir(parents=True, exist_ok=True)
+        similarity_dir.mkdir(parents=True, exist_ok=True)
+
+        def _load_npz_store(path: Path) -> Dict[str, np.ndarray]:
+            if not path.exists():
+                return {}
+            out: Dict[str, np.ndarray] = {}
+            try:
+                with np.load(path) as data:
+                    for k in data.files:
+                        out[str(k)] = np.asarray(data[k])
+            except Exception as e:
+                log.warning("Failed loading NPZ store %s: %s", path, e)
+                return {}
+            return out
+
+        def _save_npz_store(path: Path, store: Dict[str, np.ndarray]) -> None:
+            np.savez_compressed(path, **store)
+
+        def _load_json_store(path: Path) -> Dict[str, List[str]]:
+            if not path.exists():
+                return {}
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                out: Dict[str, List[str]] = {}
+                if isinstance(raw, dict):
+                    for k, v in raw.items():
+                        if isinstance(v, list):
+                            out[str(k)] = [str(x) for x in v]
+                return out
+            except Exception as e:
+                log.warning("Failed loading JSON store %s: %s", path, e)
+                return {}
+
+        def _prune_centroid_store(store: Dict[str, np.ndarray], live_ids: set[str]) -> Dict[str, np.ndarray]:
+            return {k: v for k, v in store.items() if k in live_ids}
+
+        def _normalize_image_stores(
+            emb_store: Dict[str, np.ndarray],
+            path_store: Dict[str, List[str]],
+            live_ids: set[str],
+            *,
+            target: str,
+        ) -> tuple[Dict[str, np.ndarray], Dict[str, List[str]]]:
+            emb_store = {k: np.asarray(v) for k, v in emb_store.items() if k in live_ids}
+            path_store = {k: [str(x) for x in v] for k, v in path_store.items() if k in live_ids}
+            for id_str in list(emb_store.keys()):
+                arr = np.asarray(emb_store[id_str])
+                if arr.ndim == 1:
+                    arr = arr.reshape(1, -1)
+                paths = list(path_store.get(id_str, []))
+                n = min(len(paths), int(arr.shape[0]) if arr.ndim > 1 else 0)
+                if n <= 0:
+                    emb_store.pop(id_str, None)
+                    path_store.pop(id_str, None)
+                    continue
+                if n != len(paths) or n != arr.shape[0]:
+                    log.warning(
+                        "Normalizing %s image store mismatch id=%s paths=%d embeds=%d -> %d",
+                        target, id_str, len(paths), arr.shape[0], n
+                    )
+                    emb_store[id_str] = arr[:n]
+                    path_store[id_str] = paths[:n]
+                else:
+                    emb_store[id_str] = arr
+                    path_store[id_str] = paths
+            return emb_store, path_store
+
+        # Load existing stores
+        gallery_embeddings = _load_npz_store(embeddings_dir / "gallery_embeddings.npz")
+        query_embeddings = _load_npz_store(embeddings_dir / "query_embeddings.npz")
+        gallery_image_embeddings = _load_npz_store(embeddings_dir / "gallery_image_embeddings.npz")
+        query_image_embeddings = _load_npz_store(embeddings_dir / "query_image_embeddings.npz")
+        gallery_image_paths = _load_json_store(embeddings_dir / "gallery_image_paths.json")
+        query_image_paths = _load_json_store(embeddings_dir / "query_image_paths.json")
+
+        # Prune stores to live IDs before applying deltas
+        gallery_embeddings = _prune_centroid_store(gallery_embeddings, live_gallery_ids)
+        query_embeddings = _prune_centroid_store(query_embeddings, live_query_ids)
+        gallery_image_embeddings, gallery_image_paths = _normalize_image_stores(
+            gallery_image_embeddings, gallery_image_paths, live_gallery_ids, target="Gallery"
+        )
+        query_image_embeddings, query_image_paths = _normalize_image_stores(
+            query_image_embeddings, query_image_paths, live_query_ids, target="Queries"
+        )
+
+        total_pending = len(pending_gallery_ids) + len(pending_query_ids)
+        pending_done = 0
+        successful_gallery: set[str] = set()
+        successful_query: set[str] = set()
+        total_inlier_images = 0
+
+        def _process_pending_id(target: str, id_str: str) -> tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[List[str]], int]:
+            nonlocal pending_done, total_inlier_images
+            pending_done += 1
+            self.progress.emit(
+                f"Incremental: {target} {id_str}",
+                pending_done,
+                max(total_pending, 1),
+            )
+            sync_identity_cache(target, id_str)
+            build_cache_for_identity(target, id_str, yolo_preprocessor, force=False)
+            cached_images = get_cached_images(target, id_str)
+            if not cached_images:
+                return None, None, None, 0
+
+            embeddings = adapter.extract_batch(
+                [str(p) for p in cached_images],
+                use_tta=self.profile.use_tta,
+                batch_size=self.profile.batch_size,
+                use_horizontal_flip=self.profile.use_horizontal_flip,
+                use_vertical_flip=self.profile.use_vertical_flip,
+                use_yolo_preprocessing=False,
+            )
+            if embeddings is None or len(embeddings) == 0:
+                return None, None, None, 0
+
+            image_paths = [str(p) for p in cached_images]
+            result = detect_outliers(
+                embeddings,
+                image_paths=image_paths,
+                id_str=id_str,
+            )
+            total_inlier_images += result.n_inliers
+            return result.inlier_embedding, embeddings.copy(), image_paths, result.n_inliers
+
+        for gid in pending_gallery_ids:
+            if self._cancelled:
+                return False, "Cancelled"
+            centroid, per_image, paths, _ = _process_pending_id("Gallery", gid)
+            if centroid is None or per_image is None or paths is None:
+                # Treat as "no usable images": remove stale embeddings for this ID.
+                gallery_embeddings.pop(gid, None)
+                gallery_image_embeddings.pop(gid, None)
+                gallery_image_paths.pop(gid, None)
+                continue
+            gallery_embeddings[gid] = centroid
+            gallery_image_embeddings[gid] = per_image
+            gallery_image_paths[gid] = paths
+            successful_gallery.add(gid)
+
+        for qid in pending_query_ids:
+            if self._cancelled:
+                return False, "Cancelled"
+            centroid, per_image, paths, _ = _process_pending_id("Queries", qid)
+            if centroid is None or per_image is None or paths is None:
+                query_embeddings.pop(qid, None)
+                query_image_embeddings.pop(qid, None)
+                query_image_paths.pop(qid, None)
+                continue
+            query_embeddings[qid] = centroid
+            query_image_embeddings[qid] = per_image
+            query_image_paths[qid] = paths
+            successful_query.add(qid)
+
+        # Re-normalize after delta updates
+        gallery_embeddings = _prune_centroid_store(gallery_embeddings, live_gallery_ids)
+        query_embeddings = _prune_centroid_store(query_embeddings, live_query_ids)
+        gallery_image_embeddings, gallery_image_paths = _normalize_image_stores(
+            gallery_image_embeddings, gallery_image_paths, live_gallery_ids, target="Gallery"
+        )
+        query_image_embeddings, query_image_paths = _normalize_image_stores(
+            query_image_embeddings, query_image_paths, live_query_ids, target="Queries"
+        )
+
+        # Ensure we have a complete baseline for all live IDs that currently have images.
+        expected_gallery = {gid for gid in live_gallery_ids if list_image_files("Gallery", gid)}
+        expected_query = {qid for qid in live_query_ids if list_image_files("Queries", qid)}
+        missing_gallery = expected_gallery - set(gallery_embeddings.keys())
+        missing_query = expected_query - set(query_embeddings.keys())
+        if missing_gallery or missing_query:
+            return (
+                False,
+                "Incremental update requires baseline embeddings for all live IDs. "
+                "Run Full Precomputation once to initialize missing IDs "
+                f"(missing gallery={len(missing_gallery)}, queries={len(missing_query)}).",
+            )
+
+        gallery_ids_sorted = sorted(gallery_embeddings.keys())
+        query_ids_sorted = sorted(query_embeddings.keys())
+        if not gallery_ids_sorted or not query_ids_sorted:
+            return False, "No embeddings available after incremental merge"
+
+        # Recompute centroid similarity from merged stores.
+        self.progress.emit("Incremental: recomputing centroid similarity...", 0, 1)
+        gallery_matrix = np.stack([gallery_embeddings[gid] for gid in gallery_ids_sorted])
+        query_matrix = np.stack([query_embeddings[qid] for qid in query_ids_sorted])
+        if self.use_reranking:
+            try:
+                from megastarid.inference import rerank
+                distance = rerank(
+                    query_embeddings=query_matrix,
+                    gallery_embeddings=gallery_matrix,
+                    k1=20,
+                    k2=6,
+                    lambda_value=0.3,
+                )
+                similarity = 1.0 - distance
+            except ImportError:
+                log.warning("Could not import rerank, using cosine similarity")
+                similarity = query_matrix @ gallery_matrix.T
+        else:
+            similarity = query_matrix @ gallery_matrix.T
+
+        # Save merged embedding stores.
+        _save_npz_store(embeddings_dir / "gallery_embeddings.npz", gallery_embeddings)
+        _save_npz_store(embeddings_dir / "query_embeddings.npz", query_embeddings)
+        _save_npz_store(embeddings_dir / "gallery_image_embeddings.npz", gallery_image_embeddings)
+        _save_npz_store(embeddings_dir / "query_image_embeddings.npz", query_image_embeddings)
+        with open(embeddings_dir / "gallery_image_paths.json", "w", encoding="utf-8") as f:
+            json.dump({gid: gallery_image_paths[gid] for gid in sorted(gallery_image_paths.keys())}, f, indent=2)
+        with open(embeddings_dir / "query_image_paths.json", "w", encoding="utf-8") as f:
+            json.dump({qid: query_image_paths[qid] for qid in sorted(query_image_paths.keys())}, f, indent=2)
+
+        # Rebuild image-level similarity/index from merged stores.
+        self.progress.emit("Incremental: recomputing image similarity...", 0, 1)
+        gallery_img_list: List[dict] = []
+        gallery_img_embeddings_flat: List[np.ndarray] = []
+        for gid in sorted(gallery_image_embeddings.keys()):
+            arr = np.asarray(gallery_image_embeddings[gid])
+            if arr.ndim == 1:
+                arr = arr.reshape(1, -1)
+            paths = gallery_image_paths.get(gid, [])
+            n = min(arr.shape[0], len(paths))
+            for local_idx in range(n):
+                gallery_img_list.append({"id": gid, "local_idx": local_idx, "path": paths[local_idx]})
+                gallery_img_embeddings_flat.append(arr[local_idx])
+
+        query_img_list: List[dict] = []
+        query_img_embeddings_flat: List[np.ndarray] = []
+        for qid in sorted(query_image_embeddings.keys()):
+            arr = np.asarray(query_image_embeddings[qid])
+            if arr.ndim == 1:
+                arr = arr.reshape(1, -1)
+            paths = query_image_paths.get(qid, [])
+            n = min(arr.shape[0], len(paths))
+            for local_idx in range(n):
+                query_img_list.append({"id": qid, "local_idx": local_idx, "path": paths[local_idx]})
+                query_img_embeddings_flat.append(arr[local_idx])
+
+        if query_img_embeddings_flat and gallery_img_embeddings_flat:
+            gallery_img_matrix = np.stack(gallery_img_embeddings_flat)
+            query_img_matrix = np.stack(query_img_embeddings_flat)
+            image_similarity = query_img_matrix @ gallery_img_matrix.T
+        else:
+            image_similarity = np.zeros((len(query_img_list), len(gallery_img_list)), dtype=np.float32)
+
+        np.savez_compressed(
+            similarity_dir / "image_similarity_matrix.npz",
+            similarity=image_similarity.astype(np.float32),
+        )
+        with open(similarity_dir / "gallery_image_index.json", "w", encoding="utf-8") as f:
+            json.dump(gallery_img_list, f, indent=2)
+        with open(similarity_dir / "query_image_index.json", "w", encoding="utf-8") as f:
+            json.dump(query_img_list, f, indent=2)
+
+        # Save centroid similarity + mapping.
+        np.savez_compressed(
+            similarity_dir / "query_gallery_scores.npz",
+            similarity=similarity.astype(np.float32),
+        )
+        with open(similarity_dir / "id_mapping.json", "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "query_ids": query_ids_sorted,
+                    "gallery_ids": gallery_ids_sorted,
+                },
+                f,
+                indent=2,
+            )
+        with open(similarity_dir / "metadata.json", "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "use_tta": self.profile.use_tta,
+                    "use_reranking": self.use_reranking,
+                    "embedding_dim": adapter.get_embedding_dim(),
+                    "image_size": adapter.get_image_size(),
+                    "n_gallery_images": len(gallery_img_list),
+                    "n_query_images": len(query_img_list),
+                    "incremental": True,
+                    "updated_gallery_ids": sorted(successful_gallery),
+                    "updated_query_ids": sorted(successful_query),
+                },
+                f,
+                indent=2,
+            )
+
+        # Registry update: mark precomputed, then preserve any pending IDs that were
+        # not actually processed in this run.
+        pending_before_gallery = list(registry.pending_ids.gallery)
+        pending_before_queries = list(registry.pending_ids.queries)
+        merged_image_count = sum(int(np.asarray(v).shape[0]) for v in gallery_image_embeddings.values())
+        merged_image_count += sum(int(np.asarray(v).shape[0]) for v in query_image_embeddings.values())
+        registry.mark_precomputed(
+            self.model_key,
+            gallery_count=len(gallery_ids_sorted),
+            query_count=len(query_ids_sorted),
+            image_count=merged_image_count if merged_image_count > 0 else total_inlier_images,
+        )
+        remaining_gallery = [gid for gid in pending_before_gallery if gid not in successful_gallery]
+        remaining_queries = [qid for qid in pending_before_queries if qid not in successful_query]
+        if remaining_gallery or remaining_queries:
+            registry.pending_ids.gallery = remaining_gallery
+            registry.pending_ids.queries = remaining_queries
+            registry.save()
+
+        self._incremental_dirty_gallery_ids = sorted(successful_gallery)
+        self._incremental_dirty_query_ids = sorted(successful_query)
+
+        from .similarity_lookup import clear_cache
+        clear_cache()
+
+        verification_msg = ""
+        if self.include_verification:
+            success, msg = self._run_verification_phase()
+            if success:
+                verification_msg = f", {msg}"
+            elif msg:
+                log.warning("Verification phase: %s", msg)
+
+        return (
+            True,
+            "Incremental completed: "
+            f"updated gallery={len(successful_gallery)}, queries={len(successful_query)}"
+            f"{verification_msg}",
+        )
     
     def _run_verification_phase(self) -> tuple[bool, str]:
         """
@@ -633,6 +1040,50 @@ class PrecomputeWorker(QThread):
         
         if self._cancelled:
             return False, "Cancelled"
+
+        output_dir = DLRegistry.get_verification_model_data_dir(model_key) / "verification"
+
+        if self.only_pending:
+            try:
+                from .verification_precompute import run_verification_incremental_precompute
+
+                dirty_gallery = list(getattr(self, "_incremental_dirty_gallery_ids", []) or [])
+                dirty_queries = list(getattr(self, "_incremental_dirty_query_ids", []) or [])
+
+                def verif_progress(msg: str, current: int, total: int):
+                    scaled = 10 + int(80 * current / max(total, 1))
+                    self.progress.emit(f"Phase 4: {msg}", scaled, 100)
+
+                success, message = run_verification_incremental_precompute(
+                    checkpoint_path=checkpoint_path,
+                    output_dir=output_dir,
+                    dirty_gallery_ids=dirty_gallery,
+                    dirty_query_ids=dirty_queries,
+                    device=self.profile.device,
+                    batch_size=self.profile.batch_size,
+                    progress_callback=verif_progress,
+                )
+                if not success:
+                    return False, message
+
+                # Update registry with current pair count from saved mapping
+                n_pairs = 0
+                mapping_path = output_dir / "id_mapping.json"
+                if mapping_path.exists():
+                    with open(mapping_path, "r", encoding="utf-8") as f:
+                        m = json.load(f)
+                    n_pairs = len(m.get("query_ids", [])) * len(m.get("gallery_ids", []))
+                registry.mark_verification_precomputed(model_key, n_pairs)
+
+                from .verification_lookup import clear_verification_cache
+                clear_verification_cache()
+
+                return True, message
+            except Exception as e:
+                log.error("Incremental verification phase failed: %s", e)
+                import traceback
+                traceback.print_exc()
+                return False, f"Verification error: {str(e)}"
         
         try:
             from .verification_precompute import (
@@ -677,8 +1128,7 @@ class PrecomputeWorker(QThread):
             
             # Save results
             self.progress.emit("Phase 4: Saving verification results...", 95, 100)
-            
-            output_dir = DLRegistry.get_verification_model_data_dir(model_key) / "verification"
+
             precomputer.save_results(
                 output_dir=output_dir,
                 verification_matrix=verification_matrix,

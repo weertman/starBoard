@@ -118,6 +118,12 @@ class TabSecondOrder(QWidget):
         self.cmb_gallery.setItemDelegate(self._gallery_delegate)
         row1.addWidget(self.cmb_gallery)
 
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh.setToolTip(
+            "Refresh query and gallery IDs while preserving current selections when possible"
+        )
+        row1.addWidget(self.btn_refresh)
+
         row1.addStretch(1)
         outer.addLayout(row1)
 
@@ -165,6 +171,14 @@ class TabSecondOrder(QWidget):
         query_layout = QVBoxLayout(query_container)
         query_layout.setContentsMargins(0, 0, 0, 0)
         query_layout.setSpacing(4)
+        self._query_encounter_info = QLabel("")
+        self._query_encounter_info.setStyleSheet(
+            "QLabel { color: #e67e22; font-size: 12px; font-weight: bold; padding: 2px 4px; }"
+        )
+        self._query_encounter_info.setToolTip(
+            "Shows encounter date for the currently displayed query image"
+        )
+        query_layout.addWidget(self._query_encounter_info)
         self.view_q = AnnotatorViewSecond(target="Queries", title="Query")
         query_layout.addWidget(self.view_q, 1)
         self.query_quality_panel = ImageQualityPanel(
@@ -229,6 +243,7 @@ class TabSecondOrder(QWidget):
         #   AnnotatorViewSecond emits this in set_files() and after navigation. :contentReference[oaicite:4]{index=4} :contentReference[oaicite:5]{index=5}
         self.view_q.currentImageChanged.connect(self._reset_tools_to_select)
         self.view_g.currentImageChanged.connect(self._reset_tools_to_select)
+        self.view_q.currentImageChanged.connect(self._update_query_encounter_info)
         
         # Update gallery encounter info when image changes
         self.view_g.currentImageChanged.connect(self._update_gallery_encounter_info)
@@ -256,6 +271,7 @@ class TabSecondOrder(QWidget):
         self.cmb_query.currentIndexChanged.connect(self._on_query_changed)
         self.cmb_gallery.currentIndexChanged.connect(self._on_gallery_changed)
         self.cmb_recommended.currentIndexChanged.connect(self._on_recommended_changed)
+        self.btn_refresh.clicked.connect(self._on_refresh_clicked)
         self.btn_save_decision.clicked.connect(self._on_save_decision)
         self.btn_open_q.clicked.connect(lambda: self._open_id_folder("Queries", self.cmb_query.currentText()))
         self.btn_open_g.clicked.connect(lambda: self._open_id_folder("Gallery", self.cmb_gallery.currentText()))
@@ -476,6 +492,7 @@ class TabSecondOrder(QWidget):
         files = list_image_files("Queries", qid) if qid else []
         files = reorder_files_with_best("Queries", qid, files) if qid else files
         self.view_q.set_files(files)
+        self._update_query_encounter_info()
         self._load_pinned_and_maybes(qid)
         self._load_decision_ui()
         self._refresh_meta_bar()
@@ -499,6 +516,11 @@ class TabSecondOrder(QWidget):
         max_idx = self.cmb_query.count() - 1
         if current_idx < max_idx:
             self.cmb_query.setCurrentIndex(current_idx + 1)
+
+    def _on_refresh_clicked(self) -> None:
+        """Reload IDs and refresh the currently displayed query/gallery pair."""
+        self._ilog.log("button_click", "btn_refresh_second", value="clicked")
+        self._refresh_ids()
 
     def _on_gallery_changed(self) -> None:
         gid = self.cmb_gallery.currentText()
@@ -639,6 +661,20 @@ class TabSecondOrder(QWidget):
         except Exception: pass
         try: self.view_g.reset_tool_to_select()
         except Exception: pass
+
+    def _update_query_encounter_info(self, *_) -> None:
+        """Update the query encounter info label with the current query image date."""
+        try:
+            current_path = self.view_q.current_path()
+            if not current_path:
+                self._query_encounter_info.setText("")
+                return
+
+            enc_date = get_encounter_date_from_path(current_path)
+            date_str = format_encounter_date(enc_date) if enc_date else ""
+            self._query_encounter_info.setText(date_str)
+        except Exception:
+            self._query_encounter_info.setText("")
 
     def _update_gallery_encounter_info(self, *_) -> None:
         """Update the gallery encounter info label with date and the query for this encounter."""

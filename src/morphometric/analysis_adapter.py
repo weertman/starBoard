@@ -479,6 +479,79 @@ class AnalysisAdapter:
         except Exception as e:
             logger.exception("Error saving measurement: %s", e)
             return None
+
+    def overwrite_measurement(
+        self,
+        mfolder: Path,
+        identity_type: str,
+        identity_id: str,
+        location: str,
+        user_initials: str,
+        user_notes: str,
+        arm_rotation: int = 0,
+    ) -> bool:
+        """
+        Overwrite morphometric JSON in an existing mFolder.
+
+        This keeps the folder identity intact while updating edited arm data.
+        """
+        if self._current_morphometrics is None:
+            logger.error("No morphometric data available to overwrite")
+            return False
+
+        mfolder = Path(mfolder)
+        if not mfolder.exists():
+            logger.error("Cannot overwrite missing folder: %s", mfolder)
+            return False
+
+        morph_path = mfolder / "morphometrics.json"
+        existing: Dict[str, Any] = {}
+        if morph_path.exists():
+            try:
+                with morph_path.open("r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except Exception as e:
+                logger.warning("Failed reading existing morphometrics %s: %s", morph_path, e)
+
+        # Keep previous identity/location when not provided.
+        identity_type = (identity_type or existing.get("identity_type") or "").strip().lower()
+        identity_id = (identity_id or existing.get("identity_id") or "").strip()
+        location = (location or existing.get("location") or "").strip()
+
+        rotated_arm_data = self.rotate_arm_numbering(arm_rotation)
+        morph_data = dict(existing)
+        morph_data.update(dict(self._current_morphometrics))
+        morph_data["arm_data"] = rotated_arm_data
+        morph_data["arm_rotation"] = int(arm_rotation)
+        morph_data["user_initials"] = user_initials.upper()
+        morph_data["user_notes"] = user_notes
+        morph_data["location"] = location
+        morph_data["identity_type"] = identity_type
+        morph_data["identity_id"] = identity_id
+
+        try:
+            with morph_path.open("w", encoding="utf-8") as f:
+                json.dump(self._convert_numpy_types(morph_data), f, indent=4)
+        except Exception as e:
+            logger.exception("Failed writing morphometrics for %s: %s", mfolder, e)
+            return False
+
+        # Keep corrected_detection metadata aligned with latest save context.
+        detection_path = mfolder / "corrected_detection.json"
+        if detection_path.exists():
+            try:
+                with detection_path.open("r", encoding="utf-8") as f:
+                    detection_info = json.load(f)
+                detection_info["location"] = location
+                detection_info["identity_type"] = identity_type
+                detection_info["identity_id"] = identity_id
+                with detection_path.open("w", encoding="utf-8") as f:
+                    json.dump(self._convert_numpy_types(detection_info), f, indent=4)
+            except Exception as e:
+                logger.warning("Failed syncing corrected_detection metadata for %s: %s", mfolder, e)
+
+        logger.info("Overwrote morphometrics in existing folder %s", mfolder)
+        return True
     
     def _convert_numpy_types(self, obj):
         """Convert numpy types to native Python for JSON serialization."""

@@ -34,6 +34,28 @@ class CameraAdapter:
         
         # Ensure morphometric tool path is available
         _ensure_morphometric_path()
+
+    @staticmethod
+    def _apply_runtime_settings(camera, config: Dict[str, Any]) -> None:
+        """Best-effort apply of codec/resolution/fps to an opened camera."""
+        try:
+            codec = config.get("codec")
+            if codec and hasattr(camera, "set_codec"):
+                camera.set_codec(codec)
+        except Exception:
+            pass
+
+        try:
+            if config.get("width") and config.get("height"):
+                camera.set_resolution(config["width"], config["height"])
+        except Exception:
+            pass
+
+        try:
+            if config.get("fps"):
+                camera.set_fps(config["fps"])
+        except Exception:
+            pass
     
     def initialize(self) -> bool:
         """
@@ -45,13 +67,17 @@ class CameraAdapter:
         try:
             from camera.factory import auto_detect_with_config, create_camera_from_config
             from camera.config import load_camera_config as load_config
-            
+
+            # Ensure we don't leak an existing capture when re-initializing.
+            self.close()
+
             # Try loading saved config first
             saved_config = load_config()
             if saved_config:
                 logger.info("Attempting to use saved camera configuration...")
                 camera = create_camera_from_config(saved_config)
                 if camera and camera.open():
+                    self._apply_runtime_settings(camera, saved_config)
                     self._camera = camera
                     self._config = saved_config
                     self._is_initialized = True
@@ -103,12 +129,7 @@ class CameraAdapter:
             
             camera = create_camera_from_config(config)
             if camera and camera.open():
-                # Apply resolution and fps if specified
-                if config.get("width") and config.get("height"):
-                    camera.set_resolution(config["width"], config["height"])
-                if config.get("fps"):
-                    camera.set_fps(config["fps"])
-                
+                self._apply_runtime_settings(camera, config)
                 self._camera = camera
                 self._config = config
                 self._is_initialized = True

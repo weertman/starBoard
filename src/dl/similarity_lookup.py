@@ -273,9 +273,11 @@ class ImageSimilarityLookup:
         if image_path in self._query_path_to_idx:
             return self._query_path_to_idx[image_path]
         
-        # Try to extract identity and stem from original path
-        # Original paths look like: .../Queries/ID/encounter/photo.jpg
-        # or: .../Gallery/ID/encounter/photo.jpg
+        # Try to extract identity and stem from original path.
+        # Original paths look like:
+        #   .../queries/ID/encounter/photo.jpg
+        #   .../querries/ID/encounter/photo.jpg  (legacy spelling)
+        #   .../gallery/ID/encounter/photo.jpg
         try:
             path = Path(image_path)
             stem = path.stem  # filename without extension
@@ -284,9 +286,9 @@ class ImageSimilarityLookup:
             # Path structure: .../target/ID/encounter/file.ext
             parts = path.parts
             
-            # Find "Queries" or "queries" in path
+            # Find query/gallery root folder in path
             for i, part in enumerate(parts):
-                if part.lower() in ('queries', 'gallery'):
+                if part.lower() in ('queries', 'querries', 'gallery'):
                     if i + 1 < len(parts):
                         identity_id = parts[i + 1]
                         key = (identity_id, stem)
@@ -294,10 +296,20 @@ class ImageSimilarityLookup:
                             return self._query_id_stem_to_idx[key]
                     break
             
-            # Fallback: try just the stem with all identities
-            for (id_str, s), idx in self._query_id_stem_to_idx.items():
-                if s == stem:
-                    return idx
+            # Conservative fallback: stem-only lookup if unique.
+            # Many identities use generic names like "raw_frame", so ambiguous
+            # stem matching can silently map to the wrong query image.
+            stem_matches = [
+                idx for (_id_str, s), idx in self._query_id_stem_to_idx.items()
+                if s == stem
+            ]
+            if len(stem_matches) == 1:
+                return stem_matches[0]
+            if len(stem_matches) > 1:
+                log.debug(
+                    "Ambiguous query-image stem '%s' (%d matches); refusing stem-only fallback",
+                    stem, len(stem_matches)
+                )
                     
         except Exception:
             pass

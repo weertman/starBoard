@@ -79,6 +79,7 @@ def get_default_config() -> Dict[str, Any]:
         "provider": "opencv",
         "device_index": 0,
         "backend": "Auto",
+        "codec": "Auto",
         "width": 1280,   # Fallback
         "height": 720,
         "fps": 30,
@@ -124,6 +125,8 @@ def load_camera_config(config_path: str = DEFAULT_CONFIG_PATH) -> Optional[Dict[
             # Ensure provider field exists (backward compatibility)
             if "provider" not in config:
                 config["provider"] = "opencv"
+            if "codec" not in config:
+                config["codec"] = "Auto"
             
             return config
     except json.JSONDecodeError as e:
@@ -218,6 +221,10 @@ def validate_config(config: Dict[str, Any]) -> tuple[bool, str]:
     if "fps" in config:
         if not isinstance(config["fps"], (int, float)) or config["fps"] <= 0:
             return False, "FPS must be a positive number"
+
+    if "codec" in config:
+        if not isinstance(config["codec"], str):
+            return False, "Codec must be a string"
     
     return True, ""
 

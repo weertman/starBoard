@@ -111,7 +111,7 @@ def create_camera(
     Args:
         provider: Provider name ("opencv", "basler", "gige", etc.)
         **kwargs: Provider-specific arguments:
-            - OpenCV: device_index, backend, backend_name
+            - OpenCV: device_index, backend, backend_name, codec
             - Basler: serial_number, ip_address (future)
             - GigE: ip_address, mac_address (future)
             
@@ -162,6 +162,7 @@ def create_camera_from_config(config: Dict[str, Any]) -> Optional[CameraInterfac
         kwargs = {
             "device_index": config.get("device_index", 0),
             "backend_name": config.get("backend"),
+            "codec": config.get("codec", "Auto"),
         }
     else:
         # Generic - pass all config except known meta fields
@@ -239,15 +240,61 @@ def auto_detect_camera() -> Optional[CameraInterface]:
     """
     for provider_name in get_available_providers():
         provider_class = get_provider_class(provider_name)
-        
+
+        # Rich probing path for OpenCV cameras: backend + codec fallback.
+        if provider_name == "opencv":
+            try:
+                max_devices = 5
+                tried = set()
+                backends = provider_class.get_available_backends()
+                codecs = provider_class.get_auto_detect_codecs()
+
+                for backend_name, backend_const in backends:
+                    devices = provider_class.enumerate_devices(
+                        backend=backend_const,
+                        max_devices=max_devices,
+                    )
+                    # If enumeration fails to list cameras, still probe bounded indices.
+                    if not devices:
+                        devices = [{"index": i, "name": f"Camera {i}"} for i in range(max_devices)]
+
+                    for device in devices:
+                        device_id = device.get("index", device.get("id", 0))
+                        for codec_name in codecs:
+                            key = (device_id, backend_name, codec_name)
+                            if key in tried:
+                                continue
+                            tried.add(key)
+
+                            camera = create_camera(
+                                provider_name,
+                                device_index=device_id,
+                                backend_name=backend_name,
+                                codec=codec_name,
+                            )
+                            if camera is not None and camera.open():
+                                logging.info(
+                                    "Auto-detected camera: %s device %s (%s), backend=%s codec=%s",
+                                    provider_name,
+                                    device_id,
+                                    device.get("name", "Unknown"),
+                                    backend_name,
+                                    codec_name,
+                                )
+                                return camera
+                            elif camera is not None:
+                                camera.close()
+            except Exception as e:
+                logging.debug(f"Error during OpenCV auto-detect: {e}")
+                continue
+            continue
+
+        # Generic provider path
         try:
             devices = provider_class.enumerate_devices()
-            
+
             for device in devices:
-                # Get device identifier
                 device_id = device.get("index", device.get("id", 0))
-                
-                # Create and try to open camera
                 camera = create_camera(provider_name, device_index=device_id)
                 if camera is not None and camera.open():
                     logging.info(
@@ -257,7 +304,7 @@ def auto_detect_camera() -> Optional[CameraInterface]:
                     return camera
                 elif camera is not None:
                     camera.close()
-                    
+
         except Exception as e:
             logging.debug(f"Error during auto-detect with {provider_name}: {e}")
             continue
@@ -283,9 +330,10 @@ def auto_detect_with_config() -> tuple[Optional[CameraInterface], Optional[Dict[
     width, height = camera.get_resolution()
     
     config = {
-        "provider": "opencv",  # Currently only OpenCV supported
+        "provider": info.get("provider", "opencv").lower().split(" ")[0],
         "device_index": info.get("device_index", 0),
         "backend": info.get("backend", "Auto"),
+        "codec": info.get("codec", "Auto"),
         "width": width,
         "height": height,
         "fps": camera.get_fps() or 30,

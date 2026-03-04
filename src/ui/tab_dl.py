@@ -455,10 +455,18 @@ class TabDeepLearning(QWidget):
         action_row = QHBoxLayout()
         
         self.btn_run_full = QPushButton("▶ Run Full Precomputation")
+        self.btn_run_full.setToolTip(
+            "Recompute embeddings/similarity for all selected scope IDs.\n"
+            "Use this after deletes/renames/reorganizations to guarantee index consistency."
+        )
         self.btn_run_full.clicked.connect(self._on_run_full_precompute)
         action_row.addWidget(self.btn_run_full)
         
-        self.btn_update_pending = QPushButton("Update Pending Only")
+        self.btn_update_pending = QPushButton("Update Pending (Incremental)")
+        self.btn_update_pending.setToolTip(
+            "Embed only pending IDs, then update comparison artifacts from stored embeddings.\n"
+            "Unchanged IDs are not re-embedded."
+        )
         self.btn_update_pending.clicked.connect(self._on_update_pending)
         action_row.addWidget(self.btn_update_pending)
         
@@ -1845,14 +1853,19 @@ class TabDeepLearning(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to start precomputation: {e}")
     
     def _on_update_pending(self):
-        """Update only pending IDs."""
+        """Run incremental pending-ID update."""
         self._ilog.log("button_click", "btn_update_pending", value="clicked")
         try:
             from src.dl.registry import DLRegistry
             registry = DLRegistry.load()
             
             if registry.get_pending_count() == 0:
-                QMessageBox.information(self, "No Pending", "There are no pending IDs to update.")
+                QMessageBox.information(
+                    self,
+                    "No Pending",
+                    "There are no pending IDs tracked.\n"
+                    "If rankings still look stale, run Full Precomputation."
+                )
                 return
             
             model_key = registry.active_model
