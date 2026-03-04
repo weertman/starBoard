@@ -50,9 +50,11 @@ Conservation efforts now require:
 4. **Make and review match decisions** with full audit trails
 
 **Laboratory Use (Morphometric Analysis):**
-5. **Record calibrated morphometric measurements** including body size, arm lengths, surface area, and estimated volume using webcam-based checkerboard calibration
+5. **Track individuals and record calibrated morphometrics in the lab** by using Photo-ID to maintain identity histories and checkerboard calibration to measure body size, arm lengths, and surface area
 
 ### Why Photo-ID Works for Sea Stars
+
+Sunflower sea stars have individually unique dorsal spine patterns across their bodies, making them distinguishable across repeated photographs.
 
 Sunflower sea stars exhibit several characteristics that make them suitable for photo-identification:
 
@@ -100,9 +102,8 @@ Sunflower sea stars exhibit several characteristics that make them suitable for 
 |----------|------------|-------------|
 | **Morphometrics** | Checkerboard Calibration | Sub-millimeter measurement accuracy via webcam |
 | | Arm Detection | Automatic arm tip localization with manual correction |
-| | Size Measurements | Area, arm lengths, major/minor axes, estimated volume |
+| | Size Measurements | Area, arm lengths, major/minor axes |
 | | Water Refraction Correction | Calibrate through water for aquarium measurements |
-| | Depth Estimation | Optional 3D volume calculation |
 
 ---
 
@@ -563,7 +564,6 @@ These fields are automatically populated when measurements are imported from the
 | `morph_mean_arm_length_mm` | mm | Average arm length |
 | `morph_max_arm_length_mm` | mm | Longest arm |
 | `morph_tip_to_tip_mm` | mm | Maximum diameter |
-| `morph_volume_mm3` | mm³ | Estimated volume (requires depth) |
 
 ### Search Engine
 
@@ -748,7 +748,6 @@ In the laboratory:
 | Major axis | mm | Fitted ellipse |
 | Minor axis | mm | Fitted ellipse |
 | Tip-to-tip diameter | mm | Maximum across tips |
-| Volume | mm³ | Depth estimation (optional) |
 
 ---
 
