@@ -1,7 +1,12 @@
 opencv-python
 numpy
-torch
 PySide6
 ultralytics
 scipy
 matplotlib
+pandas
+scikit-learn
+
+# Analysis/notebook extras used by bundled workflows
+seaborn
+plotly

@@ -23,6 +23,14 @@ scikit-learn>=1.2.0
 numpy>=1.24.0
 Pillow>=9.4.0
 tqdm>=4.65.0
+PyYAML>=6.0
+
+# Text embedding backend (used by metadata search scoring)
+sentence-transformers>=2.2.0
+safetensors>=0.4.0
+
+# Evaluation/report visualization
+plotly>=5.0.0
 
 # Optional: GPU acceleration
 # For CUDA support, install PyTorch with CUDA:
