@@ -1553,3 +1553,466 @@ class QueryGridDialog(QDialog):
             self.lbl_hint.setText(f"Saved {os.path.basename(path)}")
         except Exception as e:
             self.lbl_hint.setText(f"Save failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Gallery Grid Dialog
+# ---------------------------------------------------------------------------
+
+def _get_best_gallery_image_path(gallery_id: str) -> Optional[Path]:
+    """
+    Get the best image path for a gallery member.
+
+    Uses precomputed cached images from DL pipeline if available,
+    otherwise falls back to original full-size images.
+    """
+    # Try to use cached images first (faster, already resized)
+    try:
+        from src.dl.image_cache import get_cached_images
+        cached = get_cached_images("Gallery", gallery_id)
+        if cached:
+            # Get original files to determine best image
+            original_files = list_image_files("Gallery", gallery_id)
+            if original_files:
+                # Reorder originals to find best
+                reordered = reorder_files_with_best("Gallery", gallery_id, original_files)
+                best_original = reordered[0] if reordered else None
+
+                if best_original:
+                    # Find matching cached file by stem
+                    best_stem = best_original.stem
+                    for cp in cached:
+                        if cp.stem == best_stem:
+                            return cp
+
+                # If no match found, return first cached image
+                return cached[0]
+            return cached[0]
+    except ImportError:
+        pass
+
+    # Fall back to original full-size images
+    files = list_image_files("Gallery", gallery_id)
+    if not files:
+        return None
+    files = reorder_files_with_best("Gallery", gallery_id, files)
+    return files[0] if files else None
+
+
+def _parse_gallery_id_to_outing(gallery_id: str) -> Optional[Tuple[str, str]]:
+    """
+    Group gallery IDs by first observation date using the same outing label
+    pattern as Query Grid: mm_dd_yyyy_<descriptor>.
+    """
+    try:
+        from src.data.observation_dates import first_observation_date
+        first_obs = first_observation_date("Gallery", gallery_id)
+        if first_obs is None:
+            return None
+
+        date_str = first_obs.isoformat()
+        mm, dd, yyyy = first_obs.month, first_obs.day, first_obs.year
+        outing_name = f"{mm}_{dd}_{yyyy}_gallery"
+        return (date_str, outing_name)
+    except Exception:
+        return None
+
+
+def _group_galleries_by_outing() -> Dict[str, Dict[str, any]]:
+    """
+    Group all gallery IDs by outing.
+
+    Returns:
+        {outing_name: {"date": "YYYY-MM-DD", "gallery_ids": [gid1, gid2, ...]}}
+    """
+    outings: Dict[str, Dict[str, any]] = defaultdict(lambda: {"date": "", "gallery_ids": []})
+    gallery_ids = list_ids("Gallery")
+
+    for gid in gallery_ids:
+        parsed = _parse_gallery_id_to_outing(gid)
+        if parsed is None:
+            continue
+        date_str, outing_name = parsed
+        outings[outing_name]["date"] = date_str
+        outings[outing_name]["gallery_ids"].append(gid)
+
+    # Sort gallery IDs within each outing
+    for outing_name in outings:
+        outings[outing_name]["gallery_ids"].sort()
+
+    return dict(outings)
+
+
+class GalleryGridDialog(QDialog):
+    """
+    Dialog showing a grid of best images for gallery members, organized by outing.
+
+    Features:
+    - Rows = outings (date + descriptor)
+    - Columns = gallery IDs within each outing
+    - Outing filter table to toggle outings on/off
+    - Optional labels below images (gallery ID)
+    - Progress bar for loading images
+    - Uses precomputed cached images when available
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Gallery Grid")
+        self.setModal(False)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.resize(1200, 800)
+        self._ilog = get_interaction_logger()
+        self._reports_dir = archive_root() / "reports" / "figures"
+        self._reports_dir.mkdir(parents=True, exist_ok=True)
+
+        self._outings_data: Dict[str, List[str]] = {}  # {outing_name: [gallery_ids]}
+        self._excluded_outings: set = set()
+        self._image_cache: Dict[str, any] = {}  # Cache loaded images
+        self._loading = False
+
+        self._root = QVBoxLayout(self)
+        self._root.setContentsMargins(8, 8, 8, 8)
+        self._root.setSpacing(6)
+
+        # ---- Top bar: Refresh, Export, Labels toggle ----
+        top = QHBoxLayout()
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_png = QPushButton("Export PNG")
+        self.lbl_hint = QLabel("")
+        self.lbl_hint.setStyleSheet("color:#666")
+        self.chk_labels = QCheckBox("Show Labels")
+        self.chk_labels.setChecked(False)
+        self.chk_labels.stateChanged.connect(self._on_viz_change)
+
+        top.addWidget(self.btn_refresh)
+        top.addSpacing(6)
+        top.addWidget(self.btn_png)
+        top.addStretch(1)
+        top.addWidget(self.chk_labels)
+        top.addSpacing(12)
+        top.addWidget(self.lbl_hint)
+        self._root.addLayout(top)
+
+        self.btn_refresh.clicked.connect(self._on_refresh)
+        self.btn_png.clicked.connect(self._on_export_png)
+
+        # Recreate button (renders after filter changes)
+        self.btn_recreate = QPushButton("Recreate")
+        self.btn_recreate.setToolTip("Render the grid with current filter settings")
+        self.btn_recreate.clicked.connect(self.render)
+        top.insertWidget(2, self.btn_recreate)
+        top.insertSpacing(3, 6)
+
+        # ---- Progress bar ----
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(True)
+        self._root.addWidget(self.progress_bar)
+
+        # ---- Outing filter table ----
+        filter_header = QHBoxLayout()
+        filter_header.addWidget(QLabel("Outing Filter:"))
+        self.btn_select_all = QPushButton("Select All")
+        self.btn_select_all.clicked.connect(self._on_select_all)
+        self.btn_deselect_all = QPushButton("Deselect All")
+        self.btn_deselect_all.clicked.connect(self._on_deselect_all)
+        filter_header.addWidget(self.btn_select_all)
+        filter_header.addWidget(self.btn_deselect_all)
+        filter_header.addStretch(1)
+        self._root.addLayout(filter_header)
+
+        self._filter_table = QTableWidget(0, 3)
+        self._filter_table.setHorizontalHeaderLabels(["Include", "Outing", "Galleries"])
+        self._filter_table.setMaximumHeight(150)
+        self._filter_table.horizontalHeader().setStretchLastSection(True)
+        self._filter_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._root.addWidget(self._filter_table)
+
+        # ---- Chart (grid of images) ----
+        self._chart = MplWidget(self)
+        self._root.addWidget(self._chart, 1)
+
+        # Load data and render
+        self._load_data()
+        self._populate_filter_table()
+        self.render()
+
+    def _load_data(self):
+        """Load outing-to-gallery mapping."""
+        self._outings_data = _group_galleries_by_outing()
+        self._image_cache.clear()
+
+    def _populate_filter_table(self):
+        """Populate the filter table with outing data."""
+        self._filter_table.setRowCount(0)
+
+        # Sort outings by date (using stored ISO date string)
+        sorted_outings = sorted(
+            self._outings_data.items(),
+            key=lambda x: (_get_outing_date_from_data(x[1]), x[0])
+        )
+
+        self._filter_table.setRowCount(len(sorted_outings))
+
+        for row, (outing_name, outing_data) in enumerate(sorted_outings):
+            gallery_ids = outing_data.get("gallery_ids", [])
+
+            # Checkbox
+            chk = QTableWidgetItem()
+            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            chk.setCheckState(Qt.Unchecked if outing_name in self._excluded_outings else Qt.Checked)
+            chk.setData(Qt.UserRole, outing_name)
+            self._filter_table.setItem(row, 0, chk)
+
+            # Outing name
+            self._filter_table.setItem(row, 1, QTableWidgetItem(outing_name))
+
+            # Gallery count
+            self._filter_table.setItem(row, 2, QTableWidgetItem(str(len(gallery_ids))))
+
+        self._filter_table.resizeColumnsToContents()
+        self._filter_table.itemChanged.connect(self._on_filter_changed)
+
+    def _on_filter_changed(self, item: QTableWidgetItem):
+        """Handle checkbox toggle in filter table."""
+        if item.column() != 0:
+            return
+        outing_name = item.data(Qt.UserRole)
+        if outing_name:
+            if item.checkState() == Qt.Checked:
+                self._excluded_outings.discard(outing_name)
+            else:
+                self._excluded_outings.add(outing_name)
+            # Don't auto-render; user clicks "Recreate" when ready
+
+    def _on_select_all(self):
+        """Select all outings."""
+        self._excluded_outings.clear()
+        self._filter_table.blockSignals(True)
+        for row in range(self._filter_table.rowCount()):
+            item = self._filter_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.Checked)
+        self._filter_table.blockSignals(False)
+        # Don't auto-render; user clicks "Recreate" when ready
+
+    def _on_deselect_all(self):
+        """Deselect all outings."""
+        self._filter_table.blockSignals(True)
+        for row in range(self._filter_table.rowCount()):
+            item = self._filter_table.item(row, 0)
+            if item:
+                outing_name = item.data(Qt.UserRole)
+                if outing_name:
+                    self._excluded_outings.add(outing_name)
+                item.setCheckState(Qt.Unchecked)
+        self._filter_table.blockSignals(False)
+        # Don't auto-render; user clicks "Recreate" when ready
+
+    def _on_viz_change(self, _state: int = 0):
+        """Handle visualization option changes (e.g., Show Labels toggle)."""
+        # Only re-render if images are already loaded (no new loading needed)
+        if self._image_cache:
+            self.render()
+
+    def _get_filtered_outings(self) -> List[Tuple[str, List[str]]]:
+        """Get outings filtered by exclusion set, sorted by date."""
+        # Filter and sort using stored ISO date
+        filtered = [
+            (k, v) for k, v in self._outings_data.items()
+            if k not in self._excluded_outings
+        ]
+        sorted_outings = sorted(
+            filtered,
+            key=lambda x: (_get_outing_date_from_data(x[1]), x[0])
+        )
+        # Return (outing_name, gallery_ids) format for compatibility
+        return [(outing_name, outing_data.get("gallery_ids", [])) for outing_name, outing_data in sorted_outings]
+
+    def _load_image(self, gallery_id: str, size: int = 120):
+        """Load and cache a thumbnail image for a gallery member."""
+        if gallery_id in self._image_cache:
+            return self._image_cache[gallery_id]
+
+        try:
+            from PIL import Image
+            import numpy as np
+
+            img_path = _get_best_gallery_image_path(gallery_id)
+            if img_path is None or not img_path.exists():
+                # Return a placeholder
+                placeholder = np.ones((size, size, 3), dtype=np.uint8) * 200
+                self._image_cache[gallery_id] = placeholder
+                return placeholder
+
+            # Load and resize
+            img = Image.open(img_path)
+            img = img.convert("RGB")
+
+            # Resize maintaining aspect ratio
+            w, h = img.size
+            if w > h:
+                new_w = size
+                new_h = int(h * size / w)
+            else:
+                new_h = size
+                new_w = int(w * size / h)
+
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+
+            # Pad to square
+            result = Image.new("RGB", (size, size), (200, 200, 200))
+            offset = ((size - new_w) // 2, (size - new_h) // 2)
+            result.paste(img, offset)
+
+            arr = np.array(result)
+            self._image_cache[gallery_id] = arr
+            return arr
+
+        except Exception:
+            # Return placeholder on error
+            import numpy as np
+            placeholder = np.ones((size, size, 3), dtype=np.uint8) * 200
+            self._image_cache[gallery_id] = placeholder
+            return placeholder
+
+    def _preload_images(self, gallery_ids: List[str], size: int = 120):
+        """Preload all images with progress bar."""
+        # Filter to only IDs not already cached
+        to_load = [gid for gid in gallery_ids if gid not in self._image_cache]
+
+        if not to_load:
+            return
+
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setMaximum(len(to_load))
+        self.lbl_hint.setText(f"Loading {len(to_load)} images...")
+
+        self._loading = True
+
+        for i, gid in enumerate(to_load):
+            if not self._loading:
+                break
+
+            self._load_image(gid, size)
+
+            # Update progress every 5 images to reduce overhead
+            if i % 5 == 0 or i == len(to_load) - 1:
+                self.progress_bar.setValue(i + 1)
+                QApplication.processEvents()
+
+        self.progress_bar.setVisible(False)
+        self._loading = False
+
+    def render(self):
+        """Render the image grid."""
+        self._chart.clear()
+        fig = self._chart.fig
+        fig.clf()
+
+        filtered = self._get_filtered_outings()
+
+        if not filtered:
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, "No outings selected",
+                    ha="center", va="center", fontsize=12)
+            ax.axis("off")
+            self._chart.draw()
+            self.lbl_hint.setText("0 outings, 0 galleries")
+            return
+
+        show_labels = self.chk_labels.isChecked()
+
+        # Calculate grid dimensions
+        num_rows = len(filtered)
+        max_cols = max(len(gallery_ids) for _, gallery_ids in filtered)
+
+        if max_cols == 0:
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, "No galleries in selected outings",
+                    ha="center", va="center", fontsize=12)
+            ax.axis("off")
+            self._chart.draw()
+            return
+
+        # Collect all gallery IDs and preload images with progress
+        all_gallery_ids = []
+        for _, gallery_ids in filtered:
+            all_gallery_ids.extend(gallery_ids)
+
+        img_size = 120  # pixels per image
+        self._preload_images(all_gallery_ids, size=img_size)
+
+        # Create subplots grid
+        # Each row gets its own set of columns based on gallery count
+        # Use GridSpec for flexible layout
+        import matplotlib.gridspec as gridspec
+
+        gs = gridspec.GridSpec(num_rows, max_cols + 1, figure=fig,
+                               width_ratios=[0.15] + [1] * max_cols,
+                               wspace=0.02, hspace=0.1)
+
+        total_galleries = 0
+
+        for row_idx, (outing_name, gallery_ids) in enumerate(filtered):
+            # Row label on the left (y-axis style label for this outing)
+            ax_label = fig.add_subplot(gs[row_idx, 0])
+            # Position text at the right edge of the label cell, centered vertically
+            ax_label.text(1.0, 0.5, outing_name,
+                          transform=ax_label.transAxes,
+                          ha="right", va="center", fontsize=6,
+                          fontweight="bold")
+            ax_label.axis("off")
+
+            # Images for this row
+            for col_idx, gallery_id in enumerate(gallery_ids):
+                ax = fig.add_subplot(gs[row_idx, col_idx + 1])
+
+                # Load and display image
+                img = self._load_image(gallery_id, size=img_size)
+                ax.imshow(img)
+                ax.axis("off")
+
+                # Optional label
+                if show_labels:
+                    # Truncate long gallery IDs
+                    label = gallery_id if len(gallery_id) <= 15 else gallery_id[:12] + "..."
+                    ax.set_title(label, fontsize=5, pad=1)
+
+                total_galleries += 1
+
+            # Clear unused columns in this row
+            for col_idx in range(len(gallery_ids), max_cols):
+                ax = fig.add_subplot(gs[row_idx, col_idx + 1])
+                ax.axis("off")
+
+        fig.tight_layout()
+        self._chart.draw()
+
+        self.lbl_hint.setText(f"{num_rows} outings, {total_galleries} galleries")
+
+    def _on_refresh(self):
+        self._ilog.log("button_click", "btn_refresh_gallery_grid", value="clicked")
+        self._load_data()
+        self._filter_table.blockSignals(True)
+        self._populate_filter_table()
+        self._filter_table.blockSignals(False)
+        self.render()
+
+    def _on_export_png(self):
+        self._ilog.log("button_click", "btn_export_png_gallery_grid", value="clicked")
+        if not getattr(self._chart, "fig", None):
+            return
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        fname = f"gallery_grid_{ts}.png"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save figure", str(self._reports_dir / fname), "PNG (*.png)"
+        )
+        if not path:
+            return
+        try:
+            self._chart.fig.savefig(path, dpi=200, bbox_inches="tight")
+            self.lbl_hint.setText(f"Saved {os.path.basename(path)}")
+        except Exception as e:
+            self.lbl_hint.setText(f"Save failed: {e}")

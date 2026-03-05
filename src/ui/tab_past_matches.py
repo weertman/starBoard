@@ -19,10 +19,16 @@ from src.data.past_matches import (
 from src.data.archive_paths import archive_root
 from src.ui.vis_past_matches import (
     TotalsDialog, TimelineDialog, ByQueryDialog, ByGalleryDialog, QueryInflowDialog,
-    OutingStatsDialog, QueryGridDialog
+    OutingStatsDialog, QueryGridDialog, GalleryGridDialog
 )
 from src.ui.vis_interaction_logs import (
     SessionProductivityDialog, FeatureUsageDialog, WorkEstimationDialog
+)
+from src.ui.vis_morphometric import (
+    MorphometricTrendsDialog,
+    MorphometricRelationshipsDialog,
+    MorphometricPcaDialog,
+    MorphometricIdentityLongitudinalDialog,
 )
 from src.ui.matrix_matches_dialog import MatrixMatchesDialog
 from src.data.matches_matrix import MatchMatrixData, load_match_matrix
@@ -107,6 +113,8 @@ class TabPastMatches(QWidget):
         # Query grid (best images grid)
         self.btn_query_grid = QPushButton("Query Grid…")
         self.btn_query_grid.setToolTip("Grid of best images for queries organized by outing")
+        self.btn_gallery_grid = QPushButton("Gallery Grid…")
+        self.btn_gallery_grid.setToolTip("Grid of best images for gallery members organized by outing")
 
         # Interaction analytics
         self.btn_session_productivity = QPushButton("Session Activity…")
@@ -115,6 +123,16 @@ class TabPastMatches(QWidget):
         self.btn_session_productivity.setToolTip("View activity timeline across sessions")
         self.btn_feature_usage.setToolTip("View hierarchical feature usage patterns")
         self.btn_work_estimation.setToolTip("Estimate remaining work to match all queries")
+
+        # Morphometric analytics
+        self.btn_morph_trends = QPushButton("Size Trends…")
+        self.btn_morph_relationships = QPushButton("Metric Relationships…")
+        self.btn_morph_pca = QPushButton("Morphology PCA…")
+        self.btn_morph_longitudinal = QPushButton("Identity Longitudinal…")
+        self.btn_morph_trends.setToolTip("Longitudinal trends for morphometric size measurements")
+        self.btn_morph_relationships.setToolTip("Pairwise relationships across morphometric metrics")
+        self.btn_morph_pca.setToolTip("PCA projection of morphometric size space")
+        self.btn_morph_longitudinal.setToolTip("Repeated-measure trajectories for selected identities over time")
 
         # Topic 1: Overview
         sec_overview = CollapsibleSection("Overview", start_collapsed=True)
@@ -145,6 +163,7 @@ class TabPastMatches(QWidget):
         lay_query_gallery.addWidget(self.btn_by_query)
         lay_query_gallery.addWidget(self.btn_by_gallery)
         lay_query_gallery.addWidget(self.btn_query_grid)
+        lay_query_gallery.addWidget(self.btn_gallery_grid)
         lay_query_gallery.addStretch(1)
         sec_query_gallery.setContent(w_query_gallery)
 
@@ -159,10 +178,23 @@ class TabPastMatches(QWidget):
         lay_workflow.addStretch(1)
         sec_workflow.setContent(w_workflow)
 
+        # Topic 5: Morphometric size
+        sec_morphometric = CollapsibleSection("Morphometric Size", start_collapsed=True)
+        w_morphometric = QWidget()
+        lay_morphometric = QHBoxLayout(w_morphometric)
+        lay_morphometric.setContentsMargins(0, 0, 0, 0)
+        lay_morphometric.addWidget(self.btn_morph_trends)
+        lay_morphometric.addWidget(self.btn_morph_relationships)
+        lay_morphometric.addWidget(self.btn_morph_pca)
+        lay_morphometric.addWidget(self.btn_morph_longitudinal)
+        lay_morphometric.addStretch(1)
+        sec_morphometric.setContent(w_morphometric)
+
         lay_vis.addWidget(sec_overview)
         lay_vis.addWidget(sec_match_dynamics)
         lay_vis.addWidget(sec_query_gallery)
         lay_vis.addWidget(sec_workflow)
+        lay_vis.addWidget(sec_morphometric)
         lay_vis.addStretch(1)
 
         sec_vis.setContent(gb_vis)
@@ -243,11 +275,16 @@ class TabPastMatches(QWidget):
         self.btn_query_inflow.clicked.connect(lambda: self._open_dialog(QueryInflowDialog))
         self.btn_outing_stats.clicked.connect(self._open_outing_stats_dialog)
         self.btn_query_grid.clicked.connect(self._open_query_grid_dialog)
+        self.btn_gallery_grid.clicked.connect(self._open_gallery_grid_dialog)
         
         # Interaction analytics dialogs
         self.btn_session_productivity.clicked.connect(self._open_session_productivity_dialog)
         self.btn_feature_usage.clicked.connect(self._open_feature_usage_dialog)
         self.btn_work_estimation.clicked.connect(self._open_work_estimation_dialog)
+        self.btn_morph_trends.clicked.connect(self._open_morphometric_trends_dialog)
+        self.btn_morph_relationships.clicked.connect(self._open_morphometric_relationships_dialog)
+        self.btn_morph_pca.clicked.connect(self._open_morphometric_pca_dialog)
+        self.btn_morph_longitudinal.clicked.connect(self._open_morphometric_longitudinal_dialog)
 
         self.btn_export_tidy.clicked.connect(self._export_decisions_csv)
 
@@ -339,6 +376,41 @@ class TabPastMatches(QWidget):
     def _open_query_grid_dialog(self):
         self._ilog.log("dialog_open", "dialog_query_grid", value="opened")
         dlg = QueryGridDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_gallery_grid_dialog(self):
+        self._ilog.log("dialog_open", "dialog_gallery_grid", value="opened")
+        dlg = GalleryGridDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_morphometric_trends_dialog(self):
+        self._ilog.log("dialog_open", "dialog_morphometric_trends", value="opened")
+        dlg = MorphometricTrendsDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_morphometric_relationships_dialog(self):
+        self._ilog.log("dialog_open", "dialog_morphometric_relationships", value="opened")
+        dlg = MorphometricRelationshipsDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_morphometric_pca_dialog(self):
+        self._ilog.log("dialog_open", "dialog_morphometric_pca", value="opened")
+        dlg = MorphometricPcaDialog(self)
+        dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
+        self._dialogs.append(dlg)
+        dlg.show()
+
+    def _open_morphometric_longitudinal_dialog(self):
+        self._ilog.log("dialog_open", "dialog_morphometric_longitudinal", value="opened")
+        dlg = MorphometricIdentityLongitudinalDialog(self)
         dlg.finished.connect(lambda _: self._on_dialog_closed(dlg))
         self._dialogs.append(dlg)
         dlg.show()
