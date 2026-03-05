@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QGroupBox, QGridLayout,
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QGroupBox,
     QMessageBox, QFileDialog, QComboBox
 )
 from PySide6.QtCore import Qt
@@ -40,6 +40,7 @@ from src.data.merge_yes import (
     SILENT_MARKER_FILENAME,
 )
 from src.utils.interaction_logger import get_interaction_logger
+from src.ui.collapsible import CollapsibleSection
 
 def _open_folder(path: Path) -> None:
     try:
@@ -84,8 +85,13 @@ class TabPastMatches(QWidget):
         outer.addLayout(util)
 
         # ---- Row 2: Visualization group ----
-        gb_vis = QGroupBox("Visualizations")
-        lay_vis = QGridLayout(gb_vis)
+        sec_vis = CollapsibleSection("Visualizations", start_collapsed=True)
+        gb_vis = QGroupBox("")
+        lay_vis = QVBoxLayout(gb_vis)
+        lay_vis.setContentsMargins(0, 0, 0, 0)
+        lay_vis.setSpacing(6)
+
+        # Buttons reused in topic subsections below (signal wiring unchanged).
         self.btn_totals = QPushButton("Totals…")
         self.btn_timeline = QPushButton("Timeline…")
         self.btn_by_query = QPushButton("By Query…")
@@ -93,39 +99,78 @@ class TabPastMatches(QWidget):
         self.btn_matrix = QPushButton("Matches Matrix…")
         self.btn_query_inflow = QPushButton("Query Inflow…")
         self.btn_query_inflow.setToolTip("Stacked bar chart of matched vs unmatched queries by first observation date")
-        lay_vis.addWidget(self.btn_totals, 0, 0)
-        lay_vis.addWidget(self.btn_timeline, 0, 1)
-        lay_vis.addWidget(self.btn_by_query, 1, 0)
-        lay_vis.addWidget(self.btn_by_gallery, 1, 1)
-        lay_vis.addWidget(self.btn_matrix, 0, 2)
-        lay_vis.addWidget(self.btn_query_inflow, 1, 2)
-        
-        # Outing Stats (observations per outing)
+
+        # Outing stats (observations per outing)
         self.btn_outing_stats = QPushButton("Outing Stats…")
         self.btn_outing_stats.setToolTip("Stacked bar chart of observations per outing by identification status")
-        lay_vis.addWidget(self.btn_outing_stats, 2, 0)
-        
-        # Query Grid (best images grid)
+
+        # Query grid (best images grid)
         self.btn_query_grid = QPushButton("Query Grid…")
         self.btn_query_grid.setToolTip("Grid of best images for queries organized by outing")
-        lay_vis.addWidget(self.btn_query_grid, 2, 1)
-        
-        # Interaction Analytics (new)
-        lay_vis.addWidget(QLabel(""), 0, 3)  # Spacer
+
+        # Interaction analytics
         self.btn_session_productivity = QPushButton("Session Activity…")
         self.btn_feature_usage = QPushButton("Feature Usage…")
         self.btn_work_estimation = QPushButton("Work Estimation…")
         self.btn_session_productivity.setToolTip("View activity timeline across sessions")
         self.btn_feature_usage.setToolTip("View hierarchical feature usage patterns")
         self.btn_work_estimation.setToolTip("Estimate remaining work to match all queries")
-        lay_vis.addWidget(self.btn_session_productivity, 0, 4)
-        lay_vis.addWidget(self.btn_feature_usage, 1, 4)
-        lay_vis.addWidget(self.btn_work_estimation, 0, 5)
-        
-        outer.addWidget(gb_vis)
+
+        # Topic 1: Overview
+        sec_overview = CollapsibleSection("Overview", start_collapsed=True)
+        w_overview = QWidget()
+        lay_overview = QHBoxLayout(w_overview)
+        lay_overview.setContentsMargins(0, 0, 0, 0)
+        lay_overview.addWidget(self.btn_totals)
+        lay_overview.addWidget(self.btn_timeline)
+        lay_overview.addWidget(self.btn_matrix)
+        lay_overview.addStretch(1)
+        sec_overview.setContent(w_overview)
+
+        # Topic 2: Match dynamics
+        sec_match_dynamics = CollapsibleSection("Match Dynamics", start_collapsed=True)
+        w_match_dynamics = QWidget()
+        lay_match_dynamics = QHBoxLayout(w_match_dynamics)
+        lay_match_dynamics.setContentsMargins(0, 0, 0, 0)
+        lay_match_dynamics.addWidget(self.btn_query_inflow)
+        lay_match_dynamics.addWidget(self.btn_outing_stats)
+        lay_match_dynamics.addStretch(1)
+        sec_match_dynamics.setContent(w_match_dynamics)
+
+        # Topic 3: Query/Gallery views
+        sec_query_gallery = CollapsibleSection("Query/Gallery Views", start_collapsed=True)
+        w_query_gallery = QWidget()
+        lay_query_gallery = QHBoxLayout(w_query_gallery)
+        lay_query_gallery.setContentsMargins(0, 0, 0, 0)
+        lay_query_gallery.addWidget(self.btn_by_query)
+        lay_query_gallery.addWidget(self.btn_by_gallery)
+        lay_query_gallery.addWidget(self.btn_query_grid)
+        lay_query_gallery.addStretch(1)
+        sec_query_gallery.setContent(w_query_gallery)
+
+        # Topic 4: Workflow/Productivity
+        sec_workflow = CollapsibleSection("Workflow/Productivity", start_collapsed=True)
+        w_workflow = QWidget()
+        lay_workflow = QHBoxLayout(w_workflow)
+        lay_workflow.setContentsMargins(0, 0, 0, 0)
+        lay_workflow.addWidget(self.btn_session_productivity)
+        lay_workflow.addWidget(self.btn_feature_usage)
+        lay_workflow.addWidget(self.btn_work_estimation)
+        lay_workflow.addStretch(1)
+        sec_workflow.setContent(w_workflow)
+
+        lay_vis.addWidget(sec_overview)
+        lay_vis.addWidget(sec_match_dynamics)
+        lay_vis.addWidget(sec_query_gallery)
+        lay_vis.addWidget(sec_workflow)
+        lay_vis.addStretch(1)
+
+        sec_vis.setContent(gb_vis)
+        outer.addWidget(sec_vis)
 
         # ---- Row 3: NEW — Merge YES's to Gallery ----
-        gb_merge = QGroupBox("Merge YES’s to Gallery")
+        sec_merge = CollapsibleSection("Merge YES’s to Gallery", start_collapsed=True)
+        gb_merge = QGroupBox("")
         lay_merge = QHBoxLayout(gb_merge)
         lay_merge.addWidget(QLabel("Gallery:"))
         self.cmb_gallery = QComboBox()
@@ -143,10 +188,12 @@ class TabPastMatches(QWidget):
         self.btn_merge_all.setToolTip("Merge YES queries for all galleries at once")
         lay_merge.addWidget(self.btn_merge_all)
 
-        outer.addWidget(gb_merge)
+        sec_merge.setContent(gb_merge)
+        outer.addWidget(sec_merge)
 
         # ---- Row 4: NEW — Revert old merges ----
-        gb_revert = QGroupBox("Revert old merges")
+        sec_revert = CollapsibleSection("Revert old merges", start_collapsed=True)
+        gb_revert = QGroupBox("")
         lay_rev = QHBoxLayout(gb_revert)
 
         lay_rev.addWidget(QLabel("Gallery:"))
@@ -166,10 +213,12 @@ class TabPastMatches(QWidget):
         lay_rev.addWidget(self.btn_revert_sel)
         lay_rev.addWidget(self.btn_open_hist)
 
-        outer.addWidget(gb_revert)
+        sec_revert.setContent(gb_revert)
+        outer.addWidget(sec_revert)
 
         # ---- Row 5: Tidy CSV for decisions ----
-        gb_tidy = QGroupBox("Export decided pairs (tidy CSV)")
+        sec_tidy = CollapsibleSection("Export decided pairs (tidy CSV)", start_collapsed=True)
+        gb_tidy = QGroupBox("")
         lay_tidy = QHBoxLayout(gb_tidy)
         self.btn_export_tidy = QPushButton("Export CSV…")
         lay_tidy.addWidget(QLabel(
@@ -177,7 +226,8 @@ class TabPastMatches(QWidget):
         ))
         lay_tidy.addStretch(1)
         lay_tidy.addWidget(self.btn_export_tidy)
-        outer.addWidget(gb_tidy)
+        sec_tidy.setContent(gb_tidy)
+        outer.addWidget(sec_tidy)
 
         # ---- Signals ----
         self.btn_refresh.clicked.connect(self._reload)
