@@ -1609,6 +1609,7 @@ class TabFirstOrder(QWidget):
         if not qid:
             self._set_post_fusion_hint(None, set())
             self._set_cards([])
+            self.lbl_suggested_match.setText("")
             return
 
         fields = self._selected_fields()
@@ -1620,6 +1621,7 @@ class TabFirstOrder(QWidget):
             # Keep what's currently visible and just re-apply sizing.
             self._sync_card_min_height_from_query()
             self._fit_cards_to_viewport()
+            self._update_suggested_match_from_results([])
             return
 
         # Load weights configuration (reload=True to pick up any changes)
@@ -1877,6 +1879,7 @@ class TabFirstOrder(QWidget):
             cards.append(card)
 
         self._set_cards(cards)
+        self._update_suggested_match_from_results(ordered)
         self._fit_cards_to_viewport()
 
     def _set_cards(self, cards: List[LineupCard]):
@@ -2913,8 +2916,25 @@ class TabFirstOrder(QWidget):
             return self._stored_evaluation.get_top_match(query_id)
         return None
     
+    def _update_suggested_match_from_results(self, ordered_results: list):
+        """
+        Set the suggested-match callout from the actual first result in the
+        First-order ranking (so it matches the top card, not stored evaluation).
+        """
+        if not ordered_results:
+            self.lbl_suggested_match.setText("")
+            return
+        first = ordered_results[0]
+        gallery_id = getattr(first, "gallery_id", "")
+        score = getattr(first, "score", 0.0)
+        self.lbl_suggested_match.setText(f"→ {gallery_id} ({score:.2f})")
+        self.lbl_suggested_match.setToolTip(
+            f"Top of current ranking: {gallery_id}\n"
+            f"Score: {score:.3f}"
+        )
+
     def _update_suggested_match_display(self, query_id: str):
-        """Update the suggested match label for the current query."""
+        """Update the suggested match label from stored evaluation (fallback before results load)."""
         if not query_id or not self._stored_evaluation:
             self.lbl_suggested_match.setText("")
             return
