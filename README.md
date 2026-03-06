@@ -17,6 +17,7 @@
 - [System Architecture](#system-architecture)
 - [Installation](#installation)
 - [Quick Start Guide](#quick-start-guide)
+- [Visual Interface Guide](#visual-interface-guide)
 - [Detailed Module Documentation](#detailed-module-documentation)
 - [Workflow Guide for Biologists](#workflow-guide-for-biologists)
 - [Configuration Reference](#configuration-reference)
@@ -334,6 +335,10 @@ The starBoard window should open. If you see the Deep Learning tab with status i
 ---
 
 ## Quick Start Guide
+
+### Visual Interface Guide
+
+If you prefer a screenshot-first walkthrough of the UI, see [`docs/starboard-interface-guide.md`](docs/starboard-interface-guide.md).
 
 ### 1. Launch the Application
 
