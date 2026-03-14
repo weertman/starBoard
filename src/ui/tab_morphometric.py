@@ -262,6 +262,7 @@ class TabMorphometric(QWidget):
         self._stream_active = False
         self._yolo_active = False
         self._camera_config_prompted = False
+        self._saved_camera_config: Optional[Dict[str, Any]] = None
         self._last_frame = None
         self._captured_frame = None  # Frame captured during detection (frozen)
         self._corrected_detection = None
@@ -301,14 +302,8 @@ class TabMorphometric(QWidget):
             self._camera_adapter = get_camera_adapter()
             self._detection_adapter = get_detection_adapter()
             self._analysis_adapter = get_analysis_adapter()
-            
-            # Initialize camera
-            if self._camera_adapter.initialize():
-                self._update_camera_status(True)
-                self._sync_detection_camera_info()
-            else:
-                self._update_camera_status(False)
-                self._prompt_configure_camera_once()
+            self._saved_camera_config = self._load_saved_camera_config()
+            self._update_camera_status("inactive")
             
             # Load YOLO model
             if self._detection_adapter.load_yolo_model():
@@ -327,6 +322,31 @@ class TabMorphometric(QWidget):
             self._show_unavailable_message()
         except Exception as e:
             logger.exception("Error initializing morphometric tab: %s", e)
+
+    def _load_saved_camera_config(self) -> Optional[Dict[str, Any]]:
+        """Load saved camera settings without opening hardware."""
+        try:
+            from src.morphometric import _ensure_morphometric_path
+
+            _ensure_morphometric_path()
+            from camera.config import load_camera_config
+
+            return load_camera_config()
+        except Exception as e:
+            logger.debug("Unable to load saved camera config: %s", e)
+            return None
+
+    def _get_camera_dialog_config(self) -> tuple[Optional[Dict[str, Any]], bool]:
+        """Return config defaults for the camera dialog and whether to preselect."""
+        if self._camera_adapter is not None and self._camera_adapter.config:
+            return dict(self._camera_adapter.config), self._camera_adapter.is_available
+
+        if self._saved_camera_config is None:
+            self._saved_camera_config = self._load_saved_camera_config()
+        if self._saved_camera_config:
+            return dict(self._saved_camera_config), False
+
+        return None, False
     
     def _show_unavailable_message(self):
         """Show message that morphometric features are unavailable."""
@@ -1058,20 +1078,46 @@ class TabMorphometric(QWidget):
             "Click 'Configure Camera' to select a device and capture settings.",
         )
     
-    def _update_camera_status(self, available: bool):
+    def _update_camera_status(self, state: str):
         """Update camera status indicator."""
         if hasattr(self, "btn_config_camera"):
             self.btn_config_camera.setEnabled(self._camera_adapter is not None)
+        if hasattr(self, "btn_stop_stream"):
+            self.btn_stop_stream.setEnabled(self._stream_active)
 
-        if available:
+        if state == "ready":
             self.lbl_camera_status.setText("● Camera Ready")
             self.lbl_camera_status.setStyleSheet("color: green; font-size: 10px;")
-            self.btn_start_stream.setEnabled(True)
+            self.btn_start_stream.setEnabled(not self._stream_active)
+            if not self._stream_active:
+                self.lbl_camera.setText(
+                    "Camera configured and ready.\n"
+                    "Click 'Start Stream' to begin live preview."
+                )
+            return
+
+        self.btn_start_stream.setEnabled(True)
+
+        if state == "inactive":
+            self.lbl_camera_status.setText("● Camera Not Started")
+            self.lbl_camera_status.setStyleSheet("color: #b8860b; font-size: 10px;")
+            if self._saved_camera_config:
+                self.lbl_camera.setText(
+                    "Saved camera settings are available but inactive.\n"
+                    "Use 'Configure Camera' to review the device, then click 'Start Stream'."
+                )
+            else:
+                self.lbl_camera.setText(
+                    "Camera access stays off until you choose a device.\n"
+                    "Use 'Configure Camera' to set one up, then click 'Start Stream'."
+                )
         else:
             self.lbl_camera_status.setText("● No Camera")
             self.lbl_camera_status.setStyleSheet("color: red; font-size: 10px;")
-            self.btn_start_stream.setEnabled(False)
-            self.lbl_camera.setText("No camera detected.\nUse 'Configure Camera' to set up a device.")
+            self.lbl_camera.setText(
+                "No camera is active.\n"
+                "Use 'Configure Camera' to choose a device before starting the stream."
+            )
 
     def _on_configure_camera(self):
         """Open camera configuration dialog and apply settings."""
@@ -1103,7 +1149,12 @@ class TabMorphometric(QWidget):
         if self._stream_active:
             self._on_stop_stream()
 
-        dialog = CameraConfigDialog(self._camera_adapter.config, parent=self)
+        dialog_config, preselect_current_camera = self._get_camera_dialog_config()
+        dialog = CameraConfigDialog(
+            dialog_config,
+            parent=self,
+            preselect_current_camera=preselect_current_camera,
+        )
         if dialog.exec() != QDialog.Accepted:
             if was_stream_active and self._camera_adapter.is_available:
                 self._on_start_stream()
@@ -1117,7 +1168,8 @@ class TabMorphometric(QWidget):
 
         if self._camera_adapter.initialize_with_config(config):
             self._camera_adapter.save_config()
-            self._update_camera_status(True)
+            self._saved_camera_config = dict(config)
+            self._update_camera_status("ready")
             self._sync_detection_camera_info()
             QMessageBox.information(self, "Camera Configured", "Camera settings applied successfully.")
 
@@ -1126,7 +1178,7 @@ class TabMorphometric(QWidget):
                 if was_yolo_active:
                     self._on_start_yolo()
         else:
-            self._update_camera_status(False)
+            self._update_camera_status("unavailable")
             QMessageBox.warning(
                 self,
                 "Camera Error",
@@ -1135,14 +1187,28 @@ class TabMorphometric(QWidget):
     
     def _on_start_stream(self):
         """Start camera stream."""
-        if self._camera_adapter is None or not self._camera_adapter.is_available:
+        if self._camera_adapter is None:
             QMessageBox.warning(
                 self,
                 "Camera Error",
-                "No camera available. Click 'Configure Camera' to select a device.",
+                "Camera subsystem is not initialized yet.",
             )
             return
-        
+
+        if not self._camera_adapter.is_available:
+            choice = QMessageBox.question(
+                self,
+                "Camera Not Started",
+                "No camera is active.\n\n"
+                "Morphometric only opens a camera after you configure one explicitly.\n\n"
+                "Open Camera Configuration now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if choice == QMessageBox.Yes:
+                self._on_configure_camera()
+            return
+
         self._timer.start(33)  # ~30fps
         self._stream_active = True
         self.btn_start_stream.setEnabled(False)

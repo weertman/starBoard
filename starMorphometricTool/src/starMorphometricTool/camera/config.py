@@ -11,8 +11,6 @@ import logging
 import hashlib
 from typing import Dict, Any, Optional
 
-import cv2
-
 
 # Default config file path (relative to app working directory)
 DEFAULT_CONFIG_PATH = "camera_config.json"
@@ -69,37 +67,21 @@ def get_default_config() -> Dict[str, Any]:
     """
     Get default camera configuration.
     
-    Attempts to detect the camera's native resolution rather than using
-    hardcoded values, falling back to 1280x720 if detection fails.
+    Returns a safe default without probing any hardware. The user must
+    explicitly choose and verify a camera before capture begins.
     
     Returns:
         Default configuration dictionary
     """
-    config = {
+    return {
         "provider": "opencv",
         "device_index": 0,
-        "backend": "Auto",
+        "backend": "Auto",  # Stored as metadata until the user applies it.
         "codec": "Auto",
-        "width": 1280,   # Fallback
+        "width": 1280,
         "height": 720,
         "fps": 30,
     }
-    
-    # Try to get camera's native resolution
-    try:
-        cap = cv2.VideoCapture(0)
-        if cap.isOpened():
-            native_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            native_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            if native_width > 0 and native_height > 0:
-                config["width"] = native_width
-                config["height"] = native_height
-                logging.debug(f"Detected native camera resolution: {native_width}x{native_height}")
-            cap.release()
-    except Exception as e:
-        logging.debug(f"Could not detect native camera resolution: {e}")
-    
-    return config
 
 
 # =============================================================================

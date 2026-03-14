@@ -21,7 +21,6 @@ from typing import Optional, Dict, Any
 from camera import CameraInterface, get_default_config
 from camera.factory import (
     create_camera, enumerate_devices_by_provider,
-    get_available_providers, get_provider_info
 )
 from camera.providers.opencv_camera import OpenCVCamera
 
@@ -43,13 +42,19 @@ class CameraConfigDialog(QDialog):
     Dialog for configuring camera settings with live preview.
     """
     
-    def __init__(self, current_config: Optional[Dict[str, Any]] = None, parent=None):
+    def __init__(
+        self,
+        current_config: Optional[Dict[str, Any]] = None,
+        parent=None,
+        preselect_current_camera: bool = False,
+    ):
         """
         Initialize the camera configuration dialog.
         
         Args:
             current_config: Current camera configuration dict (or None for defaults)
             parent: Parent widget
+            preselect_current_camera: If True, keep the current live camera selected
         """
         super().__init__(parent)
         self.setWindowTitle("Camera Configuration")
@@ -58,6 +63,13 @@ class CameraConfigDialog(QDialog):
         # Store current config
         self.current_config = current_config or get_default_config()
         self.result_config = None
+        self._preselect_current_camera = preselect_current_camera
+        self._pending_camera_index = self.current_config.get(
+            "device_index",
+            self.current_config.get("camera_index", -1),
+        )
+        self._available_camera_count = 0
+        self._default_status_text = ""
         
         # Preview camera using abstraction
         self.preview_camera: Optional[CameraInterface] = None
@@ -81,6 +93,7 @@ class CameraConfigDialog(QDialog):
         # Camera device dropdown
         self.camera_combo = QComboBox()
         self.camera_combo.setMinimumWidth(200)
+        self.camera_combo.currentIndexChanged.connect(self.on_camera_selection_changed)
         self.refresh_cameras_button = QPushButton("Refresh")
         self.refresh_cameras_button.setFixedWidth(80)
         self.refresh_cameras_button.clicked.connect(self.refresh_camera_list)
@@ -199,12 +212,36 @@ class CameraConfigDialog(QDialog):
         idx = self.codec_combo.findText(codec)
         if idx >= 0:
             self.codec_combo.setCurrentIndex(idx)
-        
-        # Camera index will be set after refresh
-        self._pending_camera_index = config.get("device_index", config.get("camera_index", 0))
+
+    def _has_selected_camera(self) -> bool:
+        """Return True when the user has chosen a concrete camera device."""
+        camera_index = self.camera_combo.currentData()
+        return isinstance(camera_index, int) and camera_index >= 0
+
+    def _refresh_action_buttons(self):
+        """Keep preview and save actions aligned with current selection."""
+        has_selected_camera = self._has_selected_camera()
+        self.test_button.setEnabled(has_selected_camera and self.preview_camera is None)
+        self.stop_test_button.setEnabled(self.preview_camera is not None)
+        self.save_button.setEnabled(has_selected_camera)
+
+    def _update_idle_status(self):
+        """Show the default status message when no preview is active."""
+        if self._available_camera_count <= 0:
+            text = "No cameras detected"
+        elif self._has_selected_camera():
+            text = f"Selected: {self.camera_combo.currentText()}"
+        else:
+            text = f"Found {self._available_camera_count} camera(s). Select one to continue."
+
+        self._default_status_text = text
+        if self.preview_camera is None:
+            self.status_label.setText(text)
+            self.status_label.setStyleSheet("QLabel { color: #666; }")
     
     def refresh_camera_list(self):
         """Refresh the list of available cameras"""
+        self.camera_combo.blockSignals(True)
         self.camera_combo.clear()
         
         # Get current backend name and convert to constant
@@ -216,34 +253,49 @@ class CameraConfigDialog(QDialog):
         self.status_label.repaint()
         
         cameras = enumerate_devices_by_provider("opencv", backend=backend_const)
+        self._available_camera_count = len(cameras)
         
         if cameras:
+            self.camera_combo.addItem("Select a camera...", -1)
             for device in cameras:
                 index = device.get("index", 0)
                 name = device.get("name", f"Camera {index}")
                 self.camera_combo.addItem(name, index)
-            self.status_label.setText(f"Found {len(cameras)} camera(s)")
-            
-            # Try to select the pending camera index
-            if hasattr(self, '_pending_camera_index'):
-                for i in range(self.camera_combo.count()):
+
+            selected_pending_camera = False
+            if self._preselect_current_camera:
+                for i in range(1, self.camera_combo.count()):
                     if self.camera_combo.itemData(i) == self._pending_camera_index:
                         self.camera_combo.setCurrentIndex(i)
+                        selected_pending_camera = True
                         break
+
+            if not selected_pending_camera:
+                self.camera_combo.setCurrentIndex(0)
         else:
             self.camera_combo.addItem("No cameras found", -1)
-            self.status_label.setText("No cameras detected")
+            self.camera_combo.setCurrentIndex(0)
+
+        self.camera_combo.blockSignals(False)
+        self._update_idle_status()
+        self._refresh_action_buttons()
     
     def on_backend_changed(self):
         """Handle backend selection change"""
         self.stop_preview()
         self.refresh_camera_list()
+
+    def on_camera_selection_changed(self):
+        """Handle camera selection changes."""
+        self.stop_preview()
+        self._update_idle_status()
+        self._refresh_action_buttons()
     
     def get_current_settings(self) -> Dict[str, Any]:
         """Get current UI settings as a config dict"""
         camera_index = self.camera_combo.currentData()
-        if camera_index is None or camera_index < 0:
-            camera_index = 0
+        if camera_index is None:
+            camera_index = -1
         
         resolution = self.resolution_combo.currentData()
         if resolution is None:
@@ -291,8 +343,7 @@ class CameraConfigDialog(QDialog):
             
             self.preview_camera = camera
             self.preview_timer.start(33)  # ~30 fps
-            self.test_button.setEnabled(False)
-            self.stop_test_button.setEnabled(True)
+            self._refresh_action_buttons()
             
             # Show actual resolution
             actual_w, actual_h = camera.get_resolution()
@@ -303,6 +354,7 @@ class CameraConfigDialog(QDialog):
                 camera.close()
             self.status_label.setText("Error: Failed to open camera")
             self.status_label.setStyleSheet("QLabel { color: red; }")
+            self._refresh_action_buttons()
             QMessageBox.warning(self, "Camera Error", "Failed to open camera with selected settings.")
     
     def stop_preview(self):
@@ -315,10 +367,8 @@ class CameraConfigDialog(QDialog):
         
         self.preview_label.setText("Click 'Test Camera' to preview")
         self.preview_label.setStyleSheet("QLabel { background-color: #222; color: #888; }")
-        self.test_button.setEnabled(True)
-        self.stop_test_button.setEnabled(False)
-        self.status_label.setText("")
-        self.status_label.setStyleSheet("QLabel { color: #666; }")
+        self._update_idle_status()
+        self._refresh_action_buttons()
     
     def update_preview(self):
         """Update preview frame"""
