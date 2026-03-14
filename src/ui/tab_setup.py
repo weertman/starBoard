@@ -20,7 +20,7 @@ from src.data import archive_paths as ap
 from src.data.csv_io import (
     append_row, read_rows_multi, last_row_per_id, normalize_id_value
 )
-from src.data.id_registry import list_ids, id_exists
+from src.data.id_registry import list_ids, id_exists, invalidate_id_cache
 from src.data.ingest import ensure_encounter_name, place_images, discover_ids_and_images
 from src.data.batch_undo import (
     generate_batch_id, record_batch_upload, list_batches,
@@ -2121,7 +2121,9 @@ class TabSetup(QWidget):
         row.addWidget(QLabel("Archive:"))
         self.cmb_target_edit = QComboBox()
         self.cmb_target_edit.addItems(["Gallery", "Queries"])
-        self.cmb_target_edit.currentIndexChanged.connect(self._refresh_id_list_edit)
+        self.cmb_target_edit.currentIndexChanged.connect(
+            lambda *_: self._refresh_id_list_edit(force_reload=True)
+        )
         self.cmb_target_edit.currentIndexChanged.connect(
             lambda: self._ilog.log("combo_change", "cmb_target_edit", value=self.cmb_target_edit.currentText()))
         row.addWidget(self.cmb_target_edit)
@@ -2148,6 +2150,13 @@ class TabSetup(QWidget):
         self.btn_next_id_edit.setToolTip("Next ID in list")
         self.btn_next_id_edit.clicked.connect(self._on_next_id_edit_clicked)
         row.addWidget(self.btn_next_id_edit)
+
+        self.btn_refresh_id_edit = QPushButton("Refresh Dataset")
+        self.btn_refresh_id_edit.setToolTip(
+            "Reload dataset entries for metadata editing, including IDs added outside the app"
+        )
+        self.btn_refresh_id_edit.clicked.connect(self._on_refresh_id_edit_clicked)
+        row.addWidget(self.btn_refresh_id_edit)
 
         lay.addLayout(row)
 
@@ -2213,12 +2222,14 @@ class TabSetup(QWidget):
         row2.addWidget(self.btn_save_edit)
         lay.addLayout(row2)
 
-        self._refresh_id_list_edit()
+        self._refresh_id_list_edit(force_reload=True)
         return gb
 
-    def _refresh_id_list_edit(self):
+    def _refresh_id_list_edit(self, *_args, invalidate_cache: bool = False, force_reload: bool = False):
         target = self.cmb_target_edit.currentText()
         self.meta_form_edit.set_target(target)
+        if invalidate_cache:
+            invalidate_id_cache()
         ids = list_ids(target)
         if target == "Queries":
             last_obs = last_observation_for_all("Queries")
@@ -2231,15 +2242,26 @@ class TabSetup(QWidget):
                 )
             )
 
+        prev_id = self._last_edit_id or self.cmb_id_edit.currentText()
         self.cmb_id_edit.blockSignals(True)
         self.cmb_id_edit.clear()
         self.cmb_id_edit.addItems(ids)
+        if prev_id:
+            idx = self.cmb_id_edit.findText(prev_id)
+            if idx >= 0:
+                self.cmb_id_edit.setCurrentIndex(idx)
         self.cmb_id_edit.blockSignals(False)
         self.btn_save_only.setEnabled(bool(ids))
         self.btn_save_edit.setEnabled(bool(ids))
-        # reset last_edit_id baseline to current (or "")
-        self._last_edit_id = self.cmb_id_edit.currentText() if ids else ""
+        current_id = self.cmb_id_edit.currentText() if ids else ""
+        if not force_reload and current_id == prev_id:
+            return
         self._on_edit_id_changed()
+
+    def _on_refresh_id_edit_clicked(self) -> None:
+        """Refresh metadata-edit IDs to pick up newly added entries."""
+        self._ilog.log("button_click", "btn_refresh_id_edit", value="clicked")
+        self._refresh_id_list_edit(invalidate_cache=True)
 
     def _apply_carry_over_to_form(self, form: MetadataForm, carry: Dict[str, str]) -> None:
         """For any empty field in the current form, apply a non-empty value from carry-over."""

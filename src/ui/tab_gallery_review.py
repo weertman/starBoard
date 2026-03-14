@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -19,6 +19,7 @@ from src.data.id_registry import list_ids
 from src.data.image_index import list_image_files, invalidate_image_cache
 from src.data import archive_paths as ap
 from src.data.best_photo import reorder_files_with_best, save_best_for_id
+from src.data.csv_io import last_row_per_id, normalize_id_value, read_rows_multi
 from src.ui.annotator_view_second import AnnotatorViewSecond
 from src.ui.image_quality_panel import ImageQualityPanel
 from src.ui.query_state_delegate import QueryStateDelegate, apply_quality_to_combobox
@@ -27,6 +28,10 @@ from src.ui.tab_setup import _RenameIdDialog
 from src.data.rename_id import rename_id
 from src.data.encounter_info import get_encounter_date_from_path, format_encounter_date
 from src.utils.interaction_logger import get_interaction_logger
+
+
+_ALL_LOCATION_FILTER_DATA = "__all_locations__"
+_NO_LOCATION_FILTER_DATA = "__no_location__"
 
 
 class TabGalleryReview(QWidget):
@@ -86,6 +91,14 @@ class TabGalleryReview(QWidget):
         self.btn_next_gallery.setToolTip("Next gallery member")
         self.btn_next_gallery.clicked.connect(self._on_next_gallery_clicked)
         row1.addWidget(self.btn_next_gallery)
+
+        row1.addSpacing(12)
+
+        row1.addWidget(QLabel("Last location:"))
+        self.cmb_last_location = QComboBox()
+        self.cmb_last_location.setMinimumWidth(180)
+        self.cmb_last_location.setToolTip("Filter gallery IDs by their latest saved location")
+        row1.addWidget(self.cmb_last_location)
 
         row1.addSpacing(16)
 
@@ -176,16 +189,79 @@ class TabGalleryReview(QWidget):
 
         # ---- Signals ----
         self.cmb_gallery.currentIndexChanged.connect(self._on_gallery_changed)
+        self.cmb_last_location.currentIndexChanged.connect(self._on_location_filter_changed)
         self.view_gallery.currentImageChanged.connect(self._update_encounter_info)
 
         # ---- Populate gallery IDs ----
         self._refresh_ids()
 
-    def _refresh_ids(self) -> None:
-        """Populate the gallery combo box with all gallery IDs."""
-        prev_g = self.cmb_gallery.currentText()
+    def _current_location_filter(self) -> str:
+        """Return the active gallery location filter sentinel or location value."""
+        data = self.cmb_last_location.currentData()
+        if not data or data == _ALL_LOCATION_FILTER_DATA:
+            return ""
+        return str(data).strip()
 
-        gs = list_ids("Gallery")
+    def _load_gallery_locations(self) -> Dict[str, str]:
+        """Load the latest saved location metadata for gallery IDs."""
+        rows = read_rows_multi(ap.metadata_csv_paths_for_read("Gallery"))
+        latest_rows = last_row_per_id(rows, ap.id_column_name("Gallery"))
+        return {
+            gid: (row.get("location") or "").strip()
+            for gid, row in latest_rows.items()
+        }
+
+    def _refresh_location_filter_options(
+        self,
+        gallery_ids: List[str],
+        location_by_id: Dict[str, str],
+    ) -> None:
+        """Rebuild the location filter dropdown while preserving the active selection."""
+        prev_location = self._current_location_filter()
+        has_blank_location = any(
+            not location_by_id.get(normalize_id_value(gid), "")
+            for gid in gallery_ids
+        )
+        locations = sorted({
+            location_by_id.get(normalize_id_value(gid), "")
+            for gid in gallery_ids
+            if location_by_id.get(normalize_id_value(gid), "")
+        })
+
+        self.cmb_last_location.blockSignals(True)
+        try:
+            self.cmb_last_location.clear()
+            self.cmb_last_location.addItem("All", _ALL_LOCATION_FILTER_DATA)
+            if has_blank_location:
+                self.cmb_last_location.addItem("No location", _NO_LOCATION_FILTER_DATA)
+            for location in locations:
+                self.cmb_last_location.addItem(location, location)
+
+            idx = self.cmb_last_location.findData(prev_location) if prev_location else 0
+            self.cmb_last_location.setCurrentIndex(idx if idx >= 0 else 0)
+        finally:
+            self.cmb_last_location.blockSignals(False)
+
+    def _refresh_ids(self) -> None:
+        """Populate the gallery combo box, applying the active location filter."""
+        prev_g = self.cmb_gallery.currentText()
+        all_gallery_ids = list_ids("Gallery")
+        location_by_id = self._load_gallery_locations()
+
+        self._refresh_location_filter_options(all_gallery_ids, location_by_id)
+        active_location = self._current_location_filter()
+
+        gs = all_gallery_ids
+        if active_location == _NO_LOCATION_FILTER_DATA:
+            gs = [
+                gid for gid in all_gallery_ids
+                if not location_by_id.get(normalize_id_value(gid), "")
+            ]
+        elif active_location:
+            gs = [
+                gid for gid in all_gallery_ids
+                if location_by_id.get(normalize_id_value(gid), "") == active_location
+            ]
 
         self.cmb_gallery.blockSignals(True)
         try:
@@ -204,6 +280,12 @@ class TabGalleryReview(QWidget):
 
         # Drive dependent UI
         self._on_gallery_changed()
+
+    def _on_location_filter_changed(self) -> None:
+        """Refilter the gallery list when the selected location changes."""
+        location = self.cmb_last_location.currentText() or "All"
+        self._ilog.log("combo_change", "cmb_gallery_review_last_location", value=location)
+        self._refresh_ids()
 
     def _on_gallery_changed(self) -> None:
         """Handle gallery ID selection change."""
@@ -411,6 +493,31 @@ class TabGalleryReview(QWidget):
         except Exception:
             self._gallery_encounter_info.setText("")
 
+    def _active_meta_edit_popup(self) -> _MetadataEditPopup | None:
+        """Return the tracked popup if the underlying Qt object is still alive."""
+        popup = self._meta_edit_popup
+        if popup is None:
+            return None
+
+        try:
+            popup.isVisible()
+        except RuntimeError:
+            self._meta_edit_popup = None
+            return None
+
+        return popup
+
+    def _on_meta_edit_popup_destroyed(self, popup: _MetadataEditPopup) -> None:
+        """Clear the cached popup reference when the tracked dialog is deleted."""
+        if self._meta_edit_popup is popup:
+            self._meta_edit_popup = None
+
+    def _show_meta_edit_popup(self, popup: _MetadataEditPopup) -> None:
+        """Bring a non-modal metadata popup to the foreground."""
+        popup.show()
+        popup.raise_()
+        popup.activateWindow()
+
     def _on_edit_metadata_clicked(self) -> None:
         """Open metadata edit popup for the current gallery member."""
         gid = self.cmb_gallery.currentText()
@@ -418,14 +525,28 @@ class TabGalleryReview(QWidget):
             return
         self._ilog.log("button_click", "btn_edit_metadata_gallery_review", value=gid)
 
-        # Close existing popup if open
-        if self._meta_edit_popup is not None:
-            self._meta_edit_popup.close()
+        popup = self._active_meta_edit_popup()
+        if popup is not None:
+            if getattr(popup, "_id_value", None) == gid:
+                self._show_meta_edit_popup(popup)
+                return
+
+            try:
+                if not popup.close():
+                    self._show_meta_edit_popup(popup)
+                    return
+            except RuntimeError:
+                self._meta_edit_popup = None
+            else:
+                if self._meta_edit_popup is popup:
+                    self._meta_edit_popup = None
 
         # Create and show new popup
-        self._meta_edit_popup = _MetadataEditPopup("Gallery", gid, self)
-        self._meta_edit_popup.saved.connect(self._on_metadata_saved)
-        self._meta_edit_popup.show()
+        popup = _MetadataEditPopup("Gallery", gid, self)
+        popup.saved.connect(self._on_metadata_saved)
+        popup.destroyed.connect(lambda *_args, popup=popup: self._on_meta_edit_popup_destroyed(popup))
+        self._meta_edit_popup = popup
+        self._show_meta_edit_popup(popup)
 
     def _on_metadata_saved(self) -> None:
         """Handle metadata saved - refresh the view."""
