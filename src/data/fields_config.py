@@ -249,8 +249,8 @@ def _get_default_config() -> FieldsConfig:
     
     Used when fields_config.yaml doesn't exist or can't be loaded.
     """
-    # Import field lists from engine to stay in sync
-    from src.search.engine import (
+    # Import the canonical field lists without pulling optional search deps.
+    from src.search.field_sets import (
         NUMERIC_FIELDS, ORDINAL_FIELDS, COLOR_FIELDS, SET_FIELDS, TEXT_FIELDS
     )
     

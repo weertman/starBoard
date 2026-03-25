@@ -18,6 +18,14 @@ from src.data.archive_paths import (
 )
 from src.data.csv_io import read_rows_multi, last_row_per_id, normalize_id_value, ensure_header
 from .interfaces import FieldScorer
+from .field_sets import (
+    ALL_FIELDS,
+    COLOR_FIELDS,
+    NUMERIC_FIELDS,
+    ORDINAL_FIELDS,
+    SET_FIELDS,
+    TEXT_FIELDS,
+)
 from .fields_numeric import NumericGaussianScorer
 from .fields_categorical import CategoricalMatchScorer
 from .fields_set_jaccard import SetJaccardScorer
@@ -30,58 +38,6 @@ from .embed_store import ensure_metadata_embeddings, embedding_backend_ready, DE
 logger = logging.getLogger("starBoard.search.engine")
 
 Row = Dict[str, str]
-
-# =============================================================================
-# V2 SCHEMA FIELD DEFINITIONS
-# =============================================================================
-
-# Numeric fields - continuous measurements
-NUMERIC_FIELDS = [
-    "num_apparent_arms",
-    "num_total_arms",
-    "tip_to_tip_size_cm",
-]
-
-# Ordinal categorical fields - stored as numeric values (0, 1, 2, 3...)
-# These use numeric Gaussian scoring since order matters
-ORDINAL_FIELDS = [
-    "stripe_order",        # 0=None, 1=Mixed, 2=Irregular, 3=Regular
-    "stripe_prominence",   # 0=None, 1=Weak, 2=Medium, 3=Strong, 4=Strongest
-    "stripe_extent",       # 0.0=None, 0.25=Quarter, 0.5=Halfway, 0.75=Three quarters, 1.0=Full
-    "stripe_thickness",    # 0=None, 1=Thin, 2=Medium, 3=Thick
-    "arm_thickness",       # 0=Thin, 1=Medium, 2=Thick
-    "rosette_prominence",  # 0=Weak, 1=Medium, 2=Strong
-    "reticulation_order",  # 0=None, 1=Mixed, 2=Meandering, 3=Train tracks
-]
-
-# Color categorical fields - exact string match
-COLOR_FIELDS = [
-    "stripe_color",
-    "arm_color",
-    "central_disc_color",
-    "papillae_central_disc_color",
-    "rosette_color",
-    "papillae_stripe_color",
-    "madreporite_color",
-    "overall_color",
-]
-
-# Set/code fields - Jaccard similarity on tokenized sets
-SET_FIELDS = [
-    "short_arm_code",
-]
-
-# Free text fields - embedding or n-gram similarity
-TEXT_FIELDS = [
-    "location",
-    "unusual_observation",
-    "health_observation",
-]
-
-# All fields combined for iteration
-ALL_FIELDS: List[str] = (
-    NUMERIC_FIELDS + ORDINAL_FIELDS + COLOR_FIELDS + SET_FIELDS + TEXT_FIELDS
-)
 
 
 @dataclass

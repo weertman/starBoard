@@ -18,9 +18,14 @@ from PySide6.QtWidgets import (
     QCompleter, QSlider,
 )
 
-from src.search.engine import (
-    FirstOrderSearchEngine, ALL_FIELDS,
-    TEXT_FIELDS, NUMERIC_FIELDS, ORDINAL_FIELDS, COLOR_FIELDS, SET_FIELDS
+from src.search.engine import FirstOrderSearchEngine
+from src.search.field_sets import (
+    ALL_FIELDS,
+    COLOR_FIELDS,
+    NUMERIC_FIELDS,
+    ORDINAL_FIELDS,
+    SET_FIELDS,
+    TEXT_FIELDS,
 )
 from src.data.fields_config import get_fields_config
 from src.data import archive_paths as ap

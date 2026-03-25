@@ -1,20 +1,7 @@
 # ==============================================================================
 # ARCHIVE - User-specific research data (DO NOT PUSH)
 # ==============================================================================
-archive/gallery/
-archive/querries/
-archive/reports/
-archive/logs/
-archive/vocabularies/
-archive/_dl_precompute/
-archive/*.log
-archive/*.log.*
-archive/*.csv
-archive/*.xlsx
-
-# Keep config files in archive
-!archive/color_config.yaml
-!archive/fields_config.yaml
+archive/
 
 # ==============================================================================
 # MODEL CHECKPOINTS & WEIGHTS (Too large for GitHub - 100MB limit)
