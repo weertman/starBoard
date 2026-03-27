@@ -1086,6 +1086,8 @@ class TabFirstOrder(QWidget):
         self.filters_section = CollapsibleSection("Fields & Offsets", start_collapsed=True, parent=self)
         self.filters_section.setContent(filters_scroll)
         self.filters_section.toggled.connect(self._on_filters_toggled)
+        # Help button for fields section (added to the toggle bar)
+        self.filters_section.toggle.setToolTip(HELP_TEXTS['first_order_fields'])
 
         self.vsplit_all = QSplitter(Qt.Vertical)
         self.vsplit_all.setHandleWidth(6)

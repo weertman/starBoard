@@ -51,17 +51,17 @@ HELP_TEXTS = {
     # ── First-order tab ──
     'first_order_query': 'Pick an unidentified sighting (query) from the list to search for possible matches. The selected query\'s photos and traits will be compared against all known individuals in the gallery. Start here when you want to identify a new sighting.',
     'first_order_fields': 'Choose which physical traits to include in the search and how strict each comparison should be. Wider tolerances return more candidates but may include weaker matches. Adjust these if you\'re getting too many or too few results.',
-    'first_order_results': 'This is the ranked list of gallery individuals most similar to your selected query. Top-ranked candidates are the closest matches based on the traits you selected. Click any candidate to move to the side-by-side comparison for a final decision.',
+    'first_order_results': 'This is the ranked list of gallery individuals most similar to your selected query. Top-ranked candidates are the closest matches based on the traits you selected. Pin promising candidates, then switch to the Second-order tab for side-by-side comparison.',
 
     # ── Second-order tab ──
     'second_order_compare': 'Compare your unidentified sighting and a gallery candidate side by side. Pan and zoom are synchronized so you can inspect the same body region on both animals at once. Decide whether they are the same individual: Yes, No, or Maybe.',
 
     # ── Gallery Review tab ──
-    'gallery_review_browse': 'Browse all known individuals in the gallery. View each animal\'s encounter history, photos across dates, and trait annotations. Filter by location or search by name to find a specific individual. You can also edit metadata directly from here.',
+    'gallery_review_browse': 'Browse all known individuals in the gallery. View photos across encounters, see encounter dates, and manage entries. Filter by location or search by name. You can edit metadata, rename IDs, delete photos, and mark the best photo for each individual.',
 
     # ── Analytics & History tab ──
     'analytics_visualizations': 'Charts and plots summarizing your match decision history. Use this section to spot patterns in how you\'ve been identifying individuals over time.',
-    'analytics_overview': 'A quick summary of all match decisions you\'ve made — how many YES, NO, and UNSURE calls across your entire dataset. Check here to see your overall progress.',
+    'analytics_overview': 'A quick summary of all match decisions you\'ve made — how many Yes, No, and Maybe calls across your entire dataset. Check here to see your overall progress.',
     'analytics_match_dynamics': 'Shows how your match decisions have changed over time. Use this to track whether your identification rate is improving as the gallery grows.',
     'analytics_query_gallery': 'Breaks down match attempts by individual query photo or gallery individual. Use this to see which animals have been matched most often or which queries were hardest to resolve.',
     'analytics_workflow': 'Tracks how fast you\'re working — decisions per session, time per match, and overall throughput. Useful for planning how long future annotation sessions will take.',
@@ -84,6 +84,6 @@ HELP_TEXTS = {
     'morph_archive': 'Choose which individual and encounter to save your measurements to. Select the animal from your archive so measurements are linked to the correct record.',
     'morph_saved': 'View previously recorded measurements for the selected individual. Use this to review past size data or compare measurements across encounters.',
     'morph_metadata': 'Add morphological notes and annotations to the current measurement session — such as body condition, color, or abnormalities observed during measurement.',
-    'morph_analysis': 'Configure how measurements are taken — set the checkerboard calibration for accurate scaling and adjust arm detection settings for your specimen.',
-    'morph_actions': 'Capture an image from the camera, run the measurement analysis, and save the results. This is where you do the actual measuring — work through these buttons in order.',
+    'morph_analysis': 'Fine-tune the arm detection parameters for your specimen — adjust smoothing, sensitivity, distance, and arm rotation to get an accurate measurement.',
+    'morph_actions': 'Run the detection and measurement analysis on the current camera frame, then save the results to the archive. Use "Run All" to detect and measure in one step, then "Save to starBoard" to store the data.',
 }
