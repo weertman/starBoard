@@ -132,6 +132,7 @@ class TabSync(QWidget):
     _status_signal = Signal(dict)
     _catalog_signal = Signal(dict)
     _progress_signal = Signal(int, int)  # current, total
+    _progress_detail_signal = Signal(str)  # detail text (speed, ETA, etc.)
     _done_signal = Signal(str)  # "push" or "pull"
 
     def __init__(self, parent=None):
@@ -340,9 +341,17 @@ class TabSync(QWidget):
         layout.addWidget(catalog_section)
 
         # ── Progress / Log ──
+        progress_row = QHBoxLayout()
         self._progress = QProgressBar()
         self._progress.setVisible(False)
-        layout.addWidget(self._progress)
+        self._progress.setMinimumHeight(22)
+        progress_row.addWidget(self._progress, 1)
+
+        self._lbl_progress_detail = QLabel("")
+        self._lbl_progress_detail.setVisible(False)
+        self._lbl_progress_detail.setMinimumWidth(280)
+        progress_row.addWidget(self._lbl_progress_detail)
+        layout.addLayout(progress_row)
 
         self._log_output = QTextEdit()
         self._log_output.setReadOnly(True)
@@ -367,6 +376,7 @@ class TabSync(QWidget):
         self._status_signal.connect(self._update_status)
         self._catalog_signal.connect(self._populate_catalog)
         self._progress_signal.connect(self._update_progress)
+        self._progress_detail_signal.connect(self._update_progress_detail)
         self._done_signal.connect(self._on_done)
 
     # ── Config ──────────────────────────────────────────────────────────
@@ -558,8 +568,8 @@ class TabSync(QWidget):
             return
 
         self._btn_push.setEnabled(False)
-        self._progress.setVisible(True)
-        self._progress.setRange(0, 0)  # indeterminate
+        self._show_progress()
+        self._progress.setRange(0, 0)  # indeterminate until we know total
         self._append_log("Starting push...")
 
         def worker():
@@ -606,11 +616,11 @@ class TabSync(QWidget):
                 total_meta = 0
                 total_decisions = 0
 
-                # Push encounters
+                # Count total encounters first for progress bar
+                import time as _time
+                all_encounters = []  # (target, entity_type, entity_id, enc_dir)
                 for target, target_name in [("gallery", "Gallery"), ("queries", "Queries")]:
                     ids = list_ids(target)
-                    self._log_signal.emit(f"Scanning {target_name} ({len(ids)} IDs)...")
-
                     for entity_id in ids:
                         if target == "gallery":
                             entity_dir = gallery_root() / entity_id
@@ -618,64 +628,88 @@ class TabSync(QWidget):
                         else:
                             entity_dir = queries_root() / entity_id
                             entity_type = "query"
-
                         if not entity_dir.exists():
                             continue
-
                         for enc_dir in sorted(entity_dir.iterdir()):
-                            if not enc_dir.is_dir() or enc_dir.name.startswith(("_", ".")):
-                                continue
+                            if enc_dir.is_dir() and not enc_dir.name.startswith(("_", ".")):
+                                all_encounters.append((target, entity_type, entity_id, enc_dir))
 
-                            images = []
-                            for img in enc_dir.iterdir():
-                                if img.is_file() and img.suffix.lower() in IMAGE_EXTS:
-                                    images.append((img.name, img.read_bytes()))
+                total_enc = len(all_encounters)
+                self._log_signal.emit(f"Found {total_enc} encounters to push")
+                self._progress_signal.emit(0, total_enc + 2)  # +2 for metadata + decisions
+                push_start = _time.time()
 
-                            if not images:
-                                continue
+                # Push encounters
+                for enc_idx, (target, entity_type, entity_id, enc_dir) in enumerate(all_encounters):
+                    elapsed = _time.time() - push_start
+                    if enc_idx > 0:
+                        rate = enc_idx / elapsed
+                        remaining = (total_enc - enc_idx) / rate
+                        mins, secs = divmod(int(remaining), 60)
+                        self._progress_detail_signal.emit(
+                            f"Encounter {enc_idx+1}/{total_enc}  |  "
+                            f"ETA: {mins}m {secs}s  |  "
+                            f"{total_new} new, {total_dupes} dupes"
+                        )
+                    self._progress_signal.emit(enc_idx, total_enc + 2)
 
-                            # Multipart upload
-                            boundary = uuid.uuid4().hex
-                            body = b""
-                            for key, value in {
-                                "entity_type": entity_type,
-                                "entity_id": entity_id,
-                                "encounter_folder": enc_dir.name,
-                                "source_lab": lab,
-                            }.items():
-                                body += f"--{boundary}\r\n".encode()
-                                body += f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode()
-                                body += f"{value}\r\n".encode()
+                    # Re-derive entity_dir for the old scanning code below
+                    # (already have entity_type, entity_id, enc_dir from the list)
+                    pass  # variables already set from all_encounters
 
-                            for fname, fdata in images:
-                                body += f"--{boundary}\r\n".encode()
-                                body += f'Content-Disposition: form-data; name="files"; filename="{fname}"\r\n'.encode()
-                                body += b"Content-Type: application/octet-stream\r\n\r\n"
-                                body += fdata + b"\r\n"
+                    # Scan for images in this encounter
+                    images = []
+                    for img in enc_dir.iterdir():
+                        if img.is_file() and img.suffix.lower() in IMAGE_EXTS:
+                            images.append((img.name, img.read_bytes()))
 
-                            body += f"--{boundary}--\r\n".encode()
+                    if not images:
+                        continue
 
-                            enc_headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
-                            enc_headers.update(cf_headers)
-                            req = Request(
-                                f"{server}/api/push/encounters",
-                                data=body,
-                                headers=enc_headers,
-                            )
-                            r = _authed_open(req, timeout=300)
-                            result = json.loads(r.read())
-                            accepted = result["accepted_images"]
-                            skipped = result["skipped_duplicates"]
-                            total_new += accepted
-                            total_dupes += skipped
+                    # Multipart upload
+                    boundary = uuid.uuid4().hex
+                    body = b""
+                    for key, value in {
+                        "entity_type": entity_type,
+                        "entity_id": entity_id,
+                        "encounter_folder": enc_dir.name,
+                        "source_lab": lab,
+                    }.items():
+                        body += f"--{boundary}\r\n".encode()
+                        body += f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode()
+                        body += f"{value}\r\n".encode()
 
-                            if accepted > 0:
-                                self._log_signal.emit(
-                                    f"  {entity_type}/{entity_id}/{enc_dir.name}: "
-                                    f"{accepted} new, {skipped} dupes"
-                                )
+                    for fname, fdata in images:
+                        body += f"--{boundary}\r\n".encode()
+                        body += f'Content-Disposition: form-data; name="files"; filename="{fname}"\r\n'.encode()
+                        body += b"Content-Type: application/octet-stream\r\n\r\n"
+                        body += fdata + b"\r\n"
+
+                    body += f"--{boundary}--\r\n".encode()
+
+                    enc_headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+                    enc_headers.update(cf_headers)
+                    req = Request(
+                        f"{server}/api/push/encounters",
+                        data=body,
+                        headers=enc_headers,
+                    )
+                    r = _authed_open(req, timeout=300)
+                    result = json.loads(r.read())
+                    accepted = result["accepted_images"]
+                    skipped = result["skipped_duplicates"]
+                    total_new += accepted
+                    total_dupes += skipped
+
+                    if accepted > 0:
+                        self._log_signal.emit(
+                            f"  {entity_type}/{entity_id}/{enc_dir.name}: "
+                            f"{accepted} new, {skipped} dupes"
+                        )
 
                 # Push metadata
+                self._progress_signal.emit(total_enc, total_enc + 2)
+                self._progress_detail_signal.emit("Pushing metadata...")
                 self._log_signal.emit("Pushing metadata...")
                 for target in ["gallery", "queries"]:
                     paths = metadata_csv_paths_for_read(target)
@@ -704,6 +738,8 @@ class TabSync(QWidget):
                         )
 
                 # Push decisions
+                self._progress_signal.emit(total_enc + 1, total_enc + 2)
+                self._progress_detail_signal.emit("Pushing decisions...")
                 self._log_signal.emit("Pushing decisions...")
                 master_csv = archive / "reports" / "past_matches_master.csv"
                 if master_csv.exists():
@@ -819,7 +855,7 @@ class TabSync(QWidget):
     def _run_pull(self, server: str, pull_filter: dict):
         self._btn_pull.setEnabled(False)
         self._btn_pull_all.setEnabled(False)
-        self._progress.setVisible(True)
+        self._show_progress()
         self._progress.setRange(0, 0)
         self._append_log("Creating pull package...")
 
@@ -874,13 +910,42 @@ class TabSync(QWidget):
                     self._done_signal.emit("pull")
                     return
 
-                # Download
-                self._log_signal.emit(f"Downloading...")
+                # Download with progress
+                import time as _time
+                total_bytes = pkg["total_bytes"]
+                self._log_signal.emit(f"Downloading {total_bytes / (1024**2):.1f} MB...")
+                self._progress_signal.emit(0, max(total_bytes, 1))
+
                 dl_req = Request(f"{server}/api/pull/stream/{pkg['package_id']}", headers=cf_headers)
                 r = _authed_open(dl_req, timeout=600)
-                tar_bytes = r.read()
+
+                chunks = []
+                downloaded = 0
+                dl_start = _time.time()
+                while True:
+                    chunk = r.read(256 * 1024)  # 256KB chunks
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    downloaded += len(chunk)
+                    elapsed = _time.time() - dl_start
+                    speed = downloaded / elapsed if elapsed > 0 else 0
+                    remaining_bytes = total_bytes - downloaded
+                    eta_secs = remaining_bytes / speed if speed > 0 else 0
+                    mins, secs = divmod(int(eta_secs), 60)
+
+                    self._progress_signal.emit(downloaded, max(total_bytes, 1))
+                    self._progress_detail_signal.emit(
+                        f"{downloaded / (1024**2):.0f} / {total_bytes / (1024**2):.0f} MB  |  "
+                        f"{speed / (1024**2):.1f} MB/s  |  "
+                        f"ETA: {mins}m {secs}s"
+                    )
+
+                tar_bytes = b"".join(chunks)
+                elapsed = _time.time() - dl_start
                 self._log_signal.emit(
-                    f"Downloaded {len(tar_bytes) / (1024**2):.1f} MB"
+                    f"Downloaded {len(tar_bytes) / (1024**2):.1f} MB in {elapsed:.0f}s "
+                    f"({len(tar_bytes) / elapsed / (1024**2):.1f} MB/s)"
                 )
 
                 # Extract
@@ -1033,8 +1098,21 @@ class TabSync(QWidget):
         self._progress.setRange(0, total)
         self._progress.setValue(current)
 
-    def _on_done(self, action: str):
+    def _update_progress_detail(self, text: str):
+        self._lbl_progress_detail.setText(text)
+
+    def _show_progress(self):
+        self._progress.setVisible(True)
+        self._lbl_progress_detail.setVisible(True)
+        self._lbl_progress_detail.setText("")
+
+    def _hide_progress(self):
         self._progress.setVisible(False)
+        self._lbl_progress_detail.setVisible(False)
+        self._lbl_progress_detail.setText("")
+
+    def _on_done(self, action: str):
+        self._hide_progress()
         self._btn_push.setEnabled(True)
         self._btn_pull.setEnabled(True)
         self._btn_pull_all.setEnabled(True)
