@@ -172,7 +172,13 @@ def _make_request(url: str, data: bytes = None, headers: Dict[str, str] = None,
 
     req = Request(url, data=data, headers=hdrs)
     try:
-        return urlopen(req, timeout=timeout)
+        resp = urlopen(req, timeout=timeout)
+        # Check if we got the Cloudflare Access login page instead of JSON
+        content_type = resp.headers.get("Content-Type", "")
+        if "text/html" in content_type and "application/json" not in content_type:
+            # Got login page — need to authenticate
+            raise HTTPError(url, 403, "Cloudflare Access login required", resp.headers, resp)
+        return resp
     except HTTPError as e:
         if e.code == 403:
             # Auth required — trigger browser login

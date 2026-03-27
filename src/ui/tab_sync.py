@@ -449,14 +449,19 @@ class TabSync(QWidget):
 
     def _cf_urlopen(self, url: str, data: bytes = None, timeout: int = 30):
         """urlopen with CF Access auth headers. Auto-triggers browser auth on 403."""
-        from urllib.request import Request, urlopen
-        from urllib.error import HTTPError
+        from urllib.request import Request, urlopen  # noqa: F811
+        from urllib.error import HTTPError  # noqa: F811
         headers = self._cf_auth_headers()
         if data and "Content-Type" not in headers:
             headers["Content-Type"] = "application/json"
         req = Request(url, data=data, headers=headers)
         try:
-            return urlopen(req, timeout=timeout)
+            resp = urlopen(req, timeout=timeout)
+            # Detect Cloudflare Access login page (HTML instead of JSON)
+            ct = resp.headers.get("Content-Type", "")
+            if "text/html" in ct and "application/json" not in ct:
+                raise HTTPError(url, 403, "Cloudflare Access login required", resp.headers, resp)
+            return resp
         except HTTPError as e:
             if e.code == 403:
                 self._log_signal.emit("Authentication required — opening browser...")
