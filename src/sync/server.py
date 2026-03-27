@@ -380,6 +380,14 @@ async def pull_stream(package_id: str):
                 if abs_path.exists():
                     tar.add(str(abs_path), arcname=file_info["path"])
 
+            # Add DL precompute cache (embeddings, similarity matrices)
+            dl_precompute = ARCHIVE_ROOT / "_dl_precompute"
+            if dl_precompute.exists():
+                for f in dl_precompute.rglob("*"):
+                    if f.is_file():
+                        arcname = str(f.relative_to(ARCHIVE_ROOT))
+                        tar.add(str(f), arcname=arcname)
+
             # Add metadata CSVs if requested
             if pkg.get("include_metadata", True):
                 _add_metadata_to_tar(tar, manifest["entities"])
