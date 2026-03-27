@@ -424,6 +424,38 @@ class TabSync(QWidget):
 
     # ── Test Connection ─────────────────────────────────────────────────
 
+    def _cf_auth_headers(self) -> Dict[str, str]:
+        """Return headers with Cloudflare Access token if available."""
+        headers = {}
+        try:
+            cfg_path = self._config_path()
+            if cfg_path and cfg_path.exists():
+                with cfg_path.open("r") as f:
+                    cfg = json.load(f)
+                token = cfg.get("cf_access_token", "")
+                if token:
+                    headers["cf-access-token"] = token
+                    headers["Cookie"] = f"CF_Authorization={token}"
+        except Exception:
+            pass
+        return headers
+
+    def _config_path(self):
+        try:
+            from src.data.archive_paths import archive_root
+            return archive_root() / "starboard_sync_config.json"
+        except Exception:
+            return None
+
+    def _cf_urlopen(self, url: str, data: bytes = None, timeout: int = 30):
+        """urlopen with CF Access auth headers."""
+        from urllib.request import Request, urlopen
+        headers = self._cf_auth_headers()
+        if data and "Content-Type" not in headers:
+            headers["Content-Type"] = "application/json"
+        req = Request(url, data=data, headers=headers)
+        return urlopen(req, timeout=timeout)
+
     def _test_connection(self):
         self._ilog.log("button_click", "btn_sync_test_connection", value="clicked")
         server = self._get_server()
@@ -433,8 +465,7 @@ class TabSync(QWidget):
 
         def worker():
             try:
-                from urllib.request import urlopen
-                r = urlopen(f"{server}/api/health", timeout=10)
+                r = self._cf_urlopen(f"{server}/api/health", timeout=10)
                 data = json.loads(r.read())
                 self._status_signal.emit(data)
                 self._log_signal.emit(
@@ -474,6 +505,8 @@ class TabSync(QWidget):
                 from urllib.request import Request, urlopen
                 from urllib.error import HTTPError
                 import uuid
+
+                cf_headers = self._cf_auth_headers()
 
                 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
                 from src.data.archive_paths import (
@@ -542,10 +575,12 @@ class TabSync(QWidget):
 
                             body += f"--{boundary}--\r\n".encode()
 
+                            enc_headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+                            enc_headers.update(cf_headers)
                             req = Request(
                                 f"{server}/api/push/encounters",
                                 data=body,
-                                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                                headers=enc_headers,
                             )
                             r = urlopen(req, timeout=300)
                             result = json.loads(r.read())
@@ -573,10 +608,12 @@ class TabSync(QWidget):
                         body = json.dumps({
                             "target": target, "lab_id": lab, "rows": push_rows,
                         }).encode()
+                        meta_headers = {"Content-Type": "application/json"}
+                        meta_headers.update(cf_headers)
                         req = Request(
                             f"{server}/api/push/metadata",
                             data=body,
-                            headers={"Content-Type": "application/json"},
+                            headers=meta_headers,
                         )
                         r = urlopen(req, timeout=60)
                         result = json.loads(r.read())
@@ -607,10 +644,12 @@ class TabSync(QWidget):
                         body = json.dumps({
                             "lab_id": lab, "decisions": decisions,
                         }).encode()
+                        dec_headers = {"Content-Type": "application/json"}
+                        dec_headers.update(cf_headers)
                         req = Request(
                             f"{server}/api/push/decisions",
                             data=body,
-                            headers={"Content-Type": "application/json"},
+                            headers=dec_headers,
                         )
                         r = urlopen(req, timeout=60)
                         result = json.loads(r.read())
@@ -710,14 +749,17 @@ class TabSync(QWidget):
                 from urllib.request import Request, urlopen
                 from src.data.archive_paths import archive_root
 
+                cf_headers = self._cf_auth_headers()
                 archive = archive_root()
 
                 # Create package
                 body = json.dumps(pull_filter).encode()
+                pkg_headers = {"Content-Type": "application/json"}
+                pkg_headers.update(cf_headers)
                 req = Request(
                     f"{server}/api/pull/package",
                     data=body,
-                    headers={"Content-Type": "application/json"},
+                    headers=pkg_headers,
                 )
                 r = urlopen(req, timeout=30)
                 pkg = json.loads(r.read())
@@ -736,7 +778,8 @@ class TabSync(QWidget):
 
                 # Download
                 self._log_signal.emit(f"Downloading...")
-                r = urlopen(f"{server}/api/pull/stream/{pkg['package_id']}", timeout=600)
+                dl_req = Request(f"{server}/api/pull/stream/{pkg['package_id']}", headers=cf_headers)
+                r = urlopen(dl_req, timeout=600)
                 tar_bytes = r.read()
                 self._log_signal.emit(
                     f"Downloaded {len(tar_bytes) / (1024**2):.1f} MB"
@@ -800,8 +843,7 @@ class TabSync(QWidget):
 
         def worker():
             try:
-                from urllib.request import urlopen
-                r = urlopen(f"{server}/api/catalog", timeout=30)
+                r = self._cf_urlopen(f"{server}/api/catalog", timeout=30)
                 data = json.loads(r.read())
                 self._catalog_signal.emit(data)
                 self._log_signal.emit(

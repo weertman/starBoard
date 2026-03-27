@@ -41,6 +41,77 @@ if str(_project_root) not in sys.path:
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 
+# ─── Cloudflare Access Auth ─────────────────────────────────────────────────
+
+_cf_token: Optional[str] = None
+
+
+def _get_cf_token(server_url: str) -> Optional[str]:
+    """Get a cached Cloudflare Access JWT token, or None."""
+    global _cf_token
+    if _cf_token:
+        return _cf_token
+
+    # Check if we have a saved token
+    cfg = load_config()
+    token = cfg.get("cf_access_token", "")
+    if token:
+        _cf_token = token
+        return token
+
+    return None
+
+
+def _authenticate_cloudflare(server_url: str) -> str:
+    """
+    Authenticate with Cloudflare Access via browser.
+
+    Uses `cloudflared access login` if available, which opens a browser
+    for email verification and returns a JWT token.
+    If cloudflared is not installed, opens the browser directly and
+    instructs the user.
+    """
+    global _cf_token
+    import subprocess, shutil
+
+    cloudflared = shutil.which("cloudflared")
+    if cloudflared:
+        print("Opening browser for Cloudflare Access login...")
+        print("Please verify your email in the browser window.")
+        try:
+            result = subprocess.run(
+                [cloudflared, "access", "login", server_url],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                # Token is the last non-empty line of stdout
+                lines = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
+                token = lines[-1] if lines else ""
+                if token and token.startswith("ey"):
+                    _cf_token = token
+                    # Save to config
+                    cfg = load_config()
+                    cfg["cf_access_token"] = token
+                    save_config(cfg)
+                    print("Authenticated successfully.")
+                    return token
+            print(f"Authentication failed: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            print("Authentication timed out (120s). Please try again.")
+        except Exception as e:
+            print(f"Authentication error: {e}")
+    else:
+        print("ERROR: cloudflared is not installed.")
+        print("Install it to enable Cloudflare Access authentication:")
+        print("  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")
+        print()
+        print("Or install on Debian/Ubuntu:")
+        print("  curl -fsSL https://pkg.cloudflare.com/cloudflare-public-v2.gpg | sudo tee /usr/share/keyrings/cloudflare-public-v2.gpg >/dev/null")
+        print("  echo 'deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list")
+        print("  sudo apt-get update && sudo apt-get install cloudflared")
+
+    sys.exit(1)
+
 
 # ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -83,12 +154,44 @@ def get_lab_id(cfg: Dict[str, Any]) -> str:
 
 # ─── HTTP helpers ───────────────────────────────────────────────────────────
 
+def _make_request(url: str, data: bytes = None, headers: Dict[str, str] = None,
+                   timeout: int = 30) -> Any:
+    """Make an HTTP request with Cloudflare Access auth, retrying on 403."""
+    hdrs = dict(headers or {})
+
+    # Add CF auth token if available
+    cfg = load_config()
+    token = _get_cf_token(cfg.get("server_url", ""))
+    if token:
+        hdrs["cf-access-token"] = token
+        hdrs["Cookie"] = f"CF_Authorization={token}"
+
+    req = Request(url, data=data, headers=hdrs)
+    try:
+        return urlopen(req, timeout=timeout)
+    except HTTPError as e:
+        if e.code == 403:
+            # Auth required — trigger browser login
+            server = cfg.get("server_url", "")
+            if server:
+                print("\nCloudflare Access authentication required.")
+                _authenticate_cloudflare(server)
+                # Retry with new token
+                token = _get_cf_token(server)
+                if token:
+                    hdrs["cf-access-token"] = token
+                    hdrs["Cookie"] = f"CF_Authorization={token}"
+                    req = Request(url, data=data, headers=hdrs)
+                    return urlopen(req, timeout=timeout)
+        raise
+
+
 def _api_get(base_url: str, path: str, params: Optional[Dict] = None) -> Any:
     url = f"{base_url}{path}"
     if params:
         url += "?" + urlencode({k: v for k, v in params.items() if v is not None})
     try:
-        r = urlopen(url, timeout=30)
+        r = _make_request(url, timeout=30)
         return json.loads(r.read())
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
@@ -101,12 +204,12 @@ def _api_get(base_url: str, path: str, params: Optional[Dict] = None) -> Any:
 
 def _api_post_json(base_url: str, path: str, data: Any) -> Any:
     body = json.dumps(data).encode()
-    req = Request(
-        f"{base_url}{path}", data=body,
-        headers={"Content-Type": "application/json"},
-    )
     try:
-        r = urlopen(req, timeout=60)
+        r = _make_request(
+            f"{base_url}{path}", data=body,
+            headers={"Content-Type": "application/json"},
+            timeout=60,
+        )
         return json.loads(r.read())
     except HTTPError as e:
         body_text = e.read().decode("utf-8", errors="replace")
@@ -137,12 +240,12 @@ def _api_post_multipart(
 
     body += f"--{boundary}--\r\n".encode()
 
-    req = Request(
-        f"{base_url}{path}", data=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-    )
     try:
-        r = urlopen(req, timeout=300)
+        r = _make_request(
+            f"{base_url}{path}", data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            timeout=300,
+        )
         return json.loads(r.read())
     except HTTPError as e:
         body_text = e.read().decode("utf-8", errors="replace")
@@ -152,7 +255,7 @@ def _api_post_multipart(
 
 def _api_get_bytes(base_url: str, path: str) -> bytes:
     try:
-        r = urlopen(f"{base_url}{path}", timeout=600)
+        r = _make_request(f"{base_url}{path}", timeout=600)
         return r.read()
     except HTTPError as e:
         print(f"ERROR: {e.code} from {path}")
