@@ -26,6 +26,40 @@ from src.utils.interaction_logger import get_interaction_logger
 log = logging.getLogger("starBoard.ui.tab_sync")
 
 
+# ─── Help texts ─────────────────────────────────────────────────────────────
+
+HELP_TEXTS = {
+    'connection': 'This is where you set up your link to the central server. Enter the server address and your lab ID, then click Save Config to store these settings. Click Test Connection to verify your machine can reach the server before syncing.',
+    'sync_status': 'This panel shows when you last sent or received data, and how much is stored on the central server. Use it to check whether your local data is up to date or if you need to push or pull.',
+    'push': 'Click Push All Local Data to send everything on this machine — photos, metadata, and any match decisions you have made — up to the central server. This ensures your fieldwork is backed up and available to other researchers. You can push as often as you like; only new or changed data is sent.',
+    'pull': 'Use this section to download data from the central server onto your machine. You can filter by specific individuals, sightings, locations, or date ranges and click Pull Selected Data, or click Pull Everything to grab the entire archive.',
+    'catalog': 'Click Refresh Catalog from Server to fetch an up-to-date list of everything stored in the central archive. The table below shows all known individuals and unidentified sightings available on the server, so you can see what is available before pulling.',
+    'gallery_filter': 'This is a searchable checklist of known, identified individuals in the central archive. Type to search by ID, then check the boxes for the specific individuals whose photos and data you want to download.',
+    'query_filter': 'This is a searchable checklist of unidentified sightings that still need to be matched. Type to search by ID, then check the boxes for the specific sightings you want to download and work on.',
+    'location_filter': 'This is a searchable checklist of field locations where observations were recorded. Check one or more locations to download only data collected at those sites.',
+    'date_filter': 'Use the After and Before date pickers to download only encounters from a specific time window. For example, set After to the start of your field season and Before to the end to pull just that season\'s data.',
+}
+
+
+class HelpButton(QPushButton):
+    """A small '?' button that shows a help popup when clicked."""
+
+    def __init__(self, help_text: str, parent=None):
+        super().__init__("?", parent)
+        self._help_text = help_text
+        self.setFixedSize(22, 22)
+        self.setStyleSheet(
+            "QPushButton { border-radius: 11px; font-weight: bold; "
+            "font-size: 12px; background: #555; color: white; } "
+            "QPushButton:hover { background: #777; }"
+        )
+        self.setToolTip("Click for help")
+        self.clicked.connect(self._show_help)
+
+    def _show_help(self):
+        QMessageBox.information(self.window(), "Help", self._help_text)
+
+
 class SearchableMultiSelect(QWidget):
     """A searchable combo-like widget with multi-select via checkboxes.
 
@@ -176,6 +210,7 @@ class TabSync(QWidget):
         btn_row.addWidget(self._btn_save_config)
         btn_row.addWidget(self._btn_test_connection)
         btn_row.addStretch()
+        btn_row.addWidget(HelpButton(HELP_TEXTS['connection']))
         cfg_lay.addRow(btn_row)
 
         self._lbl_connection_status = QLabel("")
@@ -188,6 +223,10 @@ class TabSync(QWidget):
         status_section = CollapsibleSection("Sync Status", start_collapsed=False)
         status_content = QWidget()
         status_lay = QFormLayout(status_content)
+        status_help_row = QHBoxLayout()
+        status_help_row.addStretch()
+        status_help_row.addWidget(HelpButton(HELP_TEXTS['sync_status']))
+        status_lay.addRow(status_help_row)
 
         self._lbl_last_push = QLabel("never")
         self._lbl_last_pull = QLabel("never")
@@ -223,6 +262,7 @@ class TabSync(QWidget):
         self._btn_push.setStyleSheet("QPushButton { font-weight: bold; }")
         push_btn_row.addWidget(self._btn_push)
         push_btn_row.addStretch()
+        push_btn_row.addWidget(HelpButton(HELP_TEXTS['push']))
         push_lay.addLayout(push_btn_row)
 
         push_section.setContent(push_content)
@@ -246,21 +286,33 @@ class TabSync(QWidget):
 
         # Gallery multi-select
         gallery_col = QVBoxLayout()
-        gallery_col.addWidget(QLabel("Gallery IDs:"))
+        gallery_hdr = QHBoxLayout()
+        gallery_hdr.addWidget(QLabel("Gallery IDs:"))
+        gallery_hdr.addStretch()
+        gallery_hdr.addWidget(HelpButton(HELP_TEXTS['gallery_filter']))
+        gallery_col.addLayout(gallery_hdr)
         self._pull_gallery_select = SearchableMultiSelect("Search gallery...")
         gallery_col.addWidget(self._pull_gallery_select)
         filter_row.addLayout(gallery_col)
 
         # Query multi-select
         query_col = QVBoxLayout()
-        query_col.addWidget(QLabel("Query IDs:"))
+        query_hdr = QHBoxLayout()
+        query_hdr.addWidget(QLabel("Query IDs:"))
+        query_hdr.addStretch()
+        query_hdr.addWidget(HelpButton(HELP_TEXTS['query_filter']))
+        query_col.addLayout(query_hdr)
         self._pull_query_select = SearchableMultiSelect("Search queries...")
         query_col.addWidget(self._pull_query_select)
         filter_row.addLayout(query_col)
 
         # Location multi-select
         location_col = QVBoxLayout()
-        location_col.addWidget(QLabel("Locations:"))
+        location_hdr = QHBoxLayout()
+        location_hdr.addWidget(QLabel("Locations:"))
+        location_hdr.addStretch()
+        location_hdr.addWidget(HelpButton(HELP_TEXTS['location_filter']))
+        location_col.addLayout(location_hdr)
         self._pull_location_select = SearchableMultiSelect("Search locations...")
         location_col.addWidget(self._pull_location_select)
         filter_row.addLayout(location_col)
@@ -293,6 +345,7 @@ class TabSync(QWidget):
         date_lay.addWidget(self._pull_date_before)
 
         date_lay.addStretch()
+        date_lay.addWidget(HelpButton(HELP_TEXTS['date_filter']))
         pull_lay.addLayout(date_lay)
 
         pull_btn_row = QHBoxLayout()
@@ -303,6 +356,7 @@ class TabSync(QWidget):
         pull_btn_row.addWidget(self._btn_pull)
         pull_btn_row.addWidget(self._btn_pull_all)
         pull_btn_row.addStretch()
+        pull_btn_row.addWidget(HelpButton(HELP_TEXTS['pull']))
         pull_lay.addLayout(pull_btn_row)
 
         pull_section.setContent(pull_content)
@@ -313,6 +367,7 @@ class TabSync(QWidget):
         self._btn_refresh_catalog = QPushButton("Refresh Catalog from Server")
         self._btn_refresh_catalog.setMinimumHeight(32)
         cat_btn_row.addWidget(self._btn_refresh_catalog)
+        cat_btn_row.addWidget(HelpButton(HELP_TEXTS['catalog']))
         cat_btn_row.addStretch()
         self._lbl_catalog_summary = QLabel("")
         cat_btn_row.addWidget(self._lbl_catalog_summary)
