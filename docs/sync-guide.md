@@ -31,6 +31,44 @@ Field Machine B                              ▲
 
 ## For Field Machine Users
 
+### Quickstart (Copy-Paste Setup)
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/weertman/starBoard.git
+cd starBoard
+
+# 2. Install Python dependencies
+pip install PySide6 pandas numpy pillow scipy tqdm sentence-transformers
+pip install fastapi uvicorn python-multipart
+
+# 3. Install cloudflared (needed for authentication only)
+# macOS:
+brew install cloudflared
+# Debian/Ubuntu:
+# sudo mkdir -p --mode=0755 /usr/share/keyrings
+# curl -fsSL https://pkg.cloudflare.com/cloudflare-public-v2.gpg | sudo tee /usr/share/keyrings/cloudflare-public-v2.gpg >/dev/null
+# echo 'deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+# sudo apt-get update && sudo apt-get install cloudflared
+
+# 4. Configure sync (one-time)
+PYTHONPATH=. python3 -m src.sync.client config \
+  --server https://upload.fhl-star-board.com \
+  --lab YOUR_LAB_NAME
+
+# 5. Launch the app
+PYTHONPATH=. python3 main.py
+# Go to the Sync tab → Test Connection
+# Browser will open for email verification on first use
+# Your email must be authorized by the central server operator
+```
+
+> **Note:** If `brew` is not installed on macOS, you can download cloudflared
+> directly from https://github.com/cloudflare/cloudflared/releases —
+> get the `cloudflared-darwin-arm64.tgz` (Apple Silicon) or
+> `cloudflared-darwin-amd64.tgz` (Intel), extract, and put the binary
+> somewhere on your PATH (e.g. `~/bin/`).
+
 ### Requirements
 
 On top of the normal starBoard dependencies:
