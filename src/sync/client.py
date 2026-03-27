@@ -416,29 +416,54 @@ def cmd_push(args):
                 if not enc_dir.is_dir() or enc_dir.name.startswith(("_", ".")):
                     continue
 
-                # Collect image files
-                images = []
-                for img in enc_dir.iterdir():
-                    if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS:
-                        images.append((img.name, img.read_bytes()))
+                # Collect image file paths
+                img_paths = [
+                    img for img in enc_dir.iterdir()
+                    if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS
+                ]
 
-                if not images:
+                if not img_paths:
                     continue
 
-                print(f"  Pushing {entity_type}/{entity_id}/{enc_dir.name} "
-                      f"({len(images)} images)...", end=" ", flush=True)
+                # Upload in batches to stay under Cloudflare's ~100MB request limit
+                MAX_BATCH_BYTES = 50 * 1024 * 1024  # 50MB per request
+                batch = []
+                batch_bytes = 0
+                enc_accepted = 0
+                enc_skipped = 0
 
-                result = _api_post_multipart(server, "/api/push/encounters", {
-                    "entity_type": entity_type,
-                    "entity_id": entity_id,
-                    "encounter_folder": enc_dir.name,
-                    "source_lab": lab,
-                }, images)
+                for img_path in sorted(img_paths):
+                    data = img_path.read_bytes()
+                    if batch and batch_bytes + len(data) > MAX_BATCH_BYTES:
+                        # Send current batch
+                        r = _api_post_multipart(server, "/api/push/encounters", {
+                            "entity_type": entity_type,
+                            "entity_id": entity_id,
+                            "encounter_folder": enc_dir.name,
+                            "source_lab": lab,
+                        }, batch)
+                        enc_accepted += r["accepted_images"]
+                        enc_skipped += r["skipped_duplicates"]
+                        batch = []
+                        batch_bytes = 0
+                    batch.append((img_path.name, data))
+                    batch_bytes += len(data)
 
-                accepted = result["accepted_images"]
-                skipped = result["skipped_duplicates"]
-                total_images += accepted
-                print(f"{accepted} new, {skipped} dupes")
+                # Send remaining batch
+                if batch:
+                    r = _api_post_multipart(server, "/api/push/encounters", {
+                        "entity_type": entity_type,
+                        "entity_id": entity_id,
+                        "encounter_folder": enc_dir.name,
+                        "source_lab": lab,
+                    }, batch)
+                    enc_accepted += r["accepted_images"]
+                    enc_skipped += r["skipped_duplicates"]
+
+                total_images += enc_accepted
+                print(f"  {entity_type}/{entity_id}/{enc_dir.name}: "
+                      f"{enc_accepted} new, {enc_skipped} dupes "
+                      f"({len(img_paths)} images)")
 
     # ── Push metadata ────────────────────────────────────────────────
     print("\nPushing metadata...")
