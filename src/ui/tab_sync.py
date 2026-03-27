@@ -426,7 +426,7 @@ class TabSync(QWidget):
 
     def _cf_auth_headers(self) -> Dict[str, str]:
         """Return headers with Cloudflare Access token if available."""
-        headers = {}
+        headers = {"User-Agent": "starBoard-Sync/0.1"}
         try:
             cfg_path = self._config_path()
             if cfg_path and cfg_path.exists():

@@ -39,7 +39,41 @@ On top of the normal starBoard dependencies:
 pip install fastapi uvicorn python-multipart
 ```
 
-> These are needed because the sync client module imports from the shared `src/sync/` package.
+You also need `cloudflared` installed for authentication. The central server uses
+Cloudflare Access email verification — `cloudflared` handles the browser login flow.
+
+**Debian/Ubuntu:**
+```bash
+sudo mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-public-v2.gpg | sudo tee /usr/share/keyrings/cloudflare-public-v2.gpg >/dev/null
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt-get update && sudo apt-get install cloudflared
+```
+
+**macOS:**
+```bash
+brew install cloudflared
+```
+
+**Other platforms:** https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+> Note: field machines do NOT need to configure a tunnel. `cloudflared` is only
+> used for the `cloudflared access login` command which handles browser-based
+> email verification.
+
+### Authentication
+
+The first time you push, pull, or test connection, the app will:
+
+1. Detect that authentication is required (403 from server)
+2. Automatically run `cloudflared access login` which opens your browser
+3. You enter your email address on the Cloudflare login page
+4. You receive a one-time code via email and enter it
+5. The JWT token is saved locally and reused for 1 week
+
+Your email must be authorized by the central server operator. If you get
+"access denied", contact the server operator to add your email to the
+Cloudflare Access policy.
 
 ### Setup (One Time)
 
@@ -255,3 +289,6 @@ These columns are added automatically when the app starts (via the existing CSV 
 | Catalog lists are empty | Click "Refresh Catalog from Server" or check connection |
 | Server won't start | Check `journalctl -u starboard-sync` for errors |
 | Tunnel not routing | Check `systemctl status cloudflared-starboard` |
+| 403 on every request | Token expired — delete `cf_access_token` from `archive/starboard_sync_config.json` and retry to trigger re-auth |
+| "cloudflared is not installed" | Install cloudflared — required for email verification on field machines |
+| Browser doesn't open for auth | Run `cloudflared access login https://upload.fhl-star-board.com` manually in a terminal |

@@ -154,10 +154,14 @@ def get_lab_id(cfg: Dict[str, Any]) -> str:
 
 # ─── HTTP helpers ───────────────────────────────────────────────────────────
 
+_USER_AGENT = "starBoard-Sync/0.1"
+
+
 def _make_request(url: str, data: bytes = None, headers: Dict[str, str] = None,
                    timeout: int = 30) -> Any:
     """Make an HTTP request with Cloudflare Access auth, retrying on 403."""
     hdrs = dict(headers or {})
+    hdrs.setdefault("User-Agent", _USER_AGENT)
 
     # Add CF auth token if available
     cfg = load_config()
