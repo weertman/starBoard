@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Iterable, Tuple
 import csv
 import logging
+from datetime import datetime, timezone
 
 log = logging.getLogger("starBoard.data.csv")
 
@@ -133,9 +134,35 @@ def _rewrite_with_upgraded_header(csv_path: Path, new_header: List[str], old_hea
             writer.writerow(out)
     tmp.replace(csv_path)
 
+def _stamp_sync_fields(row: Dict[str, str], header: List[str]) -> Dict[str, str]:
+    """Auto-populate sync metadata fields if they are in the header.
+
+    - last_modified_utc: always set to current UTC time
+    - modified_by_lab: always set to current lab ID
+    - source_lab: only set if not already present (set-once semantics)
+    """
+    if "last_modified_utc" not in header:
+        return row  # header doesn't have sync columns yet
+
+    try:
+        from src.sync.config import get_lab_id
+        lab = get_lab_id()
+    except Exception:
+        lab = ""
+
+    row = dict(row)  # shallow copy to avoid mutating caller's dict
+    row["last_modified_utc"] = datetime.now(timezone.utc).isoformat()
+    row["modified_by_lab"] = lab
+    # source_lab is set-once: only populate if empty/missing
+    if not row.get("source_lab", "").strip():
+        row["source_lab"] = lab
+    return row
+
+
 def append_row(csv_path: Path, header: List[str], row: Dict[str, str]) -> None:
     """Append a row; missing columns -> empty strings; extra keys ignored."""
     ensure_header(csv_path, header)
+    row = _stamp_sync_fields(row, header)
     ordered = [row.get(col, "") for col in header]
     with csv_path.open("a", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)

@@ -429,6 +429,29 @@ FIELD_DEFINITIONS: List[FieldDefinition] = [
         group="morphometric_auto",
         tooltip="Path to the source mFolder containing full morphometric data",
     ),
+
+    # --- Group 7: Sync Metadata (Auto-populated) ---
+    FieldDefinition(
+        name="last_modified_utc",
+        display_name="Last modified (UTC)",
+        annotation_type=AnnotationType.TEXT_FREE,
+        group="sync",
+        tooltip="ISO 8601 timestamp of the last metadata save (auto-populated)",
+    ),
+    FieldDefinition(
+        name="modified_by_lab",
+        display_name="Modified by lab",
+        annotation_type=AnnotationType.TEXT_FREE,
+        group="sync",
+        tooltip="Lab/machine identifier that last modified this record (auto-populated)",
+    ),
+    FieldDefinition(
+        name="source_lab",
+        display_name="Source lab",
+        annotation_type=AnnotationType.TEXT_FREE,
+        group="sync",
+        tooltip="Lab/machine that originally created this record (auto-populated, set once)",
+    ),
 ]
 
 # Build lookup dict for quick access
@@ -531,6 +554,12 @@ FIELD_GROUPS: List[FieldGroup] = [
             "morph_tip_to_tip_mm",
             "morph_source_folder",
         ],
+        start_expanded=False,  # Collapsed by default since auto-populated
+    ),
+    FieldGroup(
+        name="sync",
+        display_name="Sync Metadata (Auto)",
+        fields=["last_modified_utc", "modified_by_lab", "source_lab"],
         start_expanded=False,  # Collapsed by default since auto-populated
     ),
 ]

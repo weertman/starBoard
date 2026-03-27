@@ -16,6 +16,13 @@ from .tab_past_matches import TabPastMatches
 from .tab_dl import TabDeepLearning
 from src.utils.interaction_logger import get_interaction_logger
 
+# Conditional import for Sync tab
+try:
+    from .tab_sync import TabSync
+    SYNC_AVAILABLE = True
+except ImportError:
+    SYNC_AVAILABLE = False
+
 # Conditional import for Morphometric tab
 try:
     from .tab_morphometric import TabMorphometric
@@ -132,7 +139,18 @@ class MainWindow(QMainWindow):
         
         tabs.addTab(t_past, "Analytics & History")
         tabs.addTab(t_dl, "Deep Learning")
-        
+
+        # Sync tab (rightmost)
+        t_sync = None
+        if SYNC_AVAILABLE:
+            try:
+                t_sync = TabSync()
+                tabs.addTab(t_sync, "Sync")
+                logger.info("Sync tab enabled")
+            except Exception as e:
+                logger.warning("Failed to create Sync tab: %s", e)
+                t_sync = None
+
         # Note: Morphometric tab has its own _notify_first_order_refresh
         # Signal kept for potential external listeners
         self._t_morph = t_morph  # Store reference if needed
