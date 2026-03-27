@@ -581,6 +581,20 @@ def cmd_pull(args):
         print("  --all")
         sys.exit(1)
 
+    # Scan local images to exclude from pull
+    print(f"Scanning local archive for existing images...")
+    local_paths = set()
+    for target_dir in ["gallery", "queries", "querries"]:
+        target_path = archive / target_dir
+        if not target_path.exists():
+            continue
+        for img in target_path.rglob("*"):
+            if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS:
+                local_paths.add(str(img.relative_to(archive)))
+    if local_paths:
+        pull_filter["exclude_paths"] = list(local_paths)
+        print(f"  Found {len(local_paths)} local images (will skip duplicates)")
+
     # Create package
     print(f"Creating pull package from {server}...")
     pkg = _api_post_json(server, "/api/pull/package", pull_filter)

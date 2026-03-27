@@ -885,6 +885,21 @@ class TabSync(QWidget):
                         raise
 
                 archive = archive_root()
+                IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+
+                # Scan local images to exclude from pull
+                self._log_signal.emit("Scanning local images to skip duplicates...")
+                local_paths = set()
+                for target_dir in ["gallery", "queries", "querries"]:
+                    target_path = archive / target_dir
+                    if not target_path.exists():
+                        continue
+                    for img in target_path.rglob("*"):
+                        if img.is_file() and img.suffix.lower() in IMAGE_EXTS:
+                            local_paths.add(str(img.relative_to(archive)))
+                if local_paths:
+                    pull_filter["exclude_paths"] = list(local_paths)
+                    self._log_signal.emit(f"  {len(local_paths)} local images will be skipped")
 
                 # Create package
                 body = json.dumps(pull_filter).encode()

@@ -312,6 +312,9 @@ async def pull_package(request: Request):
     """
     Create a download package manifest. Returns a package_id
     that can be used with /api/pull/stream/{package_id}.
+
+    Optional: send "exclude_paths" (list of relative image paths the client
+    already has) to skip those files from the package.
     """
     body = await request.json()
     _cleanup_expired_packages()
@@ -325,6 +328,18 @@ async def pull_package(request: Request):
         date_after=body.get("date_after"),
         date_before=body.get("date_before"),
     )
+
+    # Exclude files the client already has
+    exclude_paths = set(body.get("exclude_paths", []))
+    if exclude_paths:
+        before = len(manifest["files"])
+        manifest["files"] = [
+            f for f in manifest["files"] if f["path"] not in exclude_paths
+        ]
+        manifest["file_count"] = len(manifest["files"])
+        manifest["total_bytes"] = sum(f["size_bytes"] for f in manifest["files"])
+        skipped = before - manifest["file_count"]
+        log.info("Excluded %d files client already has (%d remaining)", skipped, manifest["file_count"])
 
     package_id = uuid.uuid4().hex[:12]
     expires_at = time.time() + PACKAGE_TTL
