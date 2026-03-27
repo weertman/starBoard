@@ -845,6 +845,7 @@ class TabFirstOrder(QWidget):
         # Load stored evaluation for query sorting by confidence
         self._load_stored_evaluation()
 
+        controls_row2.addWidget(HelpButton(HELP_TEXTS['first_order_visual']))
         controls_row2.addStretch(1)
         self.lbl_excluded = QLabel("Excluded: 0")
         controls_row2.addWidget(self.lbl_excluded)
@@ -1065,7 +1066,19 @@ class TabFirstOrder(QWidget):
         self.cards_layout.setSpacing(8)
         self.scroll.setWidget(self.cards_container)
 
-        self.hsplit.addWidget(self.scroll)
+        # Wrap gallery scroll with a header + help button
+        gallery_wrapper = QWidget()
+        gw_lay = QVBoxLayout(gallery_wrapper)
+        gw_lay.setContentsMargins(0, 0, 0, 0)
+        gw_lay.setSpacing(2)
+        gw_header = QHBoxLayout()
+        gw_header.addWidget(QLabel("<b>Gallery Results</b>"))
+        gw_header.addStretch()
+        gw_header.addWidget(HelpButton(HELP_TEXTS['first_order_gallery']))
+        gw_lay.addLayout(gw_header)
+        gw_lay.addWidget(self.scroll, 1)
+
+        self.hsplit.addWidget(gallery_wrapper)
 
         # ------------- Master vertical splitter: Filters (collapsible) | Query/Gallery -------------
         # Combine both groups under a single scrollable, collapsible section.

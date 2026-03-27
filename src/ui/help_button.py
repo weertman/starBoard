@@ -52,9 +52,13 @@ HELP_TEXTS = {
     'first_order_query': 'Pick an unidentified sighting (query) from the list to search for possible matches. The selected query\'s photos and traits will be compared against all known individuals in the gallery. Start here when you want to identify a new sighting.',
     'first_order_fields': 'Choose which physical traits to include in the search and how strict each comparison should be. Wider tolerances return more candidates but may include weaker matches. Adjust these if you\'re getting too many or too few results.',
     'first_order_results': 'This is the ranked list of gallery individuals most similar to your selected query. Top-ranked candidates are the closest matches based on the traits you selected. Pin promising candidates, then switch to the Second-order tab for side-by-side comparison.',
+    'first_order_visual': 'These controls blend AI visual similarity with trait-based matching. The Fusion slider sets how much weight goes to the AI model vs. your annotations (0% = traits only, 100% = AI only). Enable Verification for an additional AI check that scores how likely two stars are the same individual.',
+    'first_order_gallery': 'The gallery panel shows ranked candidates. Each card displays the individual\'s photos and similarity score. Right-click to pin, exclude, or open the folder. Pinned candidates appear in the Second-order tab for detailed comparison.',
 
     # ── Second-order tab ──
     'second_order_compare': 'Compare your unidentified sighting and a gallery candidate side by side. Pan and zoom are synchronized so you can inspect the same body region on both animals at once. Decide whether they are the same individual: Yes, No, or Maybe.',
+    'second_order_ids': 'Select a Query (unidentified sighting) and a Gallery candidate (known individual) to compare. The Pinned/Maybe dropdown shows candidates you flagged from the First-order tab. Use the arrow buttons to step through queries.',
+    'second_order_decision': 'Record your match decision: Yes (same individual — will be merged), Maybe (uncertain — save for later review), or No (different animals). Add notes to explain your reasoning. The verification score shows the AI\'s confidence.',
 
     # ── Gallery Review tab ──
     'gallery_review_browse': 'Browse all known individuals in the gallery. View photos across encounters, see encounter dates, and manage entries. Filter by location or search by name. You can edit metadata, rename IDs, delete photos, and mark the best photo for each individual.',

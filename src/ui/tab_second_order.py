@@ -125,6 +125,7 @@ class TabSecondOrder(QWidget):
         )
         row1.addWidget(self.btn_refresh)
 
+        row1.addWidget(HelpButton(HELP_TEXTS['second_order_ids']))
         row1.addStretch(1)
         outer.addLayout(row1)
 
@@ -138,7 +139,7 @@ class TabSecondOrder(QWidget):
 
         self.btn_save_decision = QPushButton("Save decision")
         row2.addWidget(self.btn_save_decision)
-        row2.addWidget(HelpButton(HELP_TEXTS.get('second_order_compare', '')))
+        row2.addWidget(HelpButton(HELP_TEXTS['second_order_decision']))
 
         # Verification score display
         row2.addSpacing(16)
@@ -166,6 +167,12 @@ class TabSecondOrder(QWidget):
         outer.addLayout(row2)
 
         # ---- Twin viewers ----
+        viewer_header = QHBoxLayout()
+        viewer_header.addWidget(QLabel("<b>Side-by-Side Comparison</b>"))
+        viewer_header.addStretch()
+        viewer_header.addWidget(HelpButton(HELP_TEXTS['second_order_compare']))
+        outer.addLayout(viewer_header)
+
         self.split = QSplitter(Qt.Horizontal)
         
         # Query side with image quality panel
