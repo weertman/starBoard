@@ -114,12 +114,15 @@ What gets pushed:
 
 Deduplication:
 - Images are deduplicated by SHA-256 hash — re-pushing the same images is safe
+- Large encounters are automatically batched at 50MB per request to stay
+  within Cloudflare tunnel upload limits
 - Metadata uses timestamp-based merge: newer rows win, older rows are skipped
 - Decisions are deduplicated by (query_id, gallery_id, timestamp)
 
 ### Pulling Data
 
-Pull downloads images and metadata from the central server with optional filters.
+Pull downloads images, metadata, and embeddings from the central server with
+optional filters.
 
 **GUI:**
 1. The catalog auto-refreshes on startup (or click **Refresh Catalog from Server**)
@@ -142,6 +145,26 @@ python -m src.sync.client pull --date-after 2026-01-01
 # Pull everything
 python -m src.sync.client pull --all -y
 ```
+
+What gets pulled:
+- Images for the requested entities (filtered by gallery/query/location/date)
+- Metadata CSV rows for those entities
+- Match decisions involving those entities
+- DL embeddings (per-entity, sliced to only what you requested)
+
+Smart deduplication:
+- Before each pull, the client scans your local archive and tells the server
+  which images you already have. The server excludes them from the download.
+- Re-pulling the same data is safe and fast — only new images are transferred.
+- Embeddings are merged, not overwritten: sequential pulls for different subsets
+  accumulate locally (pull A, then pull B = you have embeddings for A+B).
+- Similarity matrices are NOT synced — recompute locally from the DL tab after
+  pulling new data.
+
+Progress:
+- The progress bar shows download speed, MB transferred, and ETA.
+- While the server is building the tar.gz package, you'll see rotating
+  status messages until bytes start flowing.
 
 ### Checking Status
 
