@@ -448,13 +448,71 @@ class TabSync(QWidget):
             return None
 
     def _cf_urlopen(self, url: str, data: bytes = None, timeout: int = 30):
-        """urlopen with CF Access auth headers."""
+        """urlopen with CF Access auth headers. Auto-triggers browser auth on 403."""
         from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
         headers = self._cf_auth_headers()
         if data and "Content-Type" not in headers:
             headers["Content-Type"] = "application/json"
         req = Request(url, data=data, headers=headers)
-        return urlopen(req, timeout=timeout)
+        try:
+            return urlopen(req, timeout=timeout)
+        except HTTPError as e:
+            if e.code == 403:
+                self._log_signal.emit("Authentication required — opening browser...")
+                token = self._run_cf_auth()
+                if token:
+                    headers["cf-access-token"] = token
+                    headers["Cookie"] = f"CF_Authorization={token}"
+                    req = Request(url, data=data, headers=headers)
+                    return urlopen(req, timeout=timeout)
+            raise
+
+    def _run_cf_auth(self) -> Optional[str]:
+        """Run cloudflared access login and return the JWT token."""
+        import subprocess, shutil
+
+        cloudflared = shutil.which("cloudflared")
+        if not cloudflared:
+            self._log_signal.emit(
+                "ERROR: cloudflared is not installed. "
+                "Install it to enable authentication: "
+                "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+            )
+            return None
+
+        server = self._server_input.text().strip().rstrip("/")
+        if not server:
+            return None
+
+        try:
+            self._log_signal.emit("Waiting for email verification in browser...")
+            result = subprocess.run(
+                [cloudflared, "access", "login", server],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                lines = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
+                token = lines[-1] if lines else ""
+                if token and token.startswith("ey"):
+                    # Save token to config
+                    cfg_path = self._config_path()
+                    if cfg_path:
+                        cfg = {}
+                        if cfg_path.exists():
+                            with cfg_path.open("r") as f:
+                                cfg = json.load(f)
+                        cfg["cf_access_token"] = token
+                        with cfg_path.open("w") as f:
+                            json.dump(cfg, f, indent=2)
+                    self._log_signal.emit("Authenticated successfully.")
+                    return token
+            self._log_signal.emit(f"Authentication failed: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            self._log_signal.emit("Authentication timed out (120s).")
+        except Exception as e:
+            self._log_signal.emit(f"Authentication error: {e}")
+        return None
 
     def _test_connection(self):
         self._ilog.log("button_click", "btn_sync_test_connection", value="clicked")
@@ -507,6 +565,23 @@ class TabSync(QWidget):
                 import uuid
 
                 cf_headers = self._cf_auth_headers()
+
+                def _authed_open(req_or_url, timeout=300):
+                    """urlopen with auto-retry on 403 via browser auth."""
+                    try:
+                        return urlopen(req_or_url, timeout=timeout)
+                    except HTTPError as e:
+                        if e.code == 403:
+                            self._log_signal.emit("Authentication required — opening browser...")
+                            token = self._run_cf_auth()
+                            if token:
+                                cf_headers["cf-access-token"] = token
+                                cf_headers["Cookie"] = f"CF_Authorization={token}"
+                                if isinstance(req_or_url, Request):
+                                    req_or_url.add_header("cf-access-token", token)
+                                    req_or_url.add_header("Cookie", f"CF_Authorization={token}")
+                                return urlopen(req_or_url, timeout=timeout)
+                        raise
 
                 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
                 from src.data.archive_paths import (
@@ -582,7 +657,7 @@ class TabSync(QWidget):
                                 data=body,
                                 headers=enc_headers,
                             )
-                            r = urlopen(req, timeout=300)
+                            r = _authed_open(req, timeout=300)
                             result = json.loads(r.read())
                             accepted = result["accepted_images"]
                             skipped = result["skipped_duplicates"]
@@ -615,7 +690,7 @@ class TabSync(QWidget):
                             data=body,
                             headers=meta_headers,
                         )
-                        r = urlopen(req, timeout=60)
+                        r = _authed_open(req, timeout=60)
                         result = json.loads(r.read())
                         total_meta += result["updated_count"]
                         self._log_signal.emit(
@@ -651,7 +726,7 @@ class TabSync(QWidget):
                             data=body,
                             headers=dec_headers,
                         )
-                        r = urlopen(req, timeout=60)
+                        r = _authed_open(req, timeout=60)
                         result = json.loads(r.read())
                         total_decisions = result["appended_count"]
                         self._log_signal.emit(
@@ -747,9 +822,27 @@ class TabSync(QWidget):
             try:
                 import io, tarfile, csv as csv_mod
                 from urllib.request import Request, urlopen
+                from urllib.error import HTTPError
                 from src.data.archive_paths import archive_root
 
                 cf_headers = self._cf_auth_headers()
+
+                def _authed_open(req_or_url, timeout=300):
+                    try:
+                        return urlopen(req_or_url, timeout=timeout)
+                    except HTTPError as e:
+                        if e.code == 403:
+                            self._log_signal.emit("Authentication required — opening browser...")
+                            token = self._run_cf_auth()
+                            if token:
+                                cf_headers["cf-access-token"] = token
+                                cf_headers["Cookie"] = f"CF_Authorization={token}"
+                                if isinstance(req_or_url, Request):
+                                    req_or_url.add_header("cf-access-token", token)
+                                    req_or_url.add_header("Cookie", f"CF_Authorization={token}")
+                                return urlopen(req_or_url, timeout=timeout)
+                        raise
+
                 archive = archive_root()
 
                 # Create package
@@ -761,7 +854,7 @@ class TabSync(QWidget):
                     data=body,
                     headers=pkg_headers,
                 )
-                r = urlopen(req, timeout=30)
+                r = _authed_open(req, timeout=30)
                 pkg = json.loads(r.read())
 
                 self._log_signal.emit(
@@ -779,7 +872,7 @@ class TabSync(QWidget):
                 # Download
                 self._log_signal.emit(f"Downloading...")
                 dl_req = Request(f"{server}/api/pull/stream/{pkg['package_id']}", headers=cf_headers)
-                r = urlopen(dl_req, timeout=600)
+                r = _authed_open(dl_req, timeout=600)
                 tar_bytes = r.read()
                 self._log_signal.emit(
                     f"Downloaded {len(tar_bytes) / (1024**2):.1f} MB"
