@@ -101,10 +101,26 @@ Sunflower sea stars exhibit several characteristics that make them suitable for 
 
 | Category | Capability | Description |
 |----------|------------|-------------|
-| **Morphometrics** | Checkerboard Calibration | Sub-millimeter measurement accuracy via webcam |
-| | Arm Detection | Automatic arm tip localization with manual correction |
-| | Size Measurements | Area, arm lengths, major/minor axes |
-| | Water Refraction Correction | Calibrate through water for aquarium measurements |
+|| **Morphometrics** | Checkerboard Calibration | Sub-millimeter measurement accuracy via webcam |
+|| | Arm Detection | Automatic arm tip localization with manual correction |
+|| | Size Measurements | Area, arm lengths, major/minor axes |
+|| | Water Refraction Correction | Calibrate through water for aquarium measurements |
+
+### Multi-Machine Sync Features
+
+| Category | Capability | Description |
+|----------|------------|-------------|
+| **Central Archive** | Push | Field machines push images, metadata, and match decisions to the central server |
+| | Pull with Filtering | Pull subsets by gallery ID, query ID, location, or date range |
+| | Deduplication | Images deduplicated by SHA-256 hash; metadata merged by timestamp |
+| | Catalog Browsing | Browse what's available on the central server before downloading |
+| **Sync Tab (GUI)** | Searchable Multi-Select | Filter gallery/query/location with searchable checkbox lists |
+| | Calendar Date Pickers | Filter encounters by date range |
+| | Auto-Refresh | Catalog loads automatically on app startup |
+| **CLI Client** | `push` / `pull` / `catalog` / `status` | Full sync workflow from the command line |
+| **Server** | FastAPI on port 8090 | Runs on the central machine behind a Cloudflare Tunnel |
+
+> See [`docs/sync-guide.md`](docs/sync-guide.md) for setup and usage details.
 
 ---
 
@@ -359,7 +375,8 @@ starBoard uses a tabbed interface:
 | **Second-order** | Detailed side-by-side comparison | Field & Lab |
 | **Gallery Review** | Review gallery records and triage candidates | Field & Lab |
 | **Analytics & History** | Review decision history, merge confirmed matches | Field & Lab |
-| **Deep Learning** | Manage models, run precomputation | Field & Lab |
+|| **Deep Learning** | Manage models, run precomputation | Field & Lab |
+|| **Sync** | Push/pull archive data to/from central server | Field & Lab |
 
 ### 3. Upload Your First Images
 
