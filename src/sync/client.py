@@ -686,6 +686,9 @@ def _merge_pulled_decisions(archive: Path, content: str):
 
     master_csv = archive / "reports" / "past_matches_master.csv"
 
+    # Ensure reports directory exists
+    master_csv.parent.mkdir(parents=True, exist_ok=True)
+
     # Load existing keys
     existing_keys = set()
     existing_header = []
