@@ -49,7 +49,7 @@ HELP_TEXTS = {
     'setup_batch_location': 'Set or update the location for many records at once. Select the IDs you want to edit, choose a location, and apply. Useful when you forgot to set the dive site during upload or need to correct a batch.',
 
     # ── First-order tab ──
-    'first_order_query': 'Pick an unidentified sighting (query) from the list to search for possible matches. The selected query\'s photos and traits will be compared against all known individuals in the gallery. Start here when you want to identify a new sighting.',
+    'first_order_query': 'Pick an unidentified sighting (query) from the list to search for matches. Its photos and traits are compared against all known individuals in the gallery. The right panel shows ranked candidates — right-click to pin, exclude, or open a folder. Pin promising candidates, then switch to the Second-order tab for side-by-side comparison.',
     'first_order_fields': 'Choose which physical traits to include in the search and how strict each comparison should be. Wider tolerances return more candidates but may include weaker matches. Adjust these if you\'re getting too many or too few results.',
     'first_order_results': 'This is the ranked list of gallery individuals most similar to your selected query. Top-ranked candidates are the closest matches based on the traits you selected. Pin promising candidates, then switch to the Second-order tab for side-by-side comparison.',
     'first_order_visual': 'These controls blend AI visual similarity with trait-based matching. The Fusion slider sets how much weight goes to the AI model vs. your annotations (0% = traits only, 100% = AI only). Enable Verification for an additional AI check that scores how likely two stars are the same individual.',
