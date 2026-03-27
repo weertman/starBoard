@@ -955,6 +955,12 @@ class TabSync(QWidget):
                     for member in tar.getmembers():
                         if member.name.startswith("_sync_metadata/"):
                             continue
+                        # Merge embedding files instead of overwriting
+                        if member.name.startswith("_dl_precompute/") and member.isfile():
+                            with tar.extractfile(member) as src:
+                                from src.sync.client import _merge_pulled_embedding_file
+                                _merge_pulled_embedding_file(archive, member.name, src.read())
+                            continue
                         if member.isfile():
                             dest = archive / member.name
                             dest.parent.mkdir(parents=True, exist_ok=True)

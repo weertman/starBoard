@@ -623,6 +623,12 @@ def cmd_pull(args):
             if member.name.startswith("_sync_metadata/"):
                 continue
 
+            # Merge embedding files instead of overwriting
+            if member.name.startswith("_dl_precompute/") and member.isfile():
+                with tar.extractfile(member) as src:
+                    _merge_pulled_embedding_file(archive, member.name, src.read())
+                continue
+
             dest = archive / member.name
             if member.isfile():
                 dest.parent.mkdir(parents=True, exist_ok=True)
@@ -652,6 +658,61 @@ def cmd_pull(args):
 
     print(f"\nPull complete:")
     print(f"  Extracted {extracted} image files")
+
+
+def _merge_pulled_embedding_file(archive: Path, arcname: str, data: bytes):
+    """Merge a pulled embedding file into the local cache.
+
+    NPZ files: merge by key (entity ID) — new entries added, existing updated.
+    JSON files: merge by key if dict, otherwise overwrite.
+    Other files: overwrite.
+    """
+    dest = archive / arcname
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if arcname.endswith(".npz"):
+        try:
+            import numpy as np
+
+            # Load new data
+            new_data = dict(np.load(io.BytesIO(data)))
+
+            # Load existing if present
+            if dest.exists():
+                existing = dict(np.load(str(dest)))
+                existing.update(new_data)  # new entries overwrite same-key
+                merged = existing
+            else:
+                merged = new_data
+
+            np.savez(str(dest), **merged)
+        except Exception as e:
+            # Fallback: just write the new file
+            dest.write_bytes(data)
+            log.warning("Could not merge NPZ %s, overwrote: %s", arcname, e)
+
+    elif arcname.endswith(".json"):
+        try:
+            new_data = json.loads(data.decode("utf-8"))
+
+            if dest.exists() and isinstance(new_data, dict):
+                with dest.open("r") as f:
+                    existing = json.load(f)
+                if isinstance(existing, dict):
+                    existing.update(new_data)
+                    merged = existing
+                else:
+                    merged = new_data
+            else:
+                merged = new_data
+
+            with dest.open("w") as f:
+                json.dump(merged, f)
+        except Exception:
+            dest.write_bytes(data)
+
+    else:
+        dest.write_bytes(data)
 
 
 def _merge_pulled_metadata(archive: Path, csv_name: str, content: str):

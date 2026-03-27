@@ -404,7 +404,12 @@ async def pull_stream(package_id: str):
 
 
 def _add_sliced_embeddings_to_tar(tar: tarfile.TarFile, entities: Dict[str, List[str]]):
-    """Add DL embeddings sliced to only the requested entities."""
+    """Add raw DL embeddings sliced to only the requested entities.
+
+    Only sends per-entity embeddings and image path mappings — NOT similarity
+    matrices. The field machine merges embeddings into its local cache and
+    recomputes similarity locally.
+    """
     try:
         import numpy as np
 
@@ -428,22 +433,17 @@ def _add_sliced_embeddings_to_tar(tar: tarfile.TarFile, entities: Dict[str, List
             model_name = model_dir.name
             prefix = f"_dl_precompute/{model_name}"
 
-            # Copy evaluation results as-is (small JSON)
-            for json_file in model_dir.glob("*.json"):
-                tar.add(str(json_file), arcname=f"{prefix}/{json_file.name}")
-
-            # Slice embeddings
+            # Slice per-entity embeddings (NPZ keyed by entity ID)
             emb_dir = model_dir / "embeddings"
             if emb_dir.exists():
                 for npz_file in emb_dir.glob("*.npz"):
                     data = dict(np.load(npz_file))
-                    # Filter keys to only requested entities
                     if "gallery" in npz_file.name:
                         filtered = {k: v for k, v in data.items() if k in gallery_ids}
                     elif "query" in npz_file.name:
                         filtered = {k: v for k, v in data.items() if k in query_ids}
                     else:
-                        filtered = data  # unknown type, include all
+                        filtered = data
 
                     if filtered:
                         buf = io.BytesIO()
@@ -453,7 +453,7 @@ def _add_sliced_embeddings_to_tar(tar: tarfile.TarFile, entities: Dict[str, List
                         info.size = len(buf.getvalue())
                         tar.addfile(info, buf)
 
-                # Slice image path JSONs
+                # Slice image path JSONs (dict keyed by entity ID)
                 for json_file in emb_dir.glob("*.json"):
                     with json_file.open() as f:
                         path_data = json.load(f)
@@ -472,69 +472,8 @@ def _add_sliced_embeddings_to_tar(tar: tarfile.TarFile, entities: Dict[str, List
                     info.size = len(content)
                     tar.addfile(info, io.BytesIO(content))
 
-            # Slice similarity scores
-            sim_dir = model_dir / "similarity"
-            if sim_dir.exists():
-                # Load id_mapping to know index positions
-                id_map_file = sim_dir / "id_mapping.json"
-                if id_map_file.exists():
-                    with id_map_file.open() as f:
-                        id_mapping = json.load(f)
-
-                    orig_gallery = id_mapping.get("gallery_ids", [])
-                    orig_query = id_mapping.get("query_ids", [])
-
-                    # Find indices of requested entities
-                    g_indices = [i for i, gid in enumerate(orig_gallery) if gid in gallery_ids]
-                    q_indices = [i for i, qid in enumerate(orig_query) if qid in query_ids]
-
-                    new_gallery = [orig_gallery[i] for i in g_indices]
-                    new_query = [orig_query[i] for i in q_indices]
-
-                    # Write filtered id_mapping
-                    new_mapping = {"gallery_ids": new_gallery, "query_ids": new_query}
-                    content = json.dumps(new_mapping).encode("utf-8")
-                    info = tarfile.TarInfo(name=f"{prefix}/similarity/id_mapping.json")
-                    info.size = len(content)
-                    tar.addfile(info, io.BytesIO(content))
-
-                    # Slice score matrices
-                    for npz_file in sim_dir.glob("*.npz"):
-                        data = dict(np.load(npz_file))
-                        for key, arr in data.items():
-                            if arr.ndim == 2:
-                                # query_gallery_scores: (n_queries, n_gallery)
-                                if arr.shape == (len(orig_query), len(orig_gallery)):
-                                    data[key] = arr[np.ix_(q_indices, g_indices)] if q_indices and g_indices else np.array([]).reshape(0, 0)
-                                # image_similarity_matrix: (n_query_imgs, n_gallery_imgs)
-                                # Can't easily slice by entity without image-level index
-                                # Include as-is for now (it'll be recomputed on use)
-
-                        buf = io.BytesIO()
-                        np.savez(buf, **data)
-                        buf.seek(0)
-                        info = tarfile.TarInfo(name=f"{prefix}/similarity/{npz_file.name}")
-                        info.size = len(buf.getvalue())
-                        tar.addfile(info, buf)
-
-                    # Copy other JSON files in similarity/
-                    for json_file in sim_dir.glob("*.json"):
-                        if json_file.name == "id_mapping.json":
-                            continue  # already handled
-                        # Filter image index JSONs if possible
-                        with json_file.open() as f:
-                            jdata = json.load(f)
-                        content = json.dumps(jdata).encode("utf-8")
-                        info = tarfile.TarInfo(name=f"{prefix}/similarity/{json_file.name}")
-                        info.size = len(content)
-                        tar.addfile(info, io.BytesIO(content))
-
-            # Handle verification subdirectories
-            verif_dir = model_dir / "verification"
-            if verif_dir.exists():
-                for f in verif_dir.iterdir():
-                    if f.is_file():
-                        tar.add(str(f), arcname=f"{prefix}/verification/{f.name}")
+            # NOTE: similarity/ matrices are NOT included.
+            # Field machines recompute similarity locally from merged embeddings.
 
     except Exception as e:
         log.warning("Could not add sliced embeddings to tar: %s", e)
