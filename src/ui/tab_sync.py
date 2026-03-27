@@ -912,16 +912,49 @@ class TabSync(QWidget):
 
                 # Download with progress
                 import time as _time
+
+                # Waiting messages while server builds the tar.gz
+                _waiting_msgs = [
+                    "Wrangling sea stars into a tarball...",
+                    "Compressing tentacles... er, arms...",
+                    "Packing images like sardines...",
+                    "Server is doing star math...",
+                    "Herding sunflower stars into a package...",
+                    "Convincing 24 arms to hold still...",
+                    "Rolling up the archive, one arm at a time...",
+                    "Counting spines... this takes a moment...",
+                    "Zipping up the deep blue archive...",
+                    "Asking Pycnopodia to pose for compression...",
+                ]
+
                 total_bytes = pkg["total_bytes"]
                 self._log_signal.emit(f"Downloading {total_bytes / (1024**2):.1f} MB...")
-                self._progress_signal.emit(0, max(total_bytes, 1))
+                self._progress_signal.emit(0, 0)  # indeterminate while waiting
 
                 dl_req = Request(f"{server}/api/pull/stream/{pkg['package_id']}", headers=cf_headers)
+
+                # Show rotating messages while waiting for server response
+                import random
+                random.shuffle(_waiting_msgs)
+                _waiting = True
+                _msg_idx = [0]
+
+                def _rotate_messages():
+                    while _waiting:
+                        self._progress_detail_signal.emit(_waiting_msgs[_msg_idx[0] % len(_waiting_msgs)])
+                        _msg_idx[0] += 1
+                        _time.sleep(3)
+
+                msg_thread = threading.Thread(target=_rotate_messages, daemon=True)
+                msg_thread.start()
+
                 r = _authed_open(dl_req, timeout=600)
+                _waiting = False  # stop rotating messages
 
                 chunks = []
                 downloaded = 0
                 dl_start = _time.time()
+                self._progress_signal.emit(0, max(total_bytes, 1))  # switch to determinate
                 while True:
                     chunk = r.read(256 * 1024)  # 256KB chunks
                     if not chunk:
