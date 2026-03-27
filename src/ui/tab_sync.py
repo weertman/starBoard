@@ -966,10 +966,14 @@ class TabSync(QWidget):
                 r = _authed_open(dl_req, timeout=600)
                 _waiting = False  # stop rotating messages
 
+                # Use Content-Length for accurate progress (compressed size)
+                content_length = r.headers.get("Content-Length")
+                dl_total = int(content_length) if content_length else total_bytes
+
                 chunks = []
                 downloaded = 0
                 dl_start = _time.time()
-                self._progress_signal.emit(0, max(total_bytes, 1))  # switch to determinate
+                self._progress_signal.emit(0, max(dl_total, 1))  # switch to determinate
                 while True:
                     chunk = r.read(256 * 1024)  # 256KB chunks
                     if not chunk:
@@ -978,13 +982,15 @@ class TabSync(QWidget):
                     downloaded += len(chunk)
                     elapsed = _time.time() - dl_start
                     speed = downloaded / elapsed if elapsed > 0 else 0
-                    remaining_bytes = total_bytes - downloaded
+                    remaining_bytes = max(dl_total - downloaded, 0)
                     eta_secs = remaining_bytes / speed if speed > 0 else 0
                     mins, secs = divmod(int(eta_secs), 60)
+                    pct = int(100 * downloaded / dl_total) if dl_total > 0 else 0
 
-                    self._progress_signal.emit(downloaded, max(total_bytes, 1))
+                    self._progress_signal.emit(downloaded, max(dl_total, 1))
                     self._progress_detail_signal.emit(
-                        f"{downloaded / (1024**2):.0f} / {total_bytes / (1024**2):.0f} MB  |  "
+                        f"{pct}%  |  "
+                        f"{downloaded / (1024**2):.0f} / {dl_total / (1024**2):.0f} MB  |  "
                         f"{speed / (1024**2):.1f} MB/s  |  "
                         f"ETA: {mins}m {secs}s"
                     )
