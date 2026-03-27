@@ -18,6 +18,7 @@ from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from src.ui.annotator_view_second import AnnotatorViewSecond
 from src.data.compare_labels import get_label_for_pair, save_label_for_pair, load_latest_map_for_query
 from src.data.merge_yes import is_query_silent
+from src.ui.help_button import HelpButton, HELP_TEXTS
 from src.ui.query_state_delegate import (
     QueryStateDelegate, QueryState, QUERY_STATE_ROLE,
     get_query_state, apply_query_states_to_combobox, apply_quality_to_combobox
@@ -137,6 +138,7 @@ class TabSecondOrder(QWidget):
 
         self.btn_save_decision = QPushButton("Save decision")
         row2.addWidget(self.btn_save_decision)
+        row2.addWidget(HelpButton(HELP_TEXTS.get('second_order_compare', '')))
 
         # Verification score display
         row2.addSpacing(16)

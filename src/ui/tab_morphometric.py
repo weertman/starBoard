@@ -36,6 +36,7 @@ from PySide6.QtWidgets import QTabWidget
 
 from .collapsible import CollapsibleSection
 from .metadata_form_v2 import MetadataFormV2
+from src.ui.help_button import HelpButton, HELP_TEXTS
 from src.data import archive_paths as ap
 from src.data.csv_io import append_row, read_rows_multi, last_row_per_id, normalize_id_value
 from src.data.id_registry import list_ids, id_exists
@@ -403,34 +404,34 @@ class TabMorphometric(QWidget):
         # Camera Controls Section
         sec_camera = CollapsibleSection("Camera Controls", start_collapsed=False)
         sec_camera.setContent(self._build_camera_controls())
-        layout.addWidget(sec_camera)
+        _hc = QHBoxLayout(); _hc.addWidget(sec_camera); _hc.addWidget(HelpButton(HELP_TEXTS.get('morph_camera', '')), 0, Qt.AlignTop); layout.addLayout(_hc)
         
         # Archive Selection Section
         sec_archive = CollapsibleSection("Archive Selection", start_collapsed=False)
         sec_archive.setContent(self._build_archive_selection())
-        layout.addWidget(sec_archive)
+        _ha = QHBoxLayout(); _ha.addWidget(sec_archive); _ha.addWidget(HelpButton(HELP_TEXTS.get('morph_archive', '')), 0, Qt.AlignTop); layout.addLayout(_ha)
 
         # Saved Measurements Section
         sec_saved = CollapsibleSection("Saved Measurements", start_collapsed=True)
         sec_saved.setContent(self._build_saved_measurements())
-        layout.addWidget(sec_saved)
+        _hsv = QHBoxLayout(); _hsv.addWidget(sec_saved); _hsv.addWidget(HelpButton(HELP_TEXTS.get('morph_saved', '')), 0, Qt.AlignTop); layout.addLayout(_hsv)
         
         # Metadata Form Section
         sec_metadata = CollapsibleSection("Metadata", start_collapsed=False)
         self.meta_form = MetadataFormV2()
         self.meta_form.set_target("Gallery")
         sec_metadata.setContent(self.meta_form)
-        layout.addWidget(sec_metadata, 1)
+        _hmt = QHBoxLayout(); _hmt.addWidget(sec_metadata, 1); _hmt.addWidget(HelpButton(HELP_TEXTS.get('morph_metadata', '')), 0, Qt.AlignTop); layout.addLayout(_hmt)
         
         # Analysis Controls Section
         sec_analysis = CollapsibleSection("Analysis Controls", start_collapsed=True)
         sec_analysis.setContent(self._build_analysis_controls())
-        layout.addWidget(sec_analysis)
+        _han = QHBoxLayout(); _han.addWidget(sec_analysis); _han.addWidget(HelpButton(HELP_TEXTS.get('morph_analysis', '')), 0, Qt.AlignTop); layout.addLayout(_han)
         
         # Action Buttons Section
         sec_actions = CollapsibleSection("Actions", start_collapsed=False)
         sec_actions.setContent(self._build_action_buttons())
-        layout.addWidget(sec_actions)
+        _hac = QHBoxLayout(); _hac.addWidget(sec_actions); _hac.addWidget(HelpButton(HELP_TEXTS.get('morph_actions', '')), 0, Qt.AlignTop); layout.addLayout(_hac)
         
         layout.addStretch()
         scroll.setWidget(container)

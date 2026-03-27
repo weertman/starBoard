@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.ui.collapsible import CollapsibleSection  # existing utility for collapsible panels
+from src.ui.help_button import HelpButton, HELP_TEXTS
 from src.data import archive_paths as ap
 from src.data.csv_io import (
     append_row, read_rows_multi, last_row_per_id, normalize_id_value
@@ -46,6 +47,10 @@ from src.data.archive_merge import (
 )
 from .metadata_form_v2 import MetadataForm
 from src.utils.interaction_logger import get_interaction_logger
+from src.data.location_visits import (
+    add_location_visit, get_all_location_visits, delete_location_visit,
+)
+from src.data.vocabulary_store import get_vocabulary_store
 
 logger = logging.getLogger("starBoard.ui.setup")
 
@@ -769,6 +774,7 @@ class TabSetup(QWidget):
         gb_negative = self._build_negative_outing_group()  # title-less
         gb_batch  = self._build_batch_upload_group()    # title-less
         gb_id_manage = self._build_id_management_group()  # title-less
+        gb_lv     = self._build_location_visit_group()  # title-less
         gb_edit   = self._build_editing_group()         # title-less
         gb_merge  = self._build_archive_merge_group()   # title-less
         gb_batch_location = self._build_batch_edit_location_group()  # title-less
@@ -782,6 +788,8 @@ class TabSetup(QWidget):
         sec_batch.setContent(gb_batch)
         sec_id_manage = CollapsibleSection("ID Management", start_collapsed=True)
         sec_id_manage.setContent(gb_id_manage)
+        sec_lv = CollapsibleSection("Log Location Visit", start_collapsed=True)
+        sec_lv.setContent(gb_lv)
         sec_edit = CollapsibleSection("Metadata Editing Mode", start_collapsed=True)
         sec_edit.setContent(gb_edit)
         sec_merge = CollapsibleSection("Merge External Archive", start_collapsed=True)
@@ -789,22 +797,36 @@ class TabSetup(QWidget):
         sec_batch_location = CollapsibleSection("Batch Edit Location", start_collapsed=True)
         sec_batch_location.setContent(gb_batch_location)
 
-        # Outing Entry/Single/Batch/ID Management sections stay compact; Metadata Editing expands to fill space
-        for sec in (sec_negative, sec_single, sec_batch, sec_id_manage):
+        # Helper to wrap a section + HelpButton in a horizontal row
+        def _add_section_row(parent_lay, sec, help_key, stretch=0):
+            row = QHBoxLayout()
+            row.addWidget(sec, 1)
+            row.addWidget(HelpButton(HELP_TEXTS[help_key]), 0, Qt.AlignTop)
+            parent_lay.addLayout(row, stretch)
+
+        # Outing Entry/Single/Batch/ID Management/Location Visit sections stay compact.
+        compact_sections = [
+            (sec_negative, 'setup_outing_entry'),
+            (sec_single,   'setup_single_upload'),
+            (sec_batch,    'setup_batch_upload'),
+            (sec_id_manage,'setup_id_management'),
+            (sec_lv,       'setup_log_visit'),
+        ]
+        for sec, key in compact_sections:
             sec.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-            lay.addWidget(sec)
+            _add_section_row(lay, sec, key)
         
         # Metadata Editing Mode should expand vertically to fill available space
         sec_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        lay.addWidget(sec_edit, 1)  # stretch factor 1 to take remaining space
+        _add_section_row(lay, sec_edit, 'setup_metadata_edit', stretch=1)
         
         # Merge External Archive section stays compact
         sec_merge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        lay.addWidget(sec_merge)
+        _add_section_row(lay, sec_merge, 'setup_merge_archive')
 
         # Batch Edit Location section stays compact at the bottom
         sec_batch_location.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        lay.addWidget(sec_batch_location)
+        _add_section_row(lay, sec_batch_location, 'setup_batch_location')
 
         scroll.setWidget(content)
         outer.addWidget(scroll)
@@ -2109,6 +2131,111 @@ class TabSetup(QWidget):
         # Refresh UI
         self._refresh_id_manage_combo()
         self._notify_first_order_refresh()
+
+    # -------------------- Location Visits (absence data) --------------------
+    def _build_location_visit_group(self) -> QGroupBox:
+        gb = QGroupBox("")
+        lay = QVBoxLayout(gb)
+
+        row_top = QHBoxLayout()
+        row_top.addWidget(QLabel("Date:"))
+        self._lv_date = QDateEdit()
+        self._lv_date.setCalendarPopup(True)
+        self._lv_date.setDate(QDate.currentDate())
+        row_top.addWidget(self._lv_date)
+
+        row_top.addWidget(QLabel("Location:"))
+        self._lv_location = QComboBox()
+        self._lv_location.setEditable(True)
+        self._lv_location.setInsertPolicy(QComboBox.NoInsert)
+        self._lv_location.completer().setFilterMode(Qt.MatchContains)
+        self._lv_location.completer().setCompletionMode(QCompleter.PopupCompletion)
+        self._lv_location.setMinimumWidth(180)
+        row_top.addWidget(self._lv_location, 1)
+        lay.addLayout(row_top)
+
+        row_notes = QHBoxLayout()
+        row_notes.addWidget(QLabel("Notes:"))
+        self._lv_notes = QLineEdit()
+        self._lv_notes.setPlaceholderText("Conditions, visibility, etc. (optional)")
+        row_notes.addWidget(self._lv_notes, 1)
+
+        self._lv_btn_save = QPushButton("Save Visit")
+        self._lv_btn_save.clicked.connect(self._on_save_location_visit)
+        row_notes.addWidget(self._lv_btn_save)
+        lay.addLayout(row_notes)
+
+        self._lv_table = QTableWidget(0, 4)
+        self._lv_table.setHorizontalHeaderLabels(["Date", "Location", "Notes", ""])
+        self._lv_table.horizontalHeader().setStretchLastSection(False)
+        self._lv_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self._lv_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self._lv_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self._lv_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self._lv_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._lv_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self._lv_table.verticalHeader().setVisible(False)
+        self._lv_table.setMaximumHeight(200)
+        lay.addWidget(self._lv_table)
+
+        self._refresh_lv_location_combo()
+        self._refresh_lv_table()
+        return gb
+
+    def _refresh_lv_location_combo(self) -> None:
+        self._lv_location.blockSignals(True)
+        current = self._lv_location.currentText()
+        self._lv_location.clear()
+        self._lv_location.addItem("")
+        for loc in get_vocabulary_store().get_locations():
+            self._lv_location.addItem(loc)
+        if current:
+            idx = self._lv_location.findText(current)
+            if idx >= 0:
+                self._lv_location.setCurrentIndex(idx)
+        self._lv_location.blockSignals(False)
+
+    def _refresh_lv_table(self) -> None:
+        visits = get_all_location_visits()
+        show = visits[:20]
+        self._lv_table.setRowCount(len(show))
+        for i, v in enumerate(show):
+            self._lv_table.setItem(i, 0, QTableWidgetItem(
+                v.visit_date.isoformat() if v.visit_date else ""))
+            self._lv_table.setItem(i, 1, QTableWidgetItem(v.location))
+            self._lv_table.setItem(i, 2, QTableWidgetItem(v.notes))
+
+            btn_del = QPushButton("Delete")
+            utc_key = v.added_utc
+            btn_del.clicked.connect(lambda _checked=False, key=utc_key: self._on_delete_location_visit(key))
+            self._lv_table.setCellWidget(i, 3, btn_del)
+
+    def _on_save_location_visit(self) -> None:
+        self._ilog.log("button_click", "btn_save_location_visit", value="clicked")
+        location = self._lv_location.currentText().strip()
+        if not location:
+            warn("Please select or type a location.", self)
+            return
+
+        y, m, d = qdate_to_ymd(self._lv_date)
+        visit_date = _date(y, m, d)
+        notes = self._lv_notes.text().strip()
+
+        vocab = get_vocabulary_store()
+        if not vocab.has_location(location):
+            vocab.add_location(location)
+            self._refresh_lv_location_combo()
+
+        add_location_visit(location=location, visit_date=visit_date, notes=notes)
+
+        self._lv_notes.clear()
+        self._refresh_lv_table()
+        info(f"Recorded visit to '{location}' on {visit_date.isoformat()}.", self)
+
+    def _on_delete_location_visit(self, added_utc: str) -> None:
+        self._ilog.log("button_click", "btn_delete_location_visit", value=added_utc)
+        if delete_location_visit(added_utc):
+            self._refresh_lv_table()
 
     # -------------------- Metadata Editing Mode --------------------
     def _build_editing_group(self) -> QGroupBox:

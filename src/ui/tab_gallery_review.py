@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from src.data.id_registry import list_ids
 from src.data.image_index import list_image_files, invalidate_image_cache
 from src.data import archive_paths as ap
+from src.ui.help_button import HelpButton, HELP_TEXTS
 from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from src.data.csv_io import last_row_per_id, normalize_id_value, read_rows_multi
 from src.ui.annotator_view_second import AnnotatorViewSecond
@@ -113,6 +114,7 @@ class TabGalleryReview(QWidget):
         self.btn_refresh.setToolTip("Refresh gallery list and images")
         self.btn_refresh.clicked.connect(self._on_refresh_clicked)
         row1.addWidget(self.btn_refresh)
+        row1.addWidget(HelpButton(HELP_TEXTS.get('gallery_review_browse', '')))
 
         # Edit Metadata button
         self.btn_edit_metadata = QPushButton("Edit Metadata")

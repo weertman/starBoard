@@ -47,6 +47,7 @@ from src.data.merge_yes import (
 )
 from src.utils.interaction_logger import get_interaction_logger
 from src.ui.collapsible import CollapsibleSection
+from src.ui.help_button import HelpButton, HELP_TEXTS
 
 def _open_folder(path: Path) -> None:
     try:
@@ -190,15 +191,15 @@ class TabPastMatches(QWidget):
         lay_morphometric.addStretch(1)
         sec_morphometric.setContent(w_morphometric)
 
-        lay_vis.addWidget(sec_overview)
-        lay_vis.addWidget(sec_match_dynamics)
-        lay_vis.addWidget(sec_query_gallery)
-        lay_vis.addWidget(sec_workflow)
-        lay_vis.addWidget(sec_morphometric)
+        _hov = QHBoxLayout(); _hov.addWidget(sec_overview); _hov.addWidget(HelpButton(HELP_TEXTS.get('analytics_overview', '')), 0, Qt.AlignTop); lay_vis.addLayout(_hov)
+        _hmd = QHBoxLayout(); _hmd.addWidget(sec_match_dynamics); _hmd.addWidget(HelpButton(HELP_TEXTS.get('analytics_match_dynamics', '')), 0, Qt.AlignTop); lay_vis.addLayout(_hmd)
+        _hqg = QHBoxLayout(); _hqg.addWidget(sec_query_gallery); _hqg.addWidget(HelpButton(HELP_TEXTS.get('analytics_query_gallery', '')), 0, Qt.AlignTop); lay_vis.addLayout(_hqg)
+        _hwf = QHBoxLayout(); _hwf.addWidget(sec_workflow); _hwf.addWidget(HelpButton(HELP_TEXTS.get('analytics_workflow', '')), 0, Qt.AlignTop); lay_vis.addLayout(_hwf)
+        _hmo = QHBoxLayout(); _hmo.addWidget(sec_morphometric); _hmo.addWidget(HelpButton(HELP_TEXTS.get('analytics_morphometric', '')), 0, Qt.AlignTop); lay_vis.addLayout(_hmo)
         lay_vis.addStretch(1)
 
         sec_vis.setContent(gb_vis)
-        outer.addWidget(sec_vis)
+        _hw = QHBoxLayout(); _hw.addWidget(sec_vis); _hw.addWidget(HelpButton(HELP_TEXTS.get('analytics_visualizations', '')), 0, Qt.AlignTop); outer.addLayout(_hw)
 
         # ---- Row 3: NEW — Merge YES's to Gallery ----
         sec_merge = CollapsibleSection("Merge YES’s to Gallery", start_collapsed=True)
@@ -221,7 +222,7 @@ class TabPastMatches(QWidget):
         lay_merge.addWidget(self.btn_merge_all)
 
         sec_merge.setContent(gb_merge)
-        outer.addWidget(sec_merge)
+        _hw2 = QHBoxLayout(); _hw2.addWidget(sec_merge); _hw2.addWidget(HelpButton(HELP_TEXTS.get('analytics_merge', '')), 0, Qt.AlignTop); outer.addLayout(_hw2)
 
         # ---- Row 4: NEW — Revert old merges ----
         sec_revert = CollapsibleSection("Revert old merges", start_collapsed=True)
@@ -246,7 +247,7 @@ class TabPastMatches(QWidget):
         lay_rev.addWidget(self.btn_open_hist)
 
         sec_revert.setContent(gb_revert)
-        outer.addWidget(sec_revert)
+        _hw3 = QHBoxLayout(); _hw3.addWidget(sec_revert); _hw3.addWidget(HelpButton(HELP_TEXTS.get('analytics_revert', '')), 0, Qt.AlignTop); outer.addLayout(_hw3)
 
         # ---- Row 5: Tidy CSV for decisions ----
         sec_tidy = CollapsibleSection("Export decided pairs (tidy CSV)", start_collapsed=True)
@@ -259,7 +260,7 @@ class TabPastMatches(QWidget):
         lay_tidy.addStretch(1)
         lay_tidy.addWidget(self.btn_export_tidy)
         sec_tidy.setContent(gb_tidy)
-        outer.addWidget(sec_tidy)
+        _hw4 = QHBoxLayout(); _hw4.addWidget(sec_tidy); _hw4.addWidget(HelpButton(HELP_TEXTS.get('analytics_export', '')), 0, Qt.AlignTop); outer.addLayout(_hw4)
 
         # ---- Signals ----
         self.btn_refresh.clicked.connect(self._reload)

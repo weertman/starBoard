@@ -56,6 +56,7 @@ from src.ui.metadata_form_v2 import MetadataFormV2
 from src.utils.interaction_logger import get_interaction_logger
 from src.dl.verification_lookup import get_verification_lookup, get_active_verification_lookup
 from src.dl.registry import DLRegistry
+from src.ui.help_button import HelpButton, HELP_TEXTS
 
 # ---- Field groupings for the checkbox panel (V2 schema)
 FIELD_GROUPS = [
@@ -968,6 +969,7 @@ class TabFirstOrder(QWidget):
         self.lbl_suggested_match.setStyleSheet("color: #1b9e77; font-weight: bold;")
         self.lbl_suggested_match.setToolTip("Top suggested match from evaluation")
         id_row.addWidget(self.lbl_suggested_match)
+        id_row.addWidget(HelpButton(HELP_TEXTS['first_order_query']))
         id_row.addStretch(1)
         qwrap_l.addLayout(id_row)
 

@@ -21,43 +21,10 @@ from PySide6.QtWidgets import (
 )
 
 from src.ui.collapsible import CollapsibleSection
+from src.ui.help_button import HelpButton, HELP_TEXTS
 from src.utils.interaction_logger import get_interaction_logger
 
 log = logging.getLogger("starBoard.ui.tab_sync")
-
-
-# ─── Help texts ─────────────────────────────────────────────────────────────
-
-HELP_TEXTS = {
-    'connection': 'This is where you set up your link to the central server. Enter the server address and your lab ID, then click Save Config to store these settings. Click Test Connection to verify your machine can reach the server before syncing.',
-    'sync_status': 'This panel shows when you last sent or received data, and how much is stored on the central server. Use it to check whether your local data is up to date or if you need to push or pull.',
-    'push': 'Click Push All Local Data to send everything on this machine — photos, metadata, and any match decisions you have made — up to the central server. This ensures your fieldwork is backed up and available to other researchers. You can push as often as you like; only new or changed data is sent.',
-    'pull': 'Use this section to download data from the central server onto your machine. You can filter by specific individuals, sightings, locations, or date ranges and click Pull Selected Data, or click Pull Everything to grab the entire archive.',
-    'catalog': 'Click Refresh Catalog from Server to fetch an up-to-date list of everything stored in the central archive. The table below shows all known individuals and unidentified sightings available on the server, so you can see what is available before pulling.',
-    'gallery_filter': 'This is a searchable checklist of known, identified individuals in the central archive. Type to search by ID, then check the boxes for the specific individuals whose photos and data you want to download.',
-    'query_filter': 'This is a searchable checklist of unidentified sightings that still need to be matched. Type to search by ID, then check the boxes for the specific sightings you want to download and work on.',
-    'location_filter': 'This is a searchable checklist of field locations where observations were recorded. Check one or more locations to download only data collected at those sites.',
-    'date_filter': 'Use the After and Before date pickers to download only encounters from a specific time window. For example, set After to the start of your field season and Before to the end to pull just that season\'s data.',
-}
-
-
-class HelpButton(QPushButton):
-    """A small '?' button that shows a help popup when clicked."""
-
-    def __init__(self, help_text: str, parent=None):
-        super().__init__("?", parent)
-        self._help_text = help_text
-        self.setFixedSize(22, 22)
-        self.setStyleSheet(
-            "QPushButton { border-radius: 11px; font-weight: bold; "
-            "font-size: 12px; background: #555; color: white; } "
-            "QPushButton:hover { background: #777; }"
-        )
-        self.setToolTip("Click for help")
-        self.clicked.connect(self._show_help)
-
-    def _show_help(self):
-        QMessageBox.information(self.window(), "Help", self._help_text)
 
 
 class SearchableMultiSelect(QWidget):

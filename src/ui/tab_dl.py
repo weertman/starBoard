@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from src.ui.collapsible import CollapsibleSection
 from src.utils.interaction_logger import get_interaction_logger
+from src.ui.help_button import HelpButton, HELP_TEXTS
 
 log = logging.getLogger("starBoard.ui.tab_dl")
 
@@ -228,37 +229,37 @@ class TabDeepLearning(QWidget):
         
         # Status section
         status_group = self._build_status_group()
-        content_layout.addWidget(status_group)
+        _hs = QHBoxLayout(); _hs.addWidget(status_group); _hs.addWidget(HelpButton(HELP_TEXTS.get('dl_status', '')), 0, Qt.AlignTop); content_layout.addLayout(_hs)
         
         # Model management section
         model_group = self._build_model_group()
-        content_layout.addWidget(model_group)
+        _hm = QHBoxLayout(); _hm.addWidget(model_group); _hm.addWidget(HelpButton(HELP_TEXTS.get('dl_model', '')), 0, Qt.AlignTop); content_layout.addLayout(_hm)
         
         # Precomputation section
         precompute_group = self._build_precompute_group()
-        content_layout.addWidget(precompute_group)
+        _hp = QHBoxLayout(); _hp.addWidget(precompute_group); _hp.addWidget(HelpButton(HELP_TEXTS.get('dl_precompute', '')), 0, Qt.AlignTop); content_layout.addLayout(_hp)
         
         # Visualization section
         viz_group = self._build_visualization_group()
-        content_layout.addWidget(viz_group)
+        _hv = QHBoxLayout(); _hv.addWidget(viz_group); _hv.addWidget(HelpButton(HELP_TEXTS.get('dl_visualization', '')), 0, Qt.AlignTop); content_layout.addLayout(_hv)
         
         # Evaluation section (collapsed by default)
         eval_section = CollapsibleSection("Embedding Evaluation", start_collapsed=True)
         eval_group = self._build_evaluation_group()
         eval_section.setContent(eval_group)
-        content_layout.addWidget(eval_section)
+        _he = QHBoxLayout(); _he.addWidget(eval_section); _he.addWidget(HelpButton(HELP_TEXTS.get('dl_evaluation', '')), 0, Qt.AlignTop); content_layout.addLayout(_he)
         
         # Verification Evaluation section (collapsed by default)
         verif_eval_section = CollapsibleSection("Verification Evaluation", start_collapsed=True)
         verif_eval_group = self._build_verification_evaluation_group()
         verif_eval_section.setContent(verif_eval_group)
-        content_layout.addWidget(verif_eval_section)
+        _hve = QHBoxLayout(); _hve.addWidget(verif_eval_section); _hve.addWidget(HelpButton(HELP_TEXTS.get('dl_verification_eval', '')), 0, Qt.AlignTop); content_layout.addLayout(_hve)
         
         # Fine-tuning section (collapsed by default)
         finetune_section = CollapsibleSection("Fine-Tuning (Advanced)", start_collapsed=True)
         finetune_group = self._build_finetune_group()
         finetune_section.setContent(finetune_group)
-        content_layout.addWidget(finetune_section)
+        _hf = QHBoxLayout(); _hf.addWidget(finetune_section); _hf.addWidget(HelpButton(HELP_TEXTS.get('dl_finetune', '')), 0, Qt.AlignTop); content_layout.addLayout(_hf)
         
         content_layout.addStretch(1)
         
@@ -1997,7 +1998,6 @@ class TabDeepLearning(QWidget):
                 self.verificationPrecomputeCompleted.emit()
             else:
                 QMessageBox.warning(self, "Verification Failed", message)
-            
         except Exception as e:
             log.exception("Verification precomputation failed")
             QMessageBox.critical(self, "Error", f"Verification failed: {e}")
