@@ -8,6 +8,7 @@ Start via:  python -m src.sync
 """
 from __future__ import annotations
 
+import csv
 import io
 import json
 import logging
