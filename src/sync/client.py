@@ -8,6 +8,8 @@ that don't keep a full copy of the archive.
 Usage:
     python -m src.sync.client config --server URL --lab LAB_ID
     python -m src.sync.client push
+    python -m src.sync.client push --gallery anchovy pepperoni --preview
+    python -m src.sync.client push --location "Eagle point"
     python -m src.sync.client pull --gallery anchovy pepperoni
     python -m src.sync.client pull --location "Eagle point"
     python -m src.sync.client pull --all
@@ -370,19 +372,164 @@ def cmd_catalog(args):
             print(f"  ... and {len(cat['queries']) - 50} more")
 
 
+def _load_local_latest_metadata_for_push() -> Dict[str, Dict[str, Dict[str, str]]]:
+    from src.data.archive_paths import metadata_csv_paths_for_read, id_column_name
+    from src.data.csv_io import read_rows_multi, last_row_per_id
+    out: Dict[str, Dict[str, Dict[str, str]]] = {}
+    for target in ["gallery", "queries"]:
+        paths = metadata_csv_paths_for_read(target)
+        rows = read_rows_multi(paths)
+        out[target] = last_row_per_id(rows, id_column_name(target))
+    return out
+
+
+def _build_push_plan(args, lab: str, last_push: str) -> Dict[str, Any]:
+    from src.data.archive_paths import archive_root, gallery_root, queries_root
+    from src.data.id_registry import list_ids
+
+    meta = _load_local_latest_metadata_for_push()
+    all_gallery_ids = sorted(list_ids("gallery"))
+    all_query_ids = sorted(list_ids("queries"))
+    selected_gallery_ids = sorted(set(args.gallery or []))
+    selected_query_ids = sorted(set(args.query or []))
+    locations = sorted(set(args.location or []))
+
+    location_gallery_ids = sorted([
+        gid for gid, row in meta.get("gallery", {}).items()
+        if (row.get("location", "") or "").strip() in locations
+    ])
+    location_query_ids = sorted([
+        qid for qid, row in meta.get("queries", {}).items()
+        if (row.get("location", "") or "").strip() in locations
+    ])
+
+    push_everything = bool(args.all or (not selected_gallery_ids and not selected_query_ids and not locations))
+    if push_everything:
+        mode = "all"
+        gallery_ids = all_gallery_ids
+        query_ids = all_query_ids
+    else:
+        gallery_ids = sorted(set(selected_gallery_ids) | set(location_gallery_ids))
+        query_ids = sorted(set(selected_query_ids) | set(location_query_ids))
+        if locations and not selected_gallery_ids and not selected_query_ids:
+            mode = "filter"
+        elif selected_gallery_ids and not selected_query_ids and not locations:
+            mode = "gallery"
+        elif selected_query_ids and not selected_gallery_ids and not locations:
+            mode = "query"
+        else:
+            mode = "custom"
+
+    encounters = []
+    image_count = 0
+    for entity_id in gallery_ids:
+        entity_dir = gallery_root() / entity_id
+        if not entity_dir.exists():
+            continue
+        for enc_dir in sorted(entity_dir.iterdir()):
+            if not enc_dir.is_dir() or enc_dir.name.startswith(("_", ".")):
+                continue
+            img_paths = [img for img in enc_dir.iterdir() if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS]
+            if img_paths:
+                encounters.append(("gallery", "gallery", entity_id, enc_dir, sorted(img_paths)))
+                image_count += len(img_paths)
+    for entity_id in query_ids:
+        entity_dir = queries_root() / entity_id
+        if not entity_dir.exists():
+            continue
+        for enc_dir in sorted(entity_dir.iterdir()):
+            if not enc_dir.is_dir() or enc_dir.name.startswith(("_", ".")):
+                continue
+            img_paths = [img for img in enc_dir.iterdir() if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS]
+            if img_paths:
+                encounters.append(("queries", "query", entity_id, enc_dir, sorted(img_paths)))
+                image_count += len(img_paths)
+
+    metadata_rows = {"gallery": [], "queries": []}
+    for target, ids in [("gallery", gallery_ids), ("queries", query_ids)]:
+        latest = meta.get(target, {})
+        for entity_id in ids:
+            row = latest.get(entity_id)
+            if not row:
+                continue
+            modified_by = row.get("modified_by_lab", "")
+            modified_utc = row.get("last_modified_utc", "")
+            should_push = False
+            if push_everything:
+                should_push = True
+            elif modified_by == lab:
+                should_push = True
+            elif last_push and modified_utc and modified_utc > last_push:
+                should_push = True
+            elif not last_push:
+                should_push = True
+            if should_push:
+                metadata_rows[target].append(row)
+
+    archive = archive_root()
+    decisions = []
+    master_csv = archive / "reports" / "past_matches_master.csv"
+    if master_csv.exists():
+        with master_csv.open("r", newline="", encoding="utf-8-sig") as f:
+            for d in csv.DictReader(f):
+                if d.get("query_id", "") in query_ids or d.get("gallery_id", "") in gallery_ids:
+                    decisions.append({
+                        "query_id": d.get("query_id", ""),
+                        "gallery_id": d.get("gallery_id", ""),
+                        "decision": d.get("verdict", d.get("decision", "")),
+                        "timestamp": d.get("updated_utc", d.get("timestamp", "")),
+                        "lab_id": lab,
+                        "user": d.get("user", ""),
+                        "notes": d.get("notes", ""),
+                    })
+
+    return {
+        "mode": mode,
+        "locations": locations,
+        "gallery_ids": gallery_ids,
+        "query_ids": query_ids,
+        "encounters": encounters,
+        "image_count": image_count,
+        "metadata_rows": metadata_rows,
+        "decisions": decisions,
+        "push_everything": push_everything,
+    }
+
+
+def _print_push_plan(plan: Dict[str, Any]) -> None:
+    mode_names = {
+        "all": "Push everything",
+        "gallery": "Push selected gallery IDs",
+        "query": "Push selected query IDs",
+        "filter": "Push by location filter",
+        "custom": "Push combined selection",
+    }
+    print("Push plan:")
+    print(f"  Mode:       {mode_names.get(plan['mode'], plan['mode'])}")
+    if plan.get("locations"):
+        print(f"  Locations:  {', '.join(plan['locations'])}")
+    print(f"  Gallery:    {len(plan['gallery_ids'])} IDs")
+    print(f"  Queries:    {len(plan['query_ids'])} IDs")
+    print(f"  Encounters: {len(plan['encounters'])}")
+    print(f"  Images:     {plan['image_count']}")
+    print(f"  Metadata:   {len(plan['metadata_rows']['gallery']) + len(plan['metadata_rows']['queries'])} rows")
+    print(f"  Decisions:  {len(plan['decisions'])}")
+    if plan['gallery_ids']:
+        print("  Sample gallery IDs:")
+        for gid in plan['gallery_ids'][:8]:
+            print(f"    - {gid}")
+    if plan['query_ids']:
+        print("  Sample query IDs:")
+        for qid in plan['query_ids'][:8]:
+            print(f"    - {qid}")
+
+
 def cmd_push(args):
     """Push local archive data to the central server."""
     cfg = load_config()
     server = get_server_url(cfg)
     lab = get_lab_id(cfg)
-
-    from src.data.archive_paths import (
-        archive_root, gallery_root, queries_root,
-        metadata_csv_paths_for_read, id_column_name,
-        GALLERY_HEADER, QUERIES_HEADER,
-    )
-    from src.data.csv_io import read_rows_multi, last_row_per_id
-    from src.data.id_registry import list_ids
+    from src.data.archive_paths import archive_root
 
     archive = archive_root()
     last_push = cfg.get("last_push_utc", "")
@@ -392,146 +539,71 @@ def cmd_push(args):
     print(f"Last push: {last_push or 'never'}")
     print()
 
+    plan = _build_push_plan(args, lab=lab, last_push=last_push)
+    _print_push_plan(plan)
+    if args.preview:
+        return
+
     total_images = 0
     total_metadata = 0
     total_decisions = 0
 
-    # ── Push encounters ──────────────────────────────────────────────
-    for target, target_name in [("gallery", "Gallery"), ("queries", "Queries")]:
-        ids = list_ids(target)
-        print(f"Scanning {target_name} ({len(ids)} IDs)...")
-
-        for entity_id in ids:
-            if target == "gallery":
-                entity_dir = gallery_root() / entity_id
-                entity_type = "gallery"
-            else:
-                entity_dir = queries_root() / entity_id
-                entity_type = "query"
-
-            if not entity_dir.exists():
-                continue
-
-            for enc_dir in sorted(entity_dir.iterdir()):
-                if not enc_dir.is_dir() or enc_dir.name.startswith(("_", ".")):
-                    continue
-
-                # Collect image file paths
-                img_paths = [
-                    img for img in enc_dir.iterdir()
-                    if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS
-                ]
-
-                if not img_paths:
-                    continue
-
-                # Upload in batches to stay under Cloudflare's ~100MB request limit
-                MAX_BATCH_BYTES = 50 * 1024 * 1024  # 50MB per request
+    print()
+    print("Pushing encounters...")
+    for _target, entity_type, entity_id, enc_dir, img_paths in plan["encounters"]:
+        MAX_BATCH_BYTES = 50 * 1024 * 1024
+        batch = []
+        batch_bytes = 0
+        enc_accepted = 0
+        enc_skipped = 0
+        for img_path in img_paths:
+            data = img_path.read_bytes()
+            if batch and batch_bytes + len(data) > MAX_BATCH_BYTES:
+                r = _api_post_multipart(server, "/api/push/encounters", {
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "encounter_folder": enc_dir.name,
+                    "source_lab": lab,
+                }, batch)
+                enc_accepted += r["accepted_images"]
+                enc_skipped += r["skipped_duplicates"]
                 batch = []
                 batch_bytes = 0
-                enc_accepted = 0
-                enc_skipped = 0
+            batch.append((img_path.name, data))
+            batch_bytes += len(data)
+        if batch:
+            r = _api_post_multipart(server, "/api/push/encounters", {
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "encounter_folder": enc_dir.name,
+                "source_lab": lab,
+            }, batch)
+            enc_accepted += r["accepted_images"]
+            enc_skipped += r["skipped_duplicates"]
+        total_images += enc_accepted
+        print(f"  {entity_type}/{entity_id}/{enc_dir.name}: {enc_accepted} new, {enc_skipped} dupes ({len(img_paths)} images)")
 
-                for img_path in sorted(img_paths):
-                    data = img_path.read_bytes()
-                    if batch and batch_bytes + len(data) > MAX_BATCH_BYTES:
-                        # Send current batch
-                        r = _api_post_multipart(server, "/api/push/encounters", {
-                            "entity_type": entity_type,
-                            "entity_id": entity_id,
-                            "encounter_folder": enc_dir.name,
-                            "source_lab": lab,
-                        }, batch)
-                        enc_accepted += r["accepted_images"]
-                        enc_skipped += r["skipped_duplicates"]
-                        batch = []
-                        batch_bytes = 0
-                    batch.append((img_path.name, data))
-                    batch_bytes += len(data)
-
-                # Send remaining batch
-                if batch:
-                    r = _api_post_multipart(server, "/api/push/encounters", {
-                        "entity_type": entity_type,
-                        "entity_id": entity_id,
-                        "encounter_folder": enc_dir.name,
-                        "source_lab": lab,
-                    }, batch)
-                    enc_accepted += r["accepted_images"]
-                    enc_skipped += r["skipped_duplicates"]
-
-                total_images += enc_accepted
-                print(f"  {entity_type}/{entity_id}/{enc_dir.name}: "
-                      f"{enc_accepted} new, {enc_skipped} dupes "
-                      f"({len(img_paths)} images)")
-
-    # ── Push metadata ────────────────────────────────────────────────
     print("\nPushing metadata...")
     for target in ["gallery", "queries"]:
-        paths = metadata_csv_paths_for_read(target)
-        rows = read_rows_multi(paths)
-        id_col = id_column_name(target)
-        latest = last_row_per_id(rows, id_col)
-
-        # Filter to rows modified by this lab, or modified after last push
-        push_rows = []
-        for entity_id, row in latest.items():
-            modified_by = row.get("modified_by_lab", "")
-            modified_utc = row.get("last_modified_utc", "")
-
-            # Push if: this lab modified it, OR it's newer than last push
-            should_push = False
-            if modified_by == lab:
-                should_push = True
-            elif last_push and modified_utc and modified_utc > last_push:
-                should_push = True
-            elif not last_push:
-                should_push = True  # First push: send everything
-
-            if should_push:
-                push_rows.append(row)
-
+        push_rows = plan["metadata_rows"][target]
         if push_rows:
             result = _api_post_json(server, "/api/push/metadata", {
                 "target": target,
                 "lab_id": lab,
                 "rows": push_rows,
             })
-            print(f"  {target}: {result['updated_count']} updated, "
-                  f"{result['skipped_count']} skipped")
+            print(f"  {target}: {result['updated_count']} updated, {result['skipped_count']} skipped")
             total_metadata += result["updated_count"]
 
-    # ── Push decisions ───────────────────────────────────────────────
     print("\nPushing decisions...")
-    master_csv = archive / "reports" / "past_matches_master.csv"
-    if master_csv.exists():
-        with master_csv.open("r", newline="", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            all_decisions = list(reader)
+    if plan["decisions"]:
+        result = _api_post_json(server, "/api/push/decisions", {
+            "lab_id": lab,
+            "decisions": plan["decisions"],
+        })
+        print(f"  {result['appended_count']} appended, {result['duplicate_count']} duplicates")
+        total_decisions = result["appended_count"]
 
-        # Map to the sync format
-        decisions = []
-        for d in all_decisions:
-            decisions.append({
-                "query_id": d.get("query_id", ""),
-                "gallery_id": d.get("gallery_id", ""),
-                "decision": d.get("verdict", d.get("decision", "")),
-                "timestamp": d.get("updated_utc", d.get("timestamp", "")),
-                "lab_id": lab,
-                "user": d.get("user", ""),
-                "notes": d.get("notes", ""),
-            })
-
-        if decisions:
-            result = _api_post_json(server, "/api/push/decisions", {
-                "lab_id": lab,
-                "decisions": decisions,
-            })
-            print(f"  {result['appended_count']} appended, "
-                  f"{result['duplicate_count']} duplicates")
-            total_decisions = result["appended_count"]
-
-    # ── Update last push time ────────────────────────────────────────
     cfg["last_push_utc"] = datetime.now(timezone.utc).isoformat()
     save_config(cfg)
 
@@ -845,7 +917,12 @@ def main():
                         help="Hide queries in output")
 
     # push
-    sub.add_parser("push", help="Push local data to central server")
+    p_push = sub.add_parser("push", help="Push local data to central server")
+    p_push.add_argument("--gallery", nargs="+", help="Gallery IDs to push")
+    p_push.add_argument("--query", nargs="+", help="Query IDs to push")
+    p_push.add_argument("--location", nargs="+", help="Push by location(s)")
+    p_push.add_argument("--all", action="store_true", help="Push everything explicitly")
+    p_push.add_argument("--preview", action="store_true", help="Preview the resolved push scope without uploading")
 
     # pull
     p_pull = sub.add_parser("pull", help="Pull data from central server")
