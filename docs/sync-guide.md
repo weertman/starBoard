@@ -138,7 +138,20 @@ python -m src.sync.client config \
 Push sends your local images, metadata, and match decisions to the central server.
 Only new/modified data is sent — duplicates are automatically skipped.
 
-**GUI:** Click **Push All Local Data** in the Sync tab.
+**GUI:**
+1. In the Sync tab, use the searchable multi-select lists to optionally choose:
+   - gallery IDs
+   - query IDs
+   - locations
+2. Click **Preview Push** to see the resolved selection before upload
+3. Click **Push Selected Scope** to push only that resolved subset
+4. Or click **Push Everything** to send the full local archive
+
+Selection rules in the GUI:
+- If you select gallery IDs, those gallery IDs are included
+- If you select query IDs, those query IDs are included
+- If you select locations, gallery/query IDs whose latest local metadata row matches those locations are included
+- If you mix selectors, the resolved push scope is the union of all selected IDs plus all IDs matched by location
 
 **CLI:**
 ```bash
@@ -146,9 +159,9 @@ python -m src.sync.client push
 ```
 
 What gets pushed:
-- All encounter folders (images) for every gallery and query ID
-- Metadata rows from gallery_metadata.csv and queries_metadata.csv
-- Match decisions from reports/past_matches_master.csv
+- Encounter folders (images) for the resolved gallery/query selection
+- Metadata rows for the resolved gallery/query selection
+- Match decisions involving the resolved gallery/query selection
 
 Deduplication:
 - Images are deduplicated by SHA-256 hash — re-pushing the same images is safe

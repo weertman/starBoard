@@ -110,12 +110,13 @@ Sunflower sea stars exhibit several characteristics that make them suitable for 
 
 | Category | Capability | Description |
 |----------|------------|-------------|
-| **Central Archive** | Push | Field machines push images, metadata, and match decisions to the central server |
+| **Central Archive** | Selective Push | Push everything or a resolved subset by gallery ID, query ID, and/or location |
 | | Pull with Filtering | Pull subsets by gallery ID, query ID, location, or date range |
 | | Deduplication | Images deduplicated by SHA-256 hash; metadata merged by timestamp |
 | | Catalog Browsing | Browse what's available on the central server before downloading |
-| **Sync Tab (GUI)** | Searchable Multi-Select | Filter gallery/query/location with searchable checkbox lists |
-| | Calendar Date Pickers | Filter encounters by date range |
+| **Sync Tab (GUI)** | Searchable Multi-Select | Push and pull both use searchable gallery/query/location selectors |
+| | Push Preview | Preview the resolved push scope before upload |
+| | Calendar Date Pickers | Pull filters can include date range |
 | | Auto-Refresh | Catalog loads automatically on app startup |
 | **CLI Client** | `push` / `pull` / `catalog` / `status` | Full sync workflow from the command line |
 | **Server** | FastAPI on port 8090 | Runs on the central machine behind a Cloudflare Tunnel |

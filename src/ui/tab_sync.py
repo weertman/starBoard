@@ -217,19 +217,66 @@ class TabSync(QWidget):
 
         push_desc = QLabel(
             "Push your local archive data (images, metadata, match decisions) "
-            "to the central server. Only new/modified data is sent — duplicates "
-            "are automatically skipped."
+            "to the central server. Use selective scope controls when you only "
+            "want to push specific gallery IDs, query IDs, or location-filtered IDs."
         )
         push_desc.setWordWrap(True)
         push_lay.addWidget(push_desc)
 
+        push_filter_row = QHBoxLayout()
+
+        push_gallery_col = QVBoxLayout()
+        push_gallery_hdr = QHBoxLayout()
+        push_gallery_hdr.addWidget(QLabel("Gallery IDs:"))
+        push_gallery_hdr.addStretch()
+        push_gallery_hdr.addWidget(HelpButton(HELP_TEXTS['gallery_filter']))
+        push_gallery_col.addLayout(push_gallery_hdr)
+        self._push_gallery_select = SearchableMultiSelect("Search gallery to push...")
+        push_gallery_col.addWidget(self._push_gallery_select)
+        push_filter_row.addLayout(push_gallery_col)
+
+        push_query_col = QVBoxLayout()
+        push_query_hdr = QHBoxLayout()
+        push_query_hdr.addWidget(QLabel("Query IDs:"))
+        push_query_hdr.addStretch()
+        push_query_hdr.addWidget(HelpButton(HELP_TEXTS['query_filter']))
+        push_query_col.addLayout(push_query_hdr)
+        self._push_query_select = SearchableMultiSelect("Search queries to push...")
+        push_query_col.addWidget(self._push_query_select)
+        push_filter_row.addLayout(push_query_col)
+
+        push_location_col = QVBoxLayout()
+        push_location_hdr = QHBoxLayout()
+        push_location_hdr.addWidget(QLabel("Locations:"))
+        push_location_hdr.addStretch()
+        push_location_hdr.addWidget(HelpButton(HELP_TEXTS['location_filter']))
+        push_location_col.addLayout(push_location_hdr)
+        self._push_location_select = SearchableMultiSelect("Search locations to push...")
+        push_location_col.addWidget(self._push_location_select)
+        push_filter_row.addLayout(push_location_col)
+
+        push_lay.addLayout(push_filter_row)
+
+        self._lbl_push_filter_resolved = QLabel("")
+        self._lbl_push_filter_resolved.setWordWrap(True)
+        push_lay.addWidget(self._lbl_push_filter_resolved)
+
+        self._push_preview = QTextEdit()
+        self._push_preview.setReadOnly(True)
+        self._push_preview.setMaximumHeight(140)
+        self._push_preview.setPlaceholderText("Push preview will appear here...")
+        push_lay.addWidget(self._push_preview)
+
         push_btn_row = QHBoxLayout()
-        self._btn_push = QPushButton("Push All Local Data")
+        self._btn_push_preview = QPushButton("Preview Push")
+        self._btn_push = QPushButton("Push Selected Scope")
         self._btn_push.setMinimumHeight(36)
         self._btn_push.setStyleSheet("QPushButton { font-weight: bold; }")
+        self._btn_push_all = QPushButton("Push Everything")
+        push_btn_row.addWidget(self._btn_push_preview)
         push_btn_row.addWidget(self._btn_push)
+        push_btn_row.addWidget(self._btn_push_all)
         push_btn_row.addStretch()
-        push_btn_row.addWidget(HelpButton(HELP_TEXTS['push']))
         push_lay.addLayout(push_btn_row)
 
         push_section.setContent(push_content)
@@ -389,9 +436,14 @@ class TabSync(QWidget):
         self._btn_save_config.clicked.connect(self._save_config)
         self._btn_test_connection.clicked.connect(self._test_connection)
         self._btn_push.clicked.connect(self._do_push)
+        self._btn_push_all.clicked.connect(self._do_push_all)
+        self._btn_push_preview.clicked.connect(self._preview_push)
         self._btn_pull.clicked.connect(self._do_pull)
         self._btn_pull_all.clicked.connect(self._do_pull_all)
         self._btn_refresh_catalog.clicked.connect(self._refresh_catalog)
+        self._push_gallery_select.selectionChanged.connect(self._update_push_filter_summary)
+        self._push_query_select.selectionChanged.connect(self._update_push_filter_summary)
+        self._push_location_select.selectionChanged.connect(self._update_push_filter_summary)
 
         # Thread-safe UI updates
         self._log_signal.connect(self._append_log)
@@ -419,6 +471,180 @@ class TabSync(QWidget):
                 self._lab_input.setText(get_lab_id())
         except Exception as e:
             log.warning("Could not load sync config: %s", e)
+        finally:
+            try:
+                self._refresh_push_scope_items()
+                self._update_push_filter_summary()
+            except Exception as e:
+                log.warning("Could not initialize push selectors: %s", e)
+
+    def _load_local_latest_metadata(self) -> Dict[str, Dict[str, Dict[str, str]]]:
+        from src.data.archive_paths import metadata_csv_paths_for_read, id_column_name
+        from src.data.csv_io import read_rows_multi, last_row_per_id
+        out: Dict[str, Dict[str, Dict[str, str]]] = {}
+        for target in ["gallery", "queries"]:
+            paths = metadata_csv_paths_for_read(target)
+            rows = read_rows_multi(paths)
+            out[target] = last_row_per_id(rows, id_column_name(target))
+        return out
+
+    def _refresh_push_scope_items(self):
+        from src.data.id_registry import list_ids
+        meta = self._load_local_latest_metadata()
+        gallery_ids = sorted(list_ids("gallery"))
+        query_ids = sorted(list_ids("queries"))
+        locations = sorted({
+            (row.get("location", "") or "").strip()
+            for target in ["gallery", "queries"]
+            for row in meta.get(target, {}).values()
+            if (row.get("location", "") or "").strip()
+        })
+        self._push_gallery_select.set_items(gallery_ids)
+        self._push_query_select.set_items(query_ids)
+        self._push_location_select.set_items(locations)
+
+    def _build_push_plan(self, use_all_if_empty: bool = False) -> Dict[str, Any]:
+        import csv as csv_mod
+        from src.data.archive_paths import archive_root, gallery_root, queries_root
+        from src.data.id_registry import list_ids
+
+        meta = self._load_local_latest_metadata()
+        all_gallery_ids = sorted(list_ids("gallery"))
+        all_query_ids = sorted(list_ids("queries"))
+
+        selected_gallery_ids = sorted(set(self._push_gallery_select.selected_items()))
+        selected_query_ids = sorted(set(self._push_query_select.selected_items()))
+        locations = sorted(set(self._push_location_select.selected_items()))
+
+        location_gallery_ids = sorted([
+            gid for gid, row in meta.get("gallery", {}).items()
+            if (row.get("location", "") or "").strip() in locations
+        ])
+        location_query_ids = sorted([
+            qid for qid, row in meta.get("queries", {}).items()
+            if (row.get("location", "") or "").strip() in locations
+        ])
+
+        if use_all_if_empty and not selected_gallery_ids and not selected_query_ids and not locations:
+            mode = "all"
+            gallery_ids = all_gallery_ids
+            query_ids = all_query_ids
+        else:
+            gallery_ids = sorted(set(selected_gallery_ids) | set(location_gallery_ids))
+            query_ids = sorted(set(selected_query_ids) | set(location_query_ids))
+            if locations and not selected_gallery_ids and not selected_query_ids:
+                mode = "filter"
+            elif selected_gallery_ids and not selected_query_ids and not locations:
+                mode = "gallery"
+            elif selected_query_ids and not selected_gallery_ids and not locations:
+                mode = "query"
+            elif selected_gallery_ids or selected_query_ids or locations:
+                mode = "custom"
+            else:
+                mode = "empty"
+
+        archive = archive_root()
+        image_exts = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+        encounters = []
+        image_count = 0
+        for entity_id in gallery_ids:
+            entity_dir = gallery_root() / entity_id
+            if entity_dir.exists():
+                for enc_dir in sorted(entity_dir.iterdir()):
+                    if enc_dir.is_dir() and not enc_dir.name.startswith(("_", ".")):
+                        count = sum(1 for img in enc_dir.iterdir() if img.is_file() and img.suffix.lower() in image_exts)
+                        if count > 0:
+                            encounters.append(("gallery", "gallery", entity_id, enc_dir))
+                            image_count += count
+        for entity_id in query_ids:
+            entity_dir = queries_root() / entity_id
+            if entity_dir.exists():
+                for enc_dir in sorted(entity_dir.iterdir()):
+                    if enc_dir.is_dir() and not enc_dir.name.startswith(("_", ".")):
+                        count = sum(1 for img in enc_dir.iterdir() if img.is_file() and img.suffix.lower() in image_exts)
+                        if count > 0:
+                            encounters.append(("queries", "query", entity_id, enc_dir))
+                            image_count += count
+
+        metadata_rows = []
+        for gid in gallery_ids:
+            row = meta.get("gallery", {}).get(gid)
+            if row:
+                metadata_rows.append(("gallery", row))
+        for qid in query_ids:
+            row = meta.get("queries", {}).get(qid)
+            if row:
+                metadata_rows.append(("queries", row))
+
+        decisions = []
+        master_csv = archive / "reports" / "past_matches_master.csv"
+        if master_csv.exists():
+            with master_csv.open("r", newline="", encoding="utf-8-sig") as f:
+                for d in csv_mod.DictReader(f):
+                    if (d.get("query_id", "") in query_ids) or (d.get("gallery_id", "") in gallery_ids):
+                        decisions.append(d)
+
+        return {
+            "mode": mode,
+            "locations": locations,
+            "gallery_ids": sorted(gallery_ids),
+            "query_ids": sorted(query_ids),
+            "encounters": encounters,
+            "metadata_rows": metadata_rows,
+            "decisions": decisions,
+            "image_count": image_count,
+        }
+
+    def _render_push_preview(self, plan: Dict[str, Any]) -> str:
+        lines = []
+        mode_names = {
+            "all": "Push everything",
+            "gallery": "Push selected gallery IDs",
+            "query": "Push selected query IDs",
+            "filter": "Push by location filter",
+            "custom": "Push combined selection",
+            "empty": "No selection",
+        }
+        lines.append(f"Mode: {mode_names.get(plan['mode'], plan['mode'])}")
+        if plan.get("locations"):
+            lines.append(f"Locations: {', '.join(plan['locations'])}")
+        lines.append(f"Gallery IDs: {len(plan['gallery_ids'])}")
+        lines.append(f"Query IDs: {len(plan['query_ids'])}")
+        lines.append(f"Encounters: {len(plan['encounters'])}")
+        lines.append(f"Images: {plan['image_count']}")
+        lines.append(f"Metadata rows: {len(plan['metadata_rows'])}")
+        lines.append(f"Decisions: {len(plan['decisions'])}")
+        if plan['gallery_ids']:
+            lines.append("")
+            lines.append("Sample gallery IDs:")
+            for gid in plan['gallery_ids'][:8]:
+                lines.append(f"  - {gid}")
+        if plan['query_ids']:
+            lines.append("")
+            lines.append("Sample query IDs:")
+            for qid in plan['query_ids'][:8]:
+                lines.append(f"  - {qid}")
+        return "\n".join(lines)
+
+    def _update_push_filter_summary(self):
+        try:
+            plan = self._build_push_plan()
+            if plan['mode'] == 'empty':
+                self._lbl_push_filter_resolved.setText(
+                    "Select gallery IDs, query IDs, and/or locations for a selective push, or use Push Everything."
+                )
+            else:
+                self._lbl_push_filter_resolved.setText(
+                    f"Resolved selection: {len(plan['gallery_ids'])} gallery IDs, {len(plan['query_ids'])} query IDs"
+                )
+            self._push_preview.setPlainText(self._render_push_preview(plan))
+        except Exception as e:
+            self._push_preview.setPlainText(f"Preview unavailable: {e}")
+
+    def _preview_push(self):
+        self._ilog.log("button_click", "btn_sync_push_preview", value="clicked")
+        self._refresh_push_scope_items()
+        self._update_push_filter_summary()
 
     def _save_config(self):
         self._ilog.log("button_click", "btn_sync_save_config", value="clicked")
@@ -588,8 +814,48 @@ class TabSync(QWidget):
         server = self._get_server()
         if not server:
             return
+        self._refresh_push_scope_items()
+        plan = self._build_push_plan()
+        if not plan["gallery_ids"] and not plan["query_ids"]:
+            QMessageBox.warning(self, "Nothing Selected", "This push scope resolved to 0 gallery IDs and 0 query IDs.")
+            return
+        self._push_preview.setPlainText(self._render_push_preview(plan))
+        self._run_push(server, plan)
 
+    def _do_push_all(self):
+        self._ilog.log("button_click", "btn_sync_push_all", value="clicked")
+        server = self._get_server()
+        if not server:
+            return
+        reply = QMessageBox.question(
+            self, "Push Everything",
+            "This will push all local gallery and query data to the central server. Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        plan = self._build_push_plan_for_all()
+        self._push_preview.setPlainText(self._render_push_preview(plan))
+        self._run_push(server, plan)
+
+    def _build_push_plan_for_all(self) -> Dict[str, Any]:
+        current_gallery = self._push_gallery_select.selected_items()
+        current_query = self._push_query_select.selected_items()
+        current_location = self._push_location_select.selected_items()
+        try:
+            self._push_gallery_select.set_selected([])
+            self._push_query_select.set_selected([])
+            self._push_location_select.set_selected([])
+            return self._build_push_plan(use_all_if_empty=True)
+        finally:
+            self._push_gallery_select.set_selected(current_gallery)
+            self._push_query_select.set_selected(current_query)
+            self._push_location_select.set_selected(current_location)
+
+    def _run_push(self, server: str, plan: Dict[str, Any]):
         self._btn_push.setEnabled(False)
+        self._btn_push_all.setEnabled(False)
+        self._btn_push_preview.setEnabled(False)
         self._show_progress()
         self._progress.setRange(0, 0)  # indeterminate until we know total
         self._append_log("Starting push...")
@@ -600,17 +866,17 @@ class TabSync(QWidget):
                 from urllib.request import Request, urlopen
                 from urllib.error import HTTPError
                 import uuid
+                import time as _time
 
                 cf_headers = self._cf_auth_headers()
 
                 def _authed_open(req_or_url, timeout=300):
-                    """urlopen with auto-retry on 403 via browser auth."""
                     try:
                         return urlopen(req_or_url, timeout=timeout)
                     except HTTPError as e:
                         if e.code == 403:
                             self._log_signal.emit("Authentication required — opening browser...")
-                            token = self._run_cf_auth()
+                            token=self._run_cf_auth()
                             if token:
                                 cf_headers["cf-access-token"] = token
                                 cf_headers["Cookie"] = f"CF_Authorization={token}"
@@ -621,74 +887,45 @@ class TabSync(QWidget):
                         raise
 
                 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-                from src.data.archive_paths import (
-                    archive_root, gallery_root, queries_root,
-                    metadata_csv_paths_for_read, id_column_name,
-                )
-                from src.data.csv_io import read_rows_multi, last_row_per_id
-                from src.data.id_registry import list_ids
+                from src.data.archive_paths import archive_root
                 from src.sync.config import get_lab_id
 
                 archive = archive_root()
                 lab = self._lab_input.text().strip() or get_lab_id()
-                IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+                image_exts = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 
                 total_new = 0
                 total_dupes = 0
                 total_meta = 0
                 total_decisions = 0
 
-                # Count total encounters first for progress bar
-                import time as _time
-                all_encounters = []  # (target, entity_type, entity_id, enc_dir)
-                for target, target_name in [("gallery", "Gallery"), ("queries", "Queries")]:
-                    ids = list_ids(target)
-                    for entity_id in ids:
-                        if target == "gallery":
-                            entity_dir = gallery_root() / entity_id
-                            entity_type = "gallery"
-                        else:
-                            entity_dir = queries_root() / entity_id
-                            entity_type = "query"
-                        if not entity_dir.exists():
-                            continue
-                        for enc_dir in sorted(entity_dir.iterdir()):
-                            if enc_dir.is_dir() and not enc_dir.name.startswith(("_", ".")):
-                                all_encounters.append((target, entity_type, entity_id, enc_dir))
-
+                all_encounters = list(plan["encounters"])
                 total_enc = len(all_encounters)
-                self._log_signal.emit(f"Found {total_enc} encounters to push")
-                self._progress_signal.emit(0, total_enc + 2)  # +2 for metadata + decisions
+                self._log_signal.emit(
+                    f"Push scope resolved to {len(plan['gallery_ids'])} gallery IDs, "
+                    f"{len(plan['query_ids'])} query IDs, {total_enc} encounters"
+                )
+                self._progress_signal.emit(0, total_enc + 2)
                 push_start = _time.time()
 
-                # Push encounters
                 for enc_idx, (target, entity_type, entity_id, enc_dir) in enumerate(all_encounters):
                     elapsed = _time.time() - push_start
-                    if enc_idx > 0:
+                    if enc_idx > 0 and elapsed > 0:
                         rate = enc_idx / elapsed
-                        remaining = (total_enc - enc_idx) / rate
+                        remaining = (total_enc - enc_idx) / rate if rate > 0 else 0
                         mins, secs = divmod(int(remaining), 60)
                         self._progress_detail_signal.emit(
-                            f"Encounter {enc_idx+1}/{total_enc}  |  "
-                            f"ETA: {mins}m {secs}s  |  "
-                            f"{total_new} new, {total_dupes} dupes"
+                            f"Encounter {enc_idx+1}/{total_enc}  |  ETA: {mins}m {secs}s  |  {total_new} new, {total_dupes} dupes"
                         )
                     self._progress_signal.emit(enc_idx, total_enc + 2)
 
-                    # Re-derive entity_dir for the old scanning code below
-                    # (already have entity_type, entity_id, enc_dir from the list)
-                    pass  # variables already set from all_encounters
-
-                    # Scan for images in this encounter
                     images = []
                     for img in enc_dir.iterdir():
-                        if img.is_file() and img.suffix.lower() in IMAGE_EXTS:
+                        if img.is_file() and img.suffix.lower() in image_exts:
                             images.append((img.name, img.read_bytes()))
-
                     if not images:
                         continue
 
-                    # Multipart upload
                     boundary = uuid.uuid4().hex
                     body = b""
                     for key, value in {
@@ -700,74 +937,44 @@ class TabSync(QWidget):
                         body += f"--{boundary}\r\n".encode()
                         body += f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode()
                         body += f"{value}\r\n".encode()
-
                     for fname, fdata in images:
                         body += f"--{boundary}\r\n".encode()
                         body += f'Content-Disposition: form-data; name="files"; filename="{fname}"\r\n'.encode()
                         body += b"Content-Type: application/octet-stream\r\n\r\n"
                         body += fdata + b"\r\n"
-
                     body += f"--{boundary}--\r\n".encode()
 
                     enc_headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
                     enc_headers.update(cf_headers)
-                    req = Request(
-                        f"{server}/api/push/encounters",
-                        data=body,
-                        headers=enc_headers,
-                    )
+                    req = Request(f"{server}/api/push/encounters", data=body, headers=enc_headers)
                     r = _authed_open(req, timeout=300)
                     result = json.loads(r.read())
                     accepted = result["accepted_images"]
                     skipped = result["skipped_duplicates"]
                     total_new += accepted
                     total_dupes += skipped
-
                     if accepted > 0:
-                        self._log_signal.emit(
-                            f"  {entity_type}/{entity_id}/{enc_dir.name}: "
-                            f"{accepted} new, {skipped} dupes"
-                        )
+                        self._log_signal.emit(f"  {entity_type}/{entity_id}/{enc_dir.name}: {accepted} new, {skipped} dupes")
 
-                # Push metadata
                 self._progress_signal.emit(total_enc, total_enc + 2)
                 self._progress_detail_signal.emit("Pushing metadata...")
                 self._log_signal.emit("Pushing metadata...")
                 for target in ["gallery", "queries"]:
-                    paths = metadata_csv_paths_for_read(target)
-                    rows = read_rows_multi(paths)
-                    id_col = id_column_name(target)
-                    latest = last_row_per_id(rows, id_col)
-                    push_rows = list(latest.values())
-
+                    push_rows = [row for row_target, row in plan["metadata_rows"] if row_target == target]
                     if push_rows:
-                        body = json.dumps({
-                            "target": target, "lab_id": lab, "rows": push_rows,
-                        }).encode()
+                        body = json.dumps({"target": target, "lab_id": lab, "rows": push_rows}).encode()
                         meta_headers = {"Content-Type": "application/json"}
                         meta_headers.update(cf_headers)
-                        req = Request(
-                            f"{server}/api/push/metadata",
-                            data=body,
-                            headers=meta_headers,
-                        )
+                        req = Request(f"{server}/api/push/metadata", data=body, headers=meta_headers)
                         r = _authed_open(req, timeout=60)
                         result = json.loads(r.read())
                         total_meta += result["updated_count"]
-                        self._log_signal.emit(
-                            f"  {target}: {result['updated_count']} updated, "
-                            f"{result['skipped_count']} skipped"
-                        )
+                        self._log_signal.emit(f"  {target}: {result['updated_count']} updated, {result['skipped_count']} skipped")
 
-                # Push decisions
                 self._progress_signal.emit(total_enc + 1, total_enc + 2)
                 self._progress_detail_signal.emit("Pushing decisions...")
                 self._log_signal.emit("Pushing decisions...")
-                master_csv = archive / "reports" / "past_matches_master.csv"
-                if master_csv.exists():
-                    with master_csv.open("r", newline="", encoding="utf-8-sig") as f:
-                        reader = csv.DictReader(f)
-                        all_dec = list(reader)
+                if plan["decisions"]:
                     decisions = [{
                         "query_id": d.get("query_id", ""),
                         "gallery_id": d.get("gallery_id", ""),
@@ -776,28 +983,16 @@ class TabSync(QWidget):
                         "lab_id": lab,
                         "user": d.get("user", ""),
                         "notes": d.get("notes", ""),
-                    } for d in all_dec]
+                    } for d in plan["decisions"]]
+                    body = json.dumps({"lab_id": lab, "decisions": decisions}).encode()
+                    dec_headers = {"Content-Type": "application/json"}
+                    dec_headers.update(cf_headers)
+                    req = Request(f"{server}/api/push/decisions", data=body, headers=dec_headers)
+                    r = _authed_open(req, timeout=60)
+                    result = json.loads(r.read())
+                    total_decisions = result["appended_count"]
+                    self._log_signal.emit(f"  {result['appended_count']} new, {result['duplicate_count']} dupes")
 
-                    if decisions:
-                        body = json.dumps({
-                            "lab_id": lab, "decisions": decisions,
-                        }).encode()
-                        dec_headers = {"Content-Type": "application/json"}
-                        dec_headers.update(cf_headers)
-                        req = Request(
-                            f"{server}/api/push/decisions",
-                            data=body,
-                            headers=dec_headers,
-                        )
-                        r = _authed_open(req, timeout=60)
-                        result = json.loads(r.read())
-                        total_decisions = result["appended_count"]
-                        self._log_signal.emit(
-                            f"  {result['appended_count']} new, "
-                            f"{result['duplicate_count']} dupes"
-                        )
-
-                # Update config
                 cfg_path = archive / "starboard_sync_config.json"
                 cfg = {}
                 if cfg_path.exists():
@@ -808,9 +1003,7 @@ class TabSync(QWidget):
                     json.dump(cfg, f, indent=2)
 
                 self._log_signal.emit(
-                    f"\nPush complete: {total_new} new images, "
-                    f"{total_meta} metadata updates, "
-                    f"{total_decisions} new decisions"
+                    f"\nPush complete: {total_new} new images, {total_meta} metadata updates, {total_decisions} new decisions"
                 )
                 self._done_signal.emit("push")
 
@@ -1196,8 +1389,10 @@ class TabSync(QWidget):
     def _on_done(self, action: str):
         self._hide_progress()
         self._btn_push.setEnabled(True)
+        self._btn_push_all.setEnabled(True)
+        self._btn_push_preview.setEnabled(True)
         self._btn_pull.setEnabled(True)
         self._btn_pull_all.setEnabled(True)
         self._ilog.log("button_click", f"sync_{action}_completed",
                        value="done", context={"action": action})
-        self._load_config()  # refresh timestamps
+        self._load_config()  # refresh timestamps and selectors
