@@ -342,6 +342,24 @@ FIELD_DEFINITIONS: List[FieldDefinition] = [
         group="location",
         tooltip="Written description of the star's location",
     ),
+    FieldDefinition(
+        name="latitude",
+        display_name="Latitude",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="location",
+        min_value=-90.0,
+        max_value=90.0,
+        tooltip="Latitude in decimal degrees (WGS84)",
+    ),
+    FieldDefinition(
+        name="longitude",
+        display_name="Longitude",
+        annotation_type=AnnotationType.NUMERIC_FLOAT,
+        group="location",
+        min_value=-180.0,
+        max_value=180.0,
+        tooltip="Longitude in decimal degrees (WGS84)",
+    ),
     # --- Group 5b: Text Annotations ---
     FieldDefinition(
         name="unusual_observation",
@@ -466,7 +484,7 @@ FIELD_GROUPS: List[FieldGroup] = [
     FieldGroup(
         name="location",
         display_name="Location",
-        fields=["location"],
+        fields=["location", "latitude", "longitude"],
         start_expanded=True,
     ),
     FieldGroup(

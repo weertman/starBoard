@@ -27,6 +27,8 @@ LOCATION_HISTORY_FILENAME = "_location_history.csv"
 LOCATION_HISTORY_HEADER = [
     "observation_date",  # ISO date (YYYY-MM-DD) when the sighting occurred
     "location",          # Location name from query metadata
+    "latitude",          # Decimal degrees (WGS84), optional
+    "longitude",         # Decimal degrees (WGS84), optional
     "query_id",          # Source query that was merged
     "added_utc",         # Timestamp when this record was created
 ]
@@ -43,12 +45,16 @@ class LocationSighting:
     location: str
     query_id: str
     added_utc: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     def to_row(self) -> Dict[str, str]:
         """Convert to CSV row dict."""
         return {
             "observation_date": self.observation_date.isoformat() if self.observation_date else "",
             "location": self.location,
+            "latitude": f"{self.latitude:.6f}" if self.latitude is not None else "",
+            "longitude": f"{self.longitude:.6f}" if self.longitude is not None else "",
             "query_id": self.query_id,
             "added_utc": self.added_utc,
         }
@@ -63,11 +69,27 @@ class LocationSighting:
                 obs_date = date.fromisoformat(date_str)
             except ValueError:
                 pass
+        lat_str = (row.get("latitude") or "").strip()
+        lon_str = (row.get("longitude") or "").strip()
+        latitude = None
+        longitude = None
+        if lat_str:
+            try:
+                latitude = float(lat_str)
+            except ValueError:
+                pass
+        if lon_str:
+            try:
+                longitude = float(lon_str)
+            except ValueError:
+                pass
         return cls(
             observation_date=obs_date,
             location=(row.get("location") or "").strip(),
             query_id=(row.get("query_id") or "").strip(),
             added_utc=(row.get("added_utc") or "").strip(),
+            latitude=latitude,
+            longitude=longitude,
         )
 
 
@@ -126,6 +148,8 @@ def add_location_sighting(
     location: str,
     observation_date: Optional[date],
     query_id: str,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
 ) -> bool:
     """
     Add a new location sighting to a gallery individual's history.
@@ -135,6 +159,8 @@ def add_location_sighting(
         location: Location name (skipped if empty)
         observation_date: Date of the sighting
         query_id: Source query ID
+        latitude: Optional latitude in decimal degrees (WGS84)
+        longitude: Optional longitude in decimal degrees (WGS84)
         
     Returns:
         True if sighting was added, False if skipped (empty location)
@@ -148,6 +174,8 @@ def add_location_sighting(
         location=location,
         query_id=query_id,
         added_utc=datetime.utcnow().isoformat() + "Z",
+        latitude=latitude,
+        longitude=longitude,
     )
     
     path = _history_path(gallery_id)

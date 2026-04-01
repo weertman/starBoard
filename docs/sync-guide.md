@@ -160,7 +160,7 @@ python -m src.sync.client push
 
 What gets pushed:
 - Encounter folders (images) for the resolved gallery/query selection
-- Metadata rows for the resolved gallery/query selection
+- Metadata rows for the resolved gallery/query selection (including latitude/longitude when set)
 - Match decisions involving the resolved gallery/query selection
 
 Deduplication:

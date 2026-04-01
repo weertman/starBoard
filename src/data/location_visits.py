@@ -27,6 +27,8 @@ LOCATION_VISITS_FILENAME = "location_visits.csv"
 LOCATION_VISITS_HEADER = [
     "visit_date",   # ISO date (YYYY-MM-DD)
     "location",     # Location name (from vocabulary)
+    "latitude",     # Decimal degrees (WGS84), optional
+    "longitude",    # Decimal degrees (WGS84), optional
     "notes",        # Free-text notes (conditions, visibility, etc.)
     "added_utc",    # Timestamp when this record was created
 ]
@@ -43,11 +45,15 @@ class LocationVisit:
     location: str
     notes: str
     added_utc: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     def to_row(self) -> Dict[str, str]:
         return {
             "visit_date": self.visit_date.isoformat() if self.visit_date else "",
             "location": self.location,
+            "latitude": f"{self.latitude:.6f}" if self.latitude is not None else "",
+            "longitude": f"{self.longitude:.6f}" if self.longitude is not None else "",
             "notes": self.notes,
             "added_utc": self.added_utc,
         }
@@ -61,11 +67,27 @@ class LocationVisit:
                 visit_date = date.fromisoformat(date_str)
             except ValueError:
                 pass
+        lat_str = (row.get("latitude") or "").strip()
+        lon_str = (row.get("longitude") or "").strip()
+        latitude = None
+        longitude = None
+        if lat_str:
+            try:
+                latitude = float(lat_str)
+            except ValueError:
+                pass
+        if lon_str:
+            try:
+                longitude = float(lon_str)
+            except ValueError:
+                pass
         return cls(
             visit_date=visit_date,
             location=(row.get("location") or "").strip(),
             notes=(row.get("notes") or "").strip(),
             added_utc=(row.get("added_utc") or "").strip(),
+            latitude=latitude,
+            longitude=longitude,
         )
 
 
@@ -129,6 +151,8 @@ def add_location_visit(
     location: str,
     visit_date: Optional[date],
     notes: str = "",
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
 ) -> bool:
     """
     Record a location visit where no stars were found.
@@ -144,6 +168,8 @@ def add_location_visit(
         location=location,
         notes=(notes or "").strip(),
         added_utc=datetime.utcnow().isoformat() + "Z",
+        latitude=latitude,
+        longitude=longitude,
     )
 
     _append_row(_csv_path(), visit.to_row())

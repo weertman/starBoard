@@ -77,12 +77,13 @@ Sunflower sea stars exhibit several characteristics that make them suitable for 
 | Category | Capability | Description |
 |----------|------------|-------------|
 | **Data Management** | Image Archive | Organized storage of gallery (known) and query (unknown) individuals |
-| | Encounter Tracking | Date-stamped observation sessions with location metadata |
+| | Encounter Tracking | Date-stamped observation sessions with location name and GPS coordinates |
 | | Batch Upload | Import multiple images with automatic folder discovery |
 | | Merge/Revert | Combine confirmed matches; undo operations with full history |
 | **Annotation** | 30+ Morphological Fields | Numeric measurements, color categories, ordinal traits |
 | | Short Arm Coding | Position-specific notation for regenerating arms |
 | | Extensible Vocabularies | User-defined color and location terms |
+| | GPS Coordinates | Latitude/longitude input via text or interactive map picker |
 | | Best Photo Selection | Mark representative images for each individual |
 | **Search & Matching** | First-order Search | Rank gallery by metadata similarity to query |
 | | Field-Weighted Scoring | Customize importance of each annotation field |

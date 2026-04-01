@@ -119,11 +119,13 @@ class _MetadataPopup(QDialog):
         # Location history section (only for gallery)
         if gallery_id:
             lay.addWidget(QLabel("<b>Location History</b>"))
-            self.history_table = QTableWidget(0, 3, self)
-            self.history_table.setHorizontalHeaderLabels(["Date", "Location", "Source Query"])
+            self.history_table = QTableWidget(0, 5, self)
+            self.history_table.setHorizontalHeaderLabels(["Date", "Location", "Lat", "Lon", "Source Query"])
             self.history_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
             self.history_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
             self.history_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+            self.history_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+            self.history_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
             self.history_table.verticalHeader().setVisible(False)
             self.history_table.setMaximumHeight(150)
             lay.addWidget(self.history_table)
@@ -143,12 +145,18 @@ class _MetadataPopup(QDialog):
                 date_str = s.observation_date.strftime("%Y-%m-%d") if s.observation_date else ""
                 self.history_table.setItem(i, 0, QTableWidgetItem(date_str))
                 self.history_table.setItem(i, 1, QTableWidgetItem(s.location))
-                self.history_table.setItem(i, 2, QTableWidgetItem(s.query_id))
+                lat_text = f"{s.latitude:.6f}" if getattr(s, 'latitude', None) is not None else ""
+                lon_text = f"{s.longitude:.6f}" if getattr(s, 'longitude', None) is not None else ""
+                self.history_table.setItem(i, 2, QTableWidgetItem(lat_text))
+                self.history_table.setItem(i, 3, QTableWidgetItem(lon_text))
+                self.history_table.setItem(i, 4, QTableWidgetItem(s.query_id))
             if not sightings:
                 self.history_table.setRowCount(1)
                 self.history_table.setItem(0, 0, QTableWidgetItem(""))
                 self.history_table.setItem(0, 1, QTableWidgetItem("(no location history)"))
                 self.history_table.setItem(0, 2, QTableWidgetItem(""))
+                self.history_table.setItem(0, 3, QTableWidgetItem(""))
+                self.history_table.setItem(0, 4, QTableWidgetItem(""))
         except Exception:
             pass
 

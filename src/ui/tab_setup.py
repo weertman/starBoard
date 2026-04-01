@@ -2154,6 +2154,33 @@ class TabSetup(QWidget):
         row_top.addWidget(self._lv_location, 1)
         lay.addLayout(row_top)
 
+        # Coordinates row
+        coord_row = QHBoxLayout()
+        coord_row.addWidget(QLabel("Lat:"))
+        self._lv_lat = QLineEdit()
+        self._lv_lat.setPlaceholderText("e.g. 48.546")
+        self._lv_lat.setMaximumWidth(110)
+        coord_row.addWidget(self._lv_lat)
+        coord_row.addWidget(QLabel("Lon:"))
+        self._lv_lon = QLineEdit()
+        self._lv_lon.setPlaceholderText("e.g. -123.013")
+        self._lv_lon.setMaximumWidth(110)
+        coord_row.addWidget(self._lv_lon)
+
+        self._lv_btn_map = QPushButton("🗺 Map")
+        self._lv_btn_map.setMaximumWidth(70)
+        self._lv_btn_map.setToolTip("Pick coordinates on a map")
+        self._lv_btn_map.clicked.connect(self._on_lv_pick_map)
+        try:
+            from src.ui.map_picker import is_map_picker_available
+            if not is_map_picker_available():
+                self._lv_btn_map.setVisible(False)
+        except ImportError:
+            self._lv_btn_map.setVisible(False)
+        coord_row.addWidget(self._lv_btn_map)
+        coord_row.addStretch()
+        lay.addLayout(coord_row)
+
         row_notes = QHBoxLayout()
         row_notes.addWidget(QLabel("Notes:"))
         self._lv_notes = QLineEdit()
@@ -2165,13 +2192,15 @@ class TabSetup(QWidget):
         row_notes.addWidget(self._lv_btn_save)
         lay.addLayout(row_notes)
 
-        self._lv_table = QTableWidget(0, 4)
-        self._lv_table.setHorizontalHeaderLabels(["Date", "Location", "Notes", ""])
+        self._lv_table = QTableWidget(0, 6)
+        self._lv_table.setHorizontalHeaderLabels(["Date", "Location", "Lat", "Lon", "Notes", ""])
         self._lv_table.horizontalHeader().setStretchLastSection(False)
         self._lv_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self._lv_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self._lv_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self._lv_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self._lv_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self._lv_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self._lv_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self._lv_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._lv_table.setSelectionMode(QAbstractItemView.NoSelection)
         self._lv_table.verticalHeader().setVisible(False)
@@ -2181,6 +2210,29 @@ class TabSetup(QWidget):
         self._refresh_lv_location_combo()
         self._refresh_lv_table()
         return gb
+
+    def _on_lv_pick_map(self) -> None:
+        """Open map picker for location visit coordinates."""
+        try:
+            from src.ui.map_picker import MapPickerDialog
+        except ImportError:
+            return
+        lat_text = self._lv_lat.text().strip()
+        lon_text = self._lv_lon.text().strip()
+        try:
+            init_lat = float(lat_text) if lat_text else None
+        except ValueError:
+            init_lat = None
+        try:
+            init_lon = float(lon_text) if lon_text else None
+        except ValueError:
+            init_lon = None
+        dialog = MapPickerDialog(self, latitude=init_lat, longitude=init_lon)
+        from PySide6.QtWidgets import QDialog
+        if dialog.exec() == QDialog.Accepted:
+            lat, lon = dialog.get_coordinates()
+            self._lv_lat.setText(f"{lat:.6f}" if lat is not None else "")
+            self._lv_lon.setText(f"{lon:.6f}" if lon is not None else "")
 
     def _refresh_lv_location_combo(self) -> None:
         self._lv_location.blockSignals(True)
@@ -2203,12 +2255,16 @@ class TabSetup(QWidget):
             self._lv_table.setItem(i, 0, QTableWidgetItem(
                 v.visit_date.isoformat() if v.visit_date else ""))
             self._lv_table.setItem(i, 1, QTableWidgetItem(v.location))
-            self._lv_table.setItem(i, 2, QTableWidgetItem(v.notes))
+            lat_text = f"{v.latitude:.6f}" if getattr(v, 'latitude', None) is not None else ""
+            lon_text = f"{v.longitude:.6f}" if getattr(v, 'longitude', None) is not None else ""
+            self._lv_table.setItem(i, 2, QTableWidgetItem(lat_text))
+            self._lv_table.setItem(i, 3, QTableWidgetItem(lon_text))
+            self._lv_table.setItem(i, 4, QTableWidgetItem(v.notes))
 
             btn_del = QPushButton("Delete")
             utc_key = v.added_utc
             btn_del.clicked.connect(lambda _checked=False, key=utc_key: self._on_delete_location_visit(key))
-            self._lv_table.setCellWidget(i, 3, btn_del)
+            self._lv_table.setCellWidget(i, 5, btn_del)
 
     def _on_save_location_visit(self) -> None:
         self._ilog.log("button_click", "btn_save_location_visit", value="clicked")
@@ -2221,14 +2277,38 @@ class TabSetup(QWidget):
         visit_date = _date(y, m, d)
         notes = self._lv_notes.text().strip()
 
+        # Parse optional coordinates
+        latitude = None
+        longitude = None
+        lat_text = self._lv_lat.text().strip()
+        lon_text = self._lv_lon.text().strip()
+        if lat_text:
+            try:
+                latitude = float(lat_text)
+            except ValueError:
+                pass
+        if lon_text:
+            try:
+                longitude = float(lon_text)
+            except ValueError:
+                pass
+
         vocab = get_vocabulary_store()
         if not vocab.has_location(location):
             vocab.add_location(location)
             self._refresh_lv_location_combo()
 
-        add_location_visit(location=location, visit_date=visit_date, notes=notes)
+        add_location_visit(
+            location=location,
+            visit_date=visit_date,
+            notes=notes,
+            latitude=latitude,
+            longitude=longitude,
+        )
 
         self._lv_notes.clear()
+        self._lv_lat.clear()
+        self._lv_lon.clear()
         self._refresh_lv_table()
         info(f"Recorded visit to '{location}' on {visit_date.isoformat()}.", self)
 
@@ -2924,12 +3004,39 @@ class TabSetup(QWidget):
         )
         self.cmb_location_batch_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         apply_row.addWidget(self.cmb_location_batch_edit, 1)
+        lay.addLayout(apply_row)
+
+        # Coordinates row for batch edit
+        batch_coord_row = QHBoxLayout()
+        batch_coord_row.addWidget(QLabel("Lat:"))
+        self._batch_lat = QLineEdit()
+        self._batch_lat.setPlaceholderText("e.g. 48.546")
+        self._batch_lat.setMaximumWidth(110)
+        batch_coord_row.addWidget(self._batch_lat)
+        batch_coord_row.addWidget(QLabel("Lon:"))
+        self._batch_lon = QLineEdit()
+        self._batch_lon.setPlaceholderText("e.g. -123.013")
+        self._batch_lon.setMaximumWidth(110)
+        batch_coord_row.addWidget(self._batch_lon)
+
+        self._batch_btn_map = QPushButton("🗺 Map")
+        self._batch_btn_map.setMaximumWidth(70)
+        self._batch_btn_map.setToolTip("Pick coordinates on a map")
+        self._batch_btn_map.clicked.connect(self._on_batch_pick_map)
+        try:
+            from src.ui.map_picker import is_map_picker_available
+            if not is_map_picker_available():
+                self._batch_btn_map.setVisible(False)
+        except ImportError:
+            self._batch_btn_map.setVisible(False)
+        batch_coord_row.addWidget(self._batch_btn_map)
 
         self.btn_apply_batch_edit_location = QPushButton("Apply to Selected")
         self.btn_apply_batch_edit_location.setEnabled(False)
         self.btn_apply_batch_edit_location.clicked.connect(self._on_apply_batch_edit_location)
-        apply_row.addWidget(self.btn_apply_batch_edit_location)
-        lay.addLayout(apply_row)
+        batch_coord_row.addWidget(self.btn_apply_batch_edit_location)
+        batch_coord_row.addStretch()
+        lay.addLayout(batch_coord_row)
 
         # Log pane
         self.log_batch_edit_location = QPlainTextEdit()
@@ -2940,6 +3047,29 @@ class TabSetup(QWidget):
         QTimer.singleShot(220, self._populate_batch_edit_location_choices)
         QTimer.singleShot(260, self._refresh_batch_edit_location_table)
         return gb
+
+    def _on_batch_pick_map(self) -> None:
+        """Open map picker for batch edit coordinates."""
+        try:
+            from src.ui.map_picker import MapPickerDialog
+        except ImportError:
+            return
+        lat_text = self._batch_lat.text().strip()
+        lon_text = self._batch_lon.text().strip()
+        try:
+            init_lat = float(lat_text) if lat_text else None
+        except ValueError:
+            init_lat = None
+        try:
+            init_lon = float(lon_text) if lon_text else None
+        except ValueError:
+            init_lon = None
+        dialog = MapPickerDialog(self, latitude=init_lat, longitude=init_lon)
+        from PySide6.QtWidgets import QDialog
+        if dialog.exec() == QDialog.Accepted:
+            lat, lon = dialog.get_coordinates()
+            self._batch_lat.setText(f"{lat:.6f}" if lat is not None else "")
+            self._batch_lon.setText(f"{lon:.6f}" if lon is not None else "")
 
     def _populate_batch_edit_location_choices(self) -> None:
         current_text = self.cmb_location_batch_edit.currentText()
@@ -3025,13 +3155,19 @@ class TabSetup(QWidget):
             warn("Please enter a location to apply.", self)
             return
 
+        # Parse optional coordinates
+        new_lat = self._batch_lat.text().strip()
+        new_lon = self._batch_lon.text().strip()
+
+        confirm_msg = f"Apply location '{new_location}'"
+        if new_lat or new_lon:
+            confirm_msg += f" ({new_lat}, {new_lon})"
+        confirm_msg += f" to {len(selected_ids)} {target.lower()} ID(s)?"
+
         reply = QMessageBox.question(
             self,
             "Confirm Batch Location Edit",
-            (
-                f"Apply location '{new_location}' to {len(selected_ids)} "
-                f"{target.lower()} ID(s)?"
-            ),
+            confirm_msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -3045,6 +3181,8 @@ class TabSetup(QWidget):
             context={
                 "selected_count": len(selected_ids),
                 "new_location": new_location,
+                "latitude": new_lat,
+                "longitude": new_lon,
             },
         )
 
@@ -3063,11 +3201,17 @@ class TabSetup(QWidget):
             row[id_col] = id_val
 
             old_location = (row.get("location") or "").strip()
-            if old_location == new_location:
+            old_lat = (row.get("latitude") or "").strip()
+            old_lon = (row.get("longitude") or "").strip()
+            if old_location == new_location and old_lat == new_lat and old_lon == new_lon:
                 skipped_count += 1
                 continue
 
             row["location"] = new_location
+            if new_lat:
+                row["latitude"] = new_lat
+            if new_lon:
+                row["longitude"] = new_lon
 
             try:
                 old_values = {}

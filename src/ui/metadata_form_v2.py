@@ -23,6 +23,10 @@ from src.data.annotation_schema import (
 )
 from src.ui.annotation_widgets import create_widget_for_field, AnnotationWidget
 from src.ui.collapsible import CollapsibleSection
+from src.ui.location_input import LocationInputGroup
+
+# Fields managed by the compound LocationInputGroup widget
+_LOCATION_GROUP_FIELDS = {"location", "latitude", "longitude"}
 
 
 class MetadataFormV2(QWidget):
@@ -45,6 +49,7 @@ class MetadataFormV2(QWidget):
         self._loaded_snapshot: Dict[str, str] = {}
         self._widgets: Dict[str, AnnotationWidget] = {}
         self._groups: Dict[str, CollapsibleSection] = {}
+        self._location_group: Optional[LocationInputGroup] = None
         
         self._build_ui()
         self._loaded_snapshot = self.collect_row_dict()
@@ -84,6 +89,18 @@ class MetadataFormV2(QWidget):
             group.display_name,
             start_collapsed=not group.start_expanded,
         )
+        
+        # Special case: "location" group uses compound LocationInputGroup widget
+        if group.name == "location":
+            content = QWidget()
+            layout = QVBoxLayout(content)
+            layout.setContentsMargins(8, 8, 8, 8)
+            layout.setSpacing(8)
+            self._location_group = LocationInputGroup(content)
+            self._location_group.value_changed.connect(self._on_value_changed)
+            layout.addWidget(self._location_group)
+            section.setContent(content)
+            return section
         
         # Content widget with form layout
         content = QWidget()
@@ -149,6 +166,11 @@ class MetadataFormV2(QWidget):
         """
         for field_name, widget in self._widgets.items():
             widget.set_value(values.get(field_name, ""))
+        # Route location fields through the compound widget
+        if self._location_group is not None:
+            self._location_group.set_values({
+                k: values.get(k, "") for k in _LOCATION_GROUP_FIELDS
+            })
         self._loaded_snapshot = self.collect_row_dict()
 
     def apply_values(self, values: Dict[str, str]) -> None:
@@ -170,6 +192,12 @@ class MetadataFormV2(QWidget):
                     logger.debug("apply_values: Set %s = %s", field_name, values[field_name])
                 applied_count += 1
         
+        # Route location fields through the compound widget
+        if self._location_group is not None:
+            loc_vals = {k: values[k] for k in _LOCATION_GROUP_FIELDS if k in values}
+            if loc_vals:
+                self._location_group.set_values(loc_vals)
+        
         # Debug: check if morph widgets exist
         morph_widgets = [k for k in self._widgets.keys() if k.startswith('morph_')]
         if morph_fields and not morph_widgets:
@@ -189,6 +217,10 @@ class MetadataFormV2(QWidget):
         
         for field_name, widget in self._widgets.items():
             out[field_name] = widget.get_value()
+        
+        # Merge location fields from the compound widget
+        if self._location_group is not None:
+            out.update(self._location_group.get_values())
         
         # Debug: log morph_* fields being collected
         morph_collected = {k: v for k, v in out.items() if k.startswith('morph_') and v}
@@ -218,6 +250,8 @@ class MetadataFormV2(QWidget):
         """Clear all field values."""
         for widget in self._widgets.values():
             widget.clear()
+        if self._location_group is not None:
+            self._location_group.clear_all()
 
     def get_widget(self, field_name: str) -> Optional[AnnotationWidget]:
         """Get the widget for a specific field."""
