@@ -128,11 +128,12 @@ def _load_tab_setup_module():
             get_encounter_date=lambda *_args, **_kwargs: None,
             set_encounter_date=lambda *_args, **_kwargs: None,
         ),
-        "src.data.negative_outings": _stub_module(
-            "src.data.negative_outings",
-            append_negative_outing=lambda *_args, **_kwargs: None,
-            get_negative_outing_locations=lambda *_args, **_kwargs: [],
-            read_negative_outings=lambda *_args, **_kwargs: [],
+        "src.data.field_visits": _stub_module(
+            "src.data.field_visits",
+            append_field_visit=lambda *_args, **_kwargs: None,
+            get_field_visit_locations=lambda *_args, **_kwargs: [],
+            read_field_visits=lambda *_args, **_kwargs: [],
+            delete_field_visit=lambda *_args, **_kwargs: False,
         ),
         "src.data.archive_merge": _stub_module(
             "src.data.archive_merge",
@@ -175,7 +176,7 @@ def _load_tab_setup_module():
     data_pkg.best_photo = stubbed_modules["src.data.best_photo"]
     data_pkg.image_index = stubbed_modules["src.data.image_index"]
     data_pkg.encounter_info = stubbed_modules["src.data.encounter_info"]
-    data_pkg.negative_outings = stubbed_modules["src.data.negative_outings"]
+    data_pkg.field_visits = stubbed_modules["src.data.field_visits"]
     data_pkg.archive_merge = stubbed_modules["src.data.archive_merge"]
     ui_pkg.collapsible = stubbed_modules["src.ui.collapsible"]
     ui_pkg.metadata_form_v2 = stubbed_modules["src.ui.metadata_form_v2"]

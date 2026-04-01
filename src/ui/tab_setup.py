@@ -36,10 +36,11 @@ from src.data.archive_paths import last_observation_for_all
 from src.data.best_photo import reorder_files_with_best, save_best_for_id
 from src.data.image_index import list_image_files
 from src.data.encounter_info import list_encounters_for_id, get_encounter_date, set_encounter_date
-from src.data.negative_outings import (
-    append_negative_outing,
-    get_negative_outing_locations,
-    read_negative_outings,
+from src.data.field_visits import (
+    append_field_visit,
+    get_field_visit_locations,
+    read_field_visits,
+    delete_field_visit,
 )
 from src.data.archive_merge import (
     scan_external_archive, build_merge_plan, execute_merge,
@@ -47,9 +48,7 @@ from src.data.archive_merge import (
 )
 from .metadata_form_v2 import MetadataForm
 from src.utils.interaction_logger import get_interaction_logger
-from src.data.location_visits import (
-    add_location_visit, get_all_location_visits, delete_location_visit,
-)
+
 from src.data.vocabulary_store import get_vocabulary_store
 
 logger = logging.getLogger("starBoard.ui.setup")
@@ -771,10 +770,9 @@ class TabSetup(QWidget):
 
         # Build inner groups (title-less QGroupBox used for visual framing)
         gb_single = self._build_single_upload_group()   # title-less
-        gb_negative = self._build_negative_outing_group()  # title-less
+        gb_fv = self._build_field_visit_group()  # title-less
         gb_batch  = self._build_batch_upload_group()    # title-less
         gb_id_manage = self._build_id_management_group()  # title-less
-        gb_lv     = self._build_location_visit_group()  # title-less
         gb_edit   = self._build_editing_group()         # title-less
         gb_merge  = self._build_archive_merge_group()   # title-less
         gb_batch_location = self._build_batch_edit_location_group()  # title-less
@@ -782,14 +780,12 @@ class TabSetup(QWidget):
         # Wrap each group with an expandable panel (collapsed by default)
         sec_single = CollapsibleSection("Single Upload", start_collapsed=True)
         sec_single.setContent(gb_single)
-        sec_negative = CollapsibleSection("Outing Entry", start_collapsed=True)
-        sec_negative.setContent(gb_negative)
+        sec_fv = CollapsibleSection("Field Visit Log", start_collapsed=True)
+        sec_fv.setContent(gb_fv)
         sec_batch = CollapsibleSection("Batch Upload IDs", start_collapsed=True)
         sec_batch.setContent(gb_batch)
         sec_id_manage = CollapsibleSection("ID Management", start_collapsed=True)
         sec_id_manage.setContent(gb_id_manage)
-        sec_lv = CollapsibleSection("Log Location Visit", start_collapsed=True)
-        sec_lv.setContent(gb_lv)
         sec_edit = CollapsibleSection("Metadata Editing Mode", start_collapsed=True)
         sec_edit.setContent(gb_edit)
         sec_merge = CollapsibleSection("Merge External Archive", start_collapsed=True)
@@ -804,13 +800,12 @@ class TabSetup(QWidget):
             row.addWidget(HelpButton(HELP_TEXTS[help_key]), 0, Qt.AlignTop)
             parent_lay.addLayout(row, stretch)
 
-        # Outing Entry/Single/Batch/ID Management/Location Visit sections stay compact.
+        # Field Visit Log/Single/Batch/ID Management sections stay compact.
         compact_sections = [
-            (sec_negative, 'setup_outing_entry'),
+            (sec_fv,       'setup_field_visit_log'),
             (sec_single,   'setup_single_upload'),
             (sec_batch,    'setup_batch_upload'),
             (sec_id_manage,'setup_id_management'),
-            (sec_lv,       'setup_log_visit'),
         ]
         for sec, key in compact_sections:
             sec.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
@@ -1089,108 +1084,108 @@ class TabSetup(QWidget):
         logger.info(msg)
         self.log_single.appendPlainText(msg)
 
-    # -------------------- Negative Outings --------------------
-    def _build_negative_outing_group(self) -> QGroupBox:
+    # -------------------- Field Visits --------------------
+    def _build_field_visit_group(self) -> QGroupBox:
         gb = QGroupBox("")  # title provided by CollapsibleSection
         lay = QVBoxLayout(gb)
 
         # Date + location + effort duration
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Outing date:"))
-        self.date_negative_outing = QDateEdit()
-        self.date_negative_outing.setCalendarPopup(True)
-        self.date_negative_outing.setDate(QDate.currentDate())
-        row1.addWidget(self.date_negative_outing)
+        row1.addWidget(QLabel("Visit date:"))
+        self.date_fv = QDateEdit()
+        self.date_fv.setCalendarPopup(True)
+        self.date_fv.setDate(QDate.currentDate())
+        row1.addWidget(self.date_fv)
 
         row1.addWidget(QLabel("Location:"))
-        self.cmb_location_negative = QComboBox()
-        self.cmb_location_negative.setEditable(True)
-        self.cmb_location_negative.lineEdit().setPlaceholderText("optional but recommended")
-        row1.addWidget(self.cmb_location_negative, 1)
+        self.cmb_location_fv = QComboBox()
+        self.cmb_location_fv.setEditable(True)
+        self.cmb_location_fv.lineEdit().setPlaceholderText("optional but recommended")
+        row1.addWidget(self.cmb_location_fv, 1)
 
         row1.addWidget(QLabel("Effort (min):"))
-        self.spin_negative_duration = QSpinBox()
-        self.spin_negative_duration.setRange(0, 1440)
-        self.spin_negative_duration.setSpecialValueText("optional")
-        self.spin_negative_duration.setValue(0)
-        row1.addWidget(self.spin_negative_duration)
+        self.spin_fv_duration = QSpinBox()
+        self.spin_fv_duration.setRange(0, 1440)
+        self.spin_fv_duration.setSpecialValueText("optional")
+        self.spin_fv_duration.setValue(0)
+        row1.addWidget(self.spin_fv_duration)
         lay.addLayout(row1)
 
         # Coordinates row
-        neg_coord_row = QHBoxLayout()
-        neg_coord_row.addWidget(QLabel("Lat:"))
-        self._neg_lat = QLineEdit()
-        self._neg_lat.setPlaceholderText("e.g. 48.546")
-        self._neg_lat.setMaximumWidth(110)
-        neg_coord_row.addWidget(self._neg_lat)
-        neg_coord_row.addWidget(QLabel("Lon:"))
-        self._neg_lon = QLineEdit()
-        self._neg_lon.setPlaceholderText("e.g. -123.013")
-        self._neg_lon.setMaximumWidth(110)
-        neg_coord_row.addWidget(self._neg_lon)
+        fv_coord_row = QHBoxLayout()
+        fv_coord_row.addWidget(QLabel("Lat:"))
+        self._fv_lat = QLineEdit()
+        self._fv_lat.setPlaceholderText("e.g. 48.546")
+        self._fv_lat.setMaximumWidth(110)
+        fv_coord_row.addWidget(self._fv_lat)
+        fv_coord_row.addWidget(QLabel("Lon:"))
+        self._fv_lon = QLineEdit()
+        self._fv_lon.setPlaceholderText("e.g. -123.013")
+        self._fv_lon.setMaximumWidth(110)
+        fv_coord_row.addWidget(self._fv_lon)
 
-        self._neg_btn_map = QPushButton("🗺 Map")
-        self._neg_btn_map.setMaximumWidth(70)
-        self._neg_btn_map.setToolTip("Pick coordinates on a map")
-        self._neg_btn_map.clicked.connect(self._on_neg_pick_map)
+        self._fv_btn_map = QPushButton("🗺 Map")
+        self._fv_btn_map.setMaximumWidth(70)
+        self._fv_btn_map.setToolTip("Pick coordinates on a map")
+        self._fv_btn_map.clicked.connect(self._on_fv_pick_map)
         try:
             from src.ui.map_picker import is_map_picker_available
             if not is_map_picker_available():
-                self._neg_btn_map.setVisible(False)
+                self._fv_btn_map.setVisible(False)
         except ImportError:
-            self._neg_btn_map.setVisible(False)
-        neg_coord_row.addWidget(self._neg_btn_map)
-        neg_coord_row.addStretch()
-        lay.addLayout(neg_coord_row)
+            self._fv_btn_map.setVisible(False)
+        fv_coord_row.addWidget(self._fv_btn_map)
+        fv_coord_row.addStretch()
+        lay.addLayout(fv_coord_row)
 
         # Observer row + action button
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("Observers:"))
-        self.edit_negative_observers = QLineEdit()
-        self.edit_negative_observers.setPlaceholderText("optional")
-        row2.addWidget(self.edit_negative_observers, 1)
+        self.edit_fv_observers = QLineEdit()
+        self.edit_fv_observers.setPlaceholderText("optional")
+        row2.addWidget(self.edit_fv_observers, 1)
 
-        self.btn_log_negative_outing = QPushButton("Log Outing Entry")
-        self.btn_log_negative_outing.clicked.connect(self._on_log_negative_outing)
-        row2.addWidget(self.btn_log_negative_outing)
+        self.btn_log_fv = QPushButton("Log Field Visit")
+        self.btn_log_fv.clicked.connect(self._on_log_field_visit)
+        row2.addWidget(self.btn_log_fv)
         lay.addLayout(row2)
 
         # Notes field
         lay.addWidget(QLabel("Notes:"))
-        self.txt_negative_notes = QPlainTextEdit()
-        self.txt_negative_notes.setPlaceholderText(
+        self.txt_fv_notes = QPlainTextEdit()
+        self.txt_fv_notes.setPlaceholderText(
             "Optional context (weather, visibility, dive effort, transect details)."
         )
-        self.txt_negative_notes.setMaximumHeight(80)
-        lay.addWidget(self.txt_negative_notes)
+        self.txt_fv_notes.setMaximumHeight(80)
+        lay.addWidget(self.txt_fv_notes)
 
-        # Recent outings table
-        self.tbl_negative_outings = QTableWidget(0, 7)
-        self.tbl_negative_outings.setHorizontalHeaderLabels(
+        # Recent field visits table
+        self.tbl_fv = QTableWidget(0, 7)
+        self.tbl_fv.setHorizontalHeaderLabels(
             ["Date", "Location", "Lat", "Lon", "Effort (min)", "Observers", "Notes"]
         )
-        self.tbl_negative_outings.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tbl_negative_outings.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.tbl_negative_outings.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.tbl_negative_outings.verticalHeader().setVisible(False)
-        self.tbl_negative_outings.horizontalHeader().setStretchLastSection(True)
-        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        self.tbl_negative_outings.setMinimumHeight(130)
-        lay.addWidget(self.tbl_negative_outings)
+        self.tbl_fv.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tbl_fv.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tbl_fv.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tbl_fv.verticalHeader().setVisible(False)
+        self.tbl_fv.horizontalHeader().setStretchLastSection(True)
+        self.tbl_fv.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tbl_fv.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.tbl_fv.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.tbl_fv.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tbl_fv.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.tbl_fv.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.tbl_fv.setMinimumHeight(130)
+        lay.addWidget(self.tbl_fv)
 
         # Log pane
-        self.log_negative_outings = QPlainTextEdit()
-        self.log_negative_outings.setReadOnly(True)
-        self.log_negative_outings.setMaximumHeight(90)
-        lay.addWidget(self.log_negative_outings)
+        self.log_fv = QPlainTextEdit()
+        self.log_fv.setReadOnly(True)
+        self.log_fv.setMaximumHeight(90)
+        lay.addWidget(self.log_fv)
 
-        QTimer.singleShot(120, self._populate_negative_outing_locations)
-        QTimer.singleShot(160, self._refresh_negative_outings_table)
+        QTimer.singleShot(120, self._populate_fv_locations)
+        QTimer.singleShot(160, self._refresh_fv_table)
         return gb
 
     def _collect_known_locations(self) -> List[str]:
@@ -1207,48 +1202,48 @@ class TabSetup(QWidget):
                 pass
 
         try:
-            locations.update(get_negative_outing_locations())
+            locations.update(get_field_visit_locations())
         except Exception:
             pass
 
         return sorted(locations)
 
-    def _populate_negative_outing_locations(self) -> None:
-        current_text = self.cmb_location_negative.currentText()
-        self.cmb_location_negative.blockSignals(True)
-        self.cmb_location_negative.clear()
-        self.cmb_location_negative.addItems(self._collect_known_locations())
-        self.cmb_location_negative.setCurrentText(current_text)
-        self.cmb_location_negative.blockSignals(False)
+    def _populate_fv_locations(self) -> None:
+        current_text = self.cmb_location_fv.currentText()
+        self.cmb_location_fv.blockSignals(True)
+        self.cmb_location_fv.clear()
+        self.cmb_location_fv.addItems(self._collect_known_locations())
+        self.cmb_location_fv.setCurrentText(current_text)
+        self.cmb_location_fv.blockSignals(False)
 
-    def _refresh_negative_outings_table(self) -> None:
-        outings = read_negative_outings(limit=50)
-        self.tbl_negative_outings.setRowCount(len(outings))
-        for r, outing in enumerate(outings):
-            lat_text = f"{outing.latitude:.6f}" if getattr(outing, 'latitude', None) is not None else ""
-            lon_text = f"{outing.longitude:.6f}" if getattr(outing, 'longitude', None) is not None else ""
+    def _refresh_fv_table(self) -> None:
+        visits = read_field_visits(limit=50)
+        self.tbl_fv.setRowCount(len(visits))
+        for r, visit in enumerate(visits):
+            lat_text = f"{visit.latitude:.6f}" if getattr(visit, 'latitude', None) is not None else ""
+            lon_text = f"{visit.longitude:.6f}" if getattr(visit, 'longitude', None) is not None else ""
             values = [
-                outing.outing_date.isoformat() if outing.outing_date else "",
-                outing.location,
+                visit.outing_date.isoformat() if visit.outing_date else "",
+                visit.location,
                 lat_text,
                 lon_text,
-                str(outing.duration_minutes) if outing.duration_minutes is not None else "",
-                outing.observers,
-                outing.notes,
+                str(visit.duration_minutes) if visit.duration_minutes is not None else "",
+                visit.observers,
+                visit.notes,
             ]
             for c, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
-                self.tbl_negative_outings.setItem(r, c, item)
+                self.tbl_fv.setItem(r, c, item)
 
-    def _on_neg_pick_map(self) -> None:
-        """Open map picker for negative outing coordinates."""
+    def _on_fv_pick_map(self) -> None:
+        """Open map picker for field visit coordinates."""
         try:
             from src.ui.map_picker import MapPickerDialog
         except ImportError:
             return
-        lat_text = self._neg_lat.text().strip()
-        lon_text = self._neg_lon.text().strip()
+        lat_text = self._fv_lat.text().strip()
+        lon_text = self._fv_lon.text().strip()
         try:
             init_lat = float(lat_text) if lat_text else None
         except ValueError:
@@ -1261,23 +1256,23 @@ class TabSetup(QWidget):
         from PySide6.QtWidgets import QDialog
         if dialog.exec() == QDialog.Accepted:
             lat, lon = dialog.get_coordinates()
-            self._neg_lat.setText(f"{lat:.6f}" if lat is not None else "")
-            self._neg_lon.setText(f"{lon:.6f}" if lon is not None else "")
+            self._fv_lat.setText(f"{lat:.6f}" if lat is not None else "")
+            self._fv_lon.setText(f"{lon:.6f}" if lon is not None else "")
 
-    def _on_log_negative_outing(self) -> None:
-        qd = self.date_negative_outing.date()
+    def _on_log_field_visit(self) -> None:
+        qd = self.date_fv.date()
         outing_date = _date(qd.year(), qd.month(), qd.day())
-        location = self.cmb_location_negative.currentText().strip()
-        observers = self.edit_negative_observers.text().strip()
-        notes = self.txt_negative_notes.toPlainText().strip()
-        duration_val = self.spin_negative_duration.value()
+        location = self.cmb_location_fv.currentText().strip()
+        observers = self.edit_fv_observers.text().strip()
+        notes = self.txt_fv_notes.toPlainText().strip()
+        duration_val = self.spin_fv_duration.value()
         duration_minutes = duration_val if duration_val > 0 else None
 
         # Parse optional coordinates
         latitude = None
         longitude = None
-        lat_text = self._neg_lat.text().strip()
-        lon_text = self._neg_lon.text().strip()
+        lat_text = self._fv_lat.text().strip()
+        lon_text = self._fv_lon.text().strip()
         if lat_text:
             try:
                 latitude = float(lat_text)
@@ -1296,7 +1291,7 @@ class TabSetup(QWidget):
             )
             return
 
-        append_negative_outing(
+        append_field_visit(
             outing_date=outing_date,
             location=location,
             observers=observers,
@@ -1308,7 +1303,7 @@ class TabSetup(QWidget):
 
         self._ilog.log(
             "button_click",
-            "btn_log_negative_outing",
+            "btn_log_fv",
             value="saved",
             context={
                 "outing_date": outing_date.isoformat(),
@@ -1319,24 +1314,24 @@ class TabSetup(QWidget):
             },
         )
 
-        self.edit_negative_observers.clear()
-        self.txt_negative_notes.clear()
-        self.spin_negative_duration.setValue(0)
-        self._neg_lat.clear()
-        self._neg_lon.clear()
-        self._refresh_negative_outings_table()
-        self._populate_negative_outing_locations()
+        self.edit_fv_observers.clear()
+        self.txt_fv_notes.clear()
+        self.spin_fv_duration.setValue(0)
+        self._fv_lat.clear()
+        self._fv_lon.clear()
+        self._refresh_fv_table()
+        self._populate_fv_locations()
         self._populate_batch_locations()
 
-        msg = f"Logged outing entry for {outing_date.isoformat()}."
+        msg = f"Logged field visit for {outing_date.isoformat()}."
         if location:
             msg += f" Location: {location}."
-        self._log_negative_outings(msg)
-        info("Outing entry logged.", self)
+        self._log_fv(msg)
+        info("Field visit logged.", self)
 
-    def _log_negative_outings(self, msg: str) -> None:
+    def _log_fv(self, msg: str) -> None:
         logger.info(msg)
-        self.log_negative_outings.appendPlainText(msg)
+        self.log_fv.appendPlainText(msg)
 
     # -------------------- Batch Upload IDs --------------------
     def _build_batch_upload_group(self) -> QGroupBox:
@@ -2207,191 +2202,6 @@ class TabSetup(QWidget):
         # Refresh UI
         self._refresh_id_manage_combo()
         self._notify_first_order_refresh()
-
-    # -------------------- Location Visits (absence data) --------------------
-    def _build_location_visit_group(self) -> QGroupBox:
-        gb = QGroupBox("")
-        lay = QVBoxLayout(gb)
-
-        row_top = QHBoxLayout()
-        row_top.addWidget(QLabel("Date:"))
-        self._lv_date = QDateEdit()
-        self._lv_date.setCalendarPopup(True)
-        self._lv_date.setDate(QDate.currentDate())
-        row_top.addWidget(self._lv_date)
-
-        row_top.addWidget(QLabel("Location:"))
-        self._lv_location = QComboBox()
-        self._lv_location.setEditable(True)
-        self._lv_location.setInsertPolicy(QComboBox.NoInsert)
-        self._lv_location.completer().setFilterMode(Qt.MatchContains)
-        self._lv_location.completer().setCompletionMode(QCompleter.PopupCompletion)
-        self._lv_location.setMinimumWidth(180)
-        row_top.addWidget(self._lv_location, 1)
-        lay.addLayout(row_top)
-
-        # Coordinates row
-        coord_row = QHBoxLayout()
-        coord_row.addWidget(QLabel("Lat:"))
-        self._lv_lat = QLineEdit()
-        self._lv_lat.setPlaceholderText("e.g. 48.546")
-        self._lv_lat.setMaximumWidth(110)
-        coord_row.addWidget(self._lv_lat)
-        coord_row.addWidget(QLabel("Lon:"))
-        self._lv_lon = QLineEdit()
-        self._lv_lon.setPlaceholderText("e.g. -123.013")
-        self._lv_lon.setMaximumWidth(110)
-        coord_row.addWidget(self._lv_lon)
-
-        self._lv_btn_map = QPushButton("🗺 Map")
-        self._lv_btn_map.setMaximumWidth(70)
-        self._lv_btn_map.setToolTip("Pick coordinates on a map")
-        self._lv_btn_map.clicked.connect(self._on_lv_pick_map)
-        try:
-            from src.ui.map_picker import is_map_picker_available
-            if not is_map_picker_available():
-                self._lv_btn_map.setVisible(False)
-        except ImportError:
-            self._lv_btn_map.setVisible(False)
-        coord_row.addWidget(self._lv_btn_map)
-        coord_row.addStretch()
-        lay.addLayout(coord_row)
-
-        row_notes = QHBoxLayout()
-        row_notes.addWidget(QLabel("Notes:"))
-        self._lv_notes = QLineEdit()
-        self._lv_notes.setPlaceholderText("Conditions, visibility, etc. (optional)")
-        row_notes.addWidget(self._lv_notes, 1)
-
-        self._lv_btn_save = QPushButton("Save Visit")
-        self._lv_btn_save.clicked.connect(self._on_save_location_visit)
-        row_notes.addWidget(self._lv_btn_save)
-        lay.addLayout(row_notes)
-
-        self._lv_table = QTableWidget(0, 6)
-        self._lv_table.setHorizontalHeaderLabels(["Date", "Location", "Lat", "Lon", "Notes", ""])
-        self._lv_table.horizontalHeader().setStretchLastSection(False)
-        self._lv_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self._lv_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self._lv_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self._lv_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self._lv_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-        self._lv_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        self._lv_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._lv_table.setSelectionMode(QAbstractItemView.NoSelection)
-        self._lv_table.verticalHeader().setVisible(False)
-        self._lv_table.setMaximumHeight(200)
-        lay.addWidget(self._lv_table)
-
-        self._refresh_lv_location_combo()
-        self._refresh_lv_table()
-        return gb
-
-    def _on_lv_pick_map(self) -> None:
-        """Open map picker for location visit coordinates."""
-        try:
-            from src.ui.map_picker import MapPickerDialog
-        except ImportError:
-            return
-        lat_text = self._lv_lat.text().strip()
-        lon_text = self._lv_lon.text().strip()
-        try:
-            init_lat = float(lat_text) if lat_text else None
-        except ValueError:
-            init_lat = None
-        try:
-            init_lon = float(lon_text) if lon_text else None
-        except ValueError:
-            init_lon = None
-        dialog = MapPickerDialog(self, latitude=init_lat, longitude=init_lon)
-        from PySide6.QtWidgets import QDialog
-        if dialog.exec() == QDialog.Accepted:
-            lat, lon = dialog.get_coordinates()
-            self._lv_lat.setText(f"{lat:.6f}" if lat is not None else "")
-            self._lv_lon.setText(f"{lon:.6f}" if lon is not None else "")
-
-    def _refresh_lv_location_combo(self) -> None:
-        self._lv_location.blockSignals(True)
-        current = self._lv_location.currentText()
-        self._lv_location.clear()
-        self._lv_location.addItem("")
-        for loc in get_vocabulary_store().get_locations():
-            self._lv_location.addItem(loc)
-        if current:
-            idx = self._lv_location.findText(current)
-            if idx >= 0:
-                self._lv_location.setCurrentIndex(idx)
-        self._lv_location.blockSignals(False)
-
-    def _refresh_lv_table(self) -> None:
-        visits = get_all_location_visits()
-        show = visits[:20]
-        self._lv_table.setRowCount(len(show))
-        for i, v in enumerate(show):
-            self._lv_table.setItem(i, 0, QTableWidgetItem(
-                v.visit_date.isoformat() if v.visit_date else ""))
-            self._lv_table.setItem(i, 1, QTableWidgetItem(v.location))
-            lat_text = f"{v.latitude:.6f}" if getattr(v, 'latitude', None) is not None else ""
-            lon_text = f"{v.longitude:.6f}" if getattr(v, 'longitude', None) is not None else ""
-            self._lv_table.setItem(i, 2, QTableWidgetItem(lat_text))
-            self._lv_table.setItem(i, 3, QTableWidgetItem(lon_text))
-            self._lv_table.setItem(i, 4, QTableWidgetItem(v.notes))
-
-            btn_del = QPushButton("Delete")
-            utc_key = v.added_utc
-            btn_del.clicked.connect(lambda _checked=False, key=utc_key: self._on_delete_location_visit(key))
-            self._lv_table.setCellWidget(i, 5, btn_del)
-
-    def _on_save_location_visit(self) -> None:
-        self._ilog.log("button_click", "btn_save_location_visit", value="clicked")
-        location = self._lv_location.currentText().strip()
-        if not location:
-            warn("Please select or type a location.", self)
-            return
-
-        y, m, d = qdate_to_ymd(self._lv_date)
-        visit_date = _date(y, m, d)
-        notes = self._lv_notes.text().strip()
-
-        # Parse optional coordinates
-        latitude = None
-        longitude = None
-        lat_text = self._lv_lat.text().strip()
-        lon_text = self._lv_lon.text().strip()
-        if lat_text:
-            try:
-                latitude = float(lat_text)
-            except ValueError:
-                pass
-        if lon_text:
-            try:
-                longitude = float(lon_text)
-            except ValueError:
-                pass
-
-        vocab = get_vocabulary_store()
-        if not vocab.has_location(location):
-            vocab.add_location(location)
-            self._refresh_lv_location_combo()
-
-        add_location_visit(
-            location=location,
-            visit_date=visit_date,
-            notes=notes,
-            latitude=latitude,
-            longitude=longitude,
-        )
-
-        self._lv_notes.clear()
-        self._lv_lat.clear()
-        self._lv_lon.clear()
-        self._refresh_lv_table()
-        info(f"Recorded visit to '{location}' on {visit_date.isoformat()}.", self)
-
-    def _on_delete_location_visit(self, added_utc: str) -> None:
-        self._ilog.log("button_click", "btn_delete_location_visit", value=added_utc)
-        if delete_location_visit(added_utc):
-            self._refresh_lv_table()
 
     # -------------------- Metadata Editing Mode --------------------
     def _build_editing_group(self) -> QGroupBox:
@@ -3314,7 +3124,7 @@ class TabSetup(QWidget):
             self.archiveDataChanged.emit()
             self._refresh_id_list_single()
             self._refresh_id_manage_combo()
-            self._populate_negative_outing_locations()
+            self._populate_fv_locations()
             self._populate_batch_locations()
             self._populate_batch_edit_location_choices()
             self._refresh_batch_edit_location_table()

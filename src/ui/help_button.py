@@ -40,6 +40,7 @@ HELP_TEXTS = {
 
     # ── Data Entry tab ──
     'setup_single_upload': 'Upload photos of a single sea star here. Choose whether it\'s a known individual (gallery) or an unidentified sighting (query), set the encounter date, and add your images. Use this for adding one animal at a time.',
+    'setup_field_visit_log': 'Record a field visit — whether or not you found any sea stars. This data is important for tracking survey effort and population presence/absence at a site. Enter the date, location, and any notes about conditions.',
     'setup_outing_entry': 'Record a field outing where you didn\'t find any sea stars. This "negative data" is important for tracking population absence at a site. Enter the date, location, and any notes about conditions.',
     'setup_batch_upload': 'Upload many animals at once by pointing to a folder of subfolders. Each subfolder becomes a new gallery or query ID automatically. Use this after a big dive day when you have photos sorted into folders by individual.',
     'setup_id_management': 'Rename or delete existing gallery and query IDs. Use this to fix typos in names, merge duplicates, or remove entries added by mistake. Renaming updates all linked photos and encounter records.',
