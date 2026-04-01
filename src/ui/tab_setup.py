@@ -1116,6 +1116,33 @@ class TabSetup(QWidget):
         row1.addWidget(self.spin_negative_duration)
         lay.addLayout(row1)
 
+        # Coordinates row
+        neg_coord_row = QHBoxLayout()
+        neg_coord_row.addWidget(QLabel("Lat:"))
+        self._neg_lat = QLineEdit()
+        self._neg_lat.setPlaceholderText("e.g. 48.546")
+        self._neg_lat.setMaximumWidth(110)
+        neg_coord_row.addWidget(self._neg_lat)
+        neg_coord_row.addWidget(QLabel("Lon:"))
+        self._neg_lon = QLineEdit()
+        self._neg_lon.setPlaceholderText("e.g. -123.013")
+        self._neg_lon.setMaximumWidth(110)
+        neg_coord_row.addWidget(self._neg_lon)
+
+        self._neg_btn_map = QPushButton("🗺 Map")
+        self._neg_btn_map.setMaximumWidth(70)
+        self._neg_btn_map.setToolTip("Pick coordinates on a map")
+        self._neg_btn_map.clicked.connect(self._on_neg_pick_map)
+        try:
+            from src.ui.map_picker import is_map_picker_available
+            if not is_map_picker_available():
+                self._neg_btn_map.setVisible(False)
+        except ImportError:
+            self._neg_btn_map.setVisible(False)
+        neg_coord_row.addWidget(self._neg_btn_map)
+        neg_coord_row.addStretch()
+        lay.addLayout(neg_coord_row)
+
         # Observer row + action button
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("Observers:"))
@@ -1138,9 +1165,9 @@ class TabSetup(QWidget):
         lay.addWidget(self.txt_negative_notes)
 
         # Recent outings table
-        self.tbl_negative_outings = QTableWidget(0, 5)
+        self.tbl_negative_outings = QTableWidget(0, 7)
         self.tbl_negative_outings.setHorizontalHeaderLabels(
-            ["Date", "Location", "Effort (min)", "Observers", "Notes"]
+            ["Date", "Location", "Lat", "Lon", "Effort (min)", "Observers", "Notes"]
         )
         self.tbl_negative_outings.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tbl_negative_outings.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1151,6 +1178,8 @@ class TabSetup(QWidget):
         self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.tbl_negative_outings.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.tbl_negative_outings.setMinimumHeight(130)
         lay.addWidget(self.tbl_negative_outings)
 
@@ -1196,9 +1225,13 @@ class TabSetup(QWidget):
         outings = read_negative_outings(limit=50)
         self.tbl_negative_outings.setRowCount(len(outings))
         for r, outing in enumerate(outings):
+            lat_text = f"{outing.latitude:.6f}" if getattr(outing, 'latitude', None) is not None else ""
+            lon_text = f"{outing.longitude:.6f}" if getattr(outing, 'longitude', None) is not None else ""
             values = [
                 outing.outing_date.isoformat() if outing.outing_date else "",
                 outing.location,
+                lat_text,
+                lon_text,
                 str(outing.duration_minutes) if outing.duration_minutes is not None else "",
                 outing.observers,
                 outing.notes,
@@ -1208,6 +1241,29 @@ class TabSetup(QWidget):
                 item.setToolTip(value)
                 self.tbl_negative_outings.setItem(r, c, item)
 
+    def _on_neg_pick_map(self) -> None:
+        """Open map picker for negative outing coordinates."""
+        try:
+            from src.ui.map_picker import MapPickerDialog
+        except ImportError:
+            return
+        lat_text = self._neg_lat.text().strip()
+        lon_text = self._neg_lon.text().strip()
+        try:
+            init_lat = float(lat_text) if lat_text else None
+        except ValueError:
+            init_lat = None
+        try:
+            init_lon = float(lon_text) if lon_text else None
+        except ValueError:
+            init_lon = None
+        dialog = MapPickerDialog(self, latitude=init_lat, longitude=init_lon)
+        from PySide6.QtWidgets import QDialog
+        if dialog.exec() == QDialog.Accepted:
+            lat, lon = dialog.get_coordinates()
+            self._neg_lat.setText(f"{lat:.6f}" if lat is not None else "")
+            self._neg_lon.setText(f"{lon:.6f}" if lon is not None else "")
+
     def _on_log_negative_outing(self) -> None:
         qd = self.date_negative_outing.date()
         outing_date = _date(qd.year(), qd.month(), qd.day())
@@ -1216,6 +1272,22 @@ class TabSetup(QWidget):
         notes = self.txt_negative_notes.toPlainText().strip()
         duration_val = self.spin_negative_duration.value()
         duration_minutes = duration_val if duration_val > 0 else None
+
+        # Parse optional coordinates
+        latitude = None
+        longitude = None
+        lat_text = self._neg_lat.text().strip()
+        lon_text = self._neg_lon.text().strip()
+        if lat_text:
+            try:
+                latitude = float(lat_text)
+            except ValueError:
+                pass
+        if lon_text:
+            try:
+                longitude = float(lon_text)
+            except ValueError:
+                pass
 
         if not location and not observers and not notes and duration_minutes is None:
             warn(
@@ -1230,6 +1302,8 @@ class TabSetup(QWidget):
             observers=observers,
             duration_minutes=duration_minutes,
             notes=notes,
+            latitude=latitude,
+            longitude=longitude,
         )
 
         self._ilog.log(
@@ -1248,6 +1322,8 @@ class TabSetup(QWidget):
         self.edit_negative_observers.clear()
         self.txt_negative_notes.clear()
         self.spin_negative_duration.setValue(0)
+        self._neg_lat.clear()
+        self._neg_lon.clear()
         self._refresh_negative_outings_table()
         self._populate_negative_outing_locations()
         self._populate_batch_locations()
