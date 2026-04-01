@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="/home/weertman/Documents/starBoard"
+cd "$ROOT"
+exec ./scripts/python -m uvicorn mobile_portal.app.main:app --host 127.0.0.1 --port 8091 --reload

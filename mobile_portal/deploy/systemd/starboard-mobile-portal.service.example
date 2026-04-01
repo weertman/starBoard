@@ -1,0 +1,15 @@
+[Unit]
+Description=starBoard Mobile Portal
+After=network.target
+
+[Service]
+User=weertman
+WorkingDirectory=/home/weertman/Documents/starBoard
+Environment=STARBOARD_MOBILE_HOST=127.0.0.1
+Environment=STARBOARD_MOBILE_PORT=8091
+ExecStart=/home/weertman/Documents/starBoard/scripts/python -m uvicorn mobile_portal.app.main:app --host 127.0.0.1 --port 8091
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

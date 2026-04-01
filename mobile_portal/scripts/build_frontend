@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd /home/weertman/Documents/starBoard/mobile_portal/frontend
+npm run build
