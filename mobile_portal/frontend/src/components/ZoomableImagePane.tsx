@@ -4,8 +4,8 @@ export function ZoomableImagePane({ src, title, subtitle }: { src?: string; titl
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
       {subtitle && <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>{subtitle}</div>}
       {src ? (
-        <div style={{ overflow: 'auto', maxHeight: 520, borderRadius: 8 }}>
-          <img src={src} alt={title} style={{ width: '100%', height: 'auto' }} />
+        <div style={{ overflow: 'auto', maxHeight: 560, borderRadius: 8, touchAction: 'pan-x pan-y pinch-zoom', background: '#f7f7f7' }}>
+          <img src={src} alt={title} style={{ width: '100%', height: 'auto', display: 'block' }} />
         </div>
       ) : (
         <div style={{ color: '#666' }}>No image selected.</div>

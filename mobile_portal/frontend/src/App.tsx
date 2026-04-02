@@ -15,7 +15,29 @@ export function App() {
   const { session, error, loading } = useSession()
   const [tab, setTab] = useState<Tab>('capture')
   const { files, previews, addFiles, removeAt, selectedIndex, selectedPreview, select } = useLocalImages()
-  const [archiveImage, setArchiveImage] = useState<ImageDescriptor | null>(null)
+  const [archiveImages, setArchiveImages] = useState<ImageDescriptor[]>([])
+  const [selectedArchiveIndex, setSelectedArchiveIndex] = useState(0)
+
+  function setArchiveSelection(image: ImageDescriptor, loadedItems?: ImageDescriptor[]) {
+    if (loadedItems && loadedItems.length > 0) {
+      setArchiveImages(loadedItems)
+      const idx = loadedItems.findIndex((item) => item.image_id === image.image_id)
+      setSelectedArchiveIndex(idx >= 0 ? idx : 0)
+      return
+    }
+    setArchiveImages((prev) => {
+      const existingIndex = prev.findIndex((item) => item.image_id === image.image_id)
+      if (existingIndex >= 0) {
+        setSelectedArchiveIndex(existingIndex)
+        return prev
+      }
+      const next = [...prev, image]
+      setSelectedArchiveIndex(next.length - 1)
+      return next
+    })
+  }
+
+  const archiveImage = archiveImages[selectedArchiveIndex] ?? null
 
   if (loading) return <div style={{ padding: 16 }}>Loading…</div>
   if (error) return <div style={{ padding: 16, color: 'crimson' }}>{error}</div>
@@ -34,8 +56,8 @@ export function App() {
       </nav>
       {tab === 'capture' && <CaptureScreen previews={previews} addFiles={addFiles} removeAt={removeAt} select={select} selectedIndex={selectedIndex} />}
       {tab === 'metadata' && <MetadataScreen files={files} />}
-      {tab === 'lookup' && <LookupScreen selectedArchiveImage={archiveImage} onSelectArchiveImage={(img) => { setArchiveImage(img); setTab('compare') }} />}
-      {tab === 'compare' && <CompareScreen localPreviews={previews} selectedLocalIndex={selectedIndex} selectLocalIndex={select} removeLocalAt={removeAt} archiveImage={archiveImage} />}
+      {tab === 'lookup' && <LookupScreen selectedArchiveImage={archiveImage} onSelectArchiveImage={(img, loadedItems) => { setArchiveSelection(img, loadedItems); setTab('compare') }} />}
+      {tab === 'compare' && <CompareScreen localPreviews={previews} selectedLocalIndex={selectedIndex} selectLocalIndex={select} removeLocalAt={removeAt} archiveImages={archiveImages} selectedArchiveIndex={selectedArchiveIndex} selectArchiveIndex={setSelectedArchiveIndex} />}
       {tab !== 'compare' && selectedPreview && archiveImage && <button onClick={() => setTab('compare')} style={{ position: 'sticky', bottom: 12, padding: 12, borderRadius: 10, border: '1px solid #2f6fed', background: '#2f6fed', color: 'white' }}>Open current comparison</button>}
     </div>
   )
