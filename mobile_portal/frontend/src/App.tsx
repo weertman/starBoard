@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useSession } from './state/session'
 import { useLocalImages } from './state/localImages'
 import { CaptureScreen } from './screens/CaptureScreen'
@@ -14,28 +14,29 @@ type Tab = typeof tabs[number]
 export function App() {
   const { session, error, loading } = useSession()
   const [tab, setTab] = useState<Tab>('capture')
-  const { files, previews, addFiles, removeAt } = useLocalImages()
+  const { files, previews, addFiles, removeAt, selectedIndex, selectedPreview, select } = useLocalImages()
   const [archiveImage, setArchiveImage] = useState<ImageDescriptor | null>(null)
-  const localSrc = useMemo(() => previews[0]?.url, [previews])
 
   if (loading) return <div style={{ padding: 16 }}>Loading…</div>
   if (error) return <div style={{ padding: 16, color: 'crimson' }}>{error}</div>
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: 16, fontFamily: 'sans-serif', display: 'grid', gap: 16 }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: 16, fontFamily: 'sans-serif', display: 'grid', gap: 16, background: '#fafafa', minHeight: '100vh' }}>
       <header>
         <h1 style={{ marginBottom: 4 }}>starBoard Mobile Portal</h1>
         <div style={{ color: '#555', fontSize: 14 }}>{session?.authenticated_email}</div>
+        <div style={{ color: '#666', fontSize: 13, marginTop: 6 }}>{files.length} local image{files.length === 1 ? '' : 's'} ready • {archiveImage ? `archive image selected: ${archiveImage.label}` : 'no archive image selected'}</div>
       </header>
       <nav style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
         {tabs.map((name) => (
-          <button key={name} onClick={() => setTab(name)} style={{ padding: 10, background: tab === name ? '#e6f0ff' : 'white' }}>{name}</button>
+          <button key={name} onClick={() => setTab(name)} style={{ padding: 10, background: tab === name ? '#e6f0ff' : 'white', border: '1px solid #ccd6eb', borderRadius: 8, textTransform: 'capitalize' }}>{name}</button>
         ))}
       </nav>
-      {tab === 'capture' && <CaptureScreen previews={previews} addFiles={addFiles} removeAt={removeAt} />}
+      {tab === 'capture' && <CaptureScreen previews={previews} addFiles={addFiles} removeAt={removeAt} select={select} selectedIndex={selectedIndex} />}
       {tab === 'metadata' && <MetadataScreen files={files} />}
-      {tab === 'lookup' && <LookupScreen onSelectArchiveImage={(img) => { setArchiveImage(img); setTab('compare') }} />}
-      {tab === 'compare' && <CompareScreen localSrc={localSrc} archiveImage={archiveImage} />}
+      {tab === 'lookup' && <LookupScreen selectedArchiveImage={archiveImage} onSelectArchiveImage={(img) => { setArchiveImage(img); setTab('compare') }} />}
+      {tab === 'compare' && <CompareScreen localPreviews={previews} selectedLocalIndex={selectedIndex} selectLocalIndex={select} removeLocalAt={removeAt} archiveImage={archiveImage} />}
+      {tab !== 'compare' && selectedPreview && archiveImage && <button onClick={() => setTab('compare')} style={{ position: 'sticky', bottom: 12, padding: 12, borderRadius: 10, border: '1px solid #2f6fed', background: '#2f6fed', color: 'white' }}>Open current comparison</button>}
     </div>
   )
 }

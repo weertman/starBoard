@@ -1,9 +1,10 @@
-export function ZoomableImagePane({ src, title }: { src?: string; title: string }) {
+export function ZoomableImagePane({ src, title, subtitle }: { src?: string; title: string; subtitle?: string }) {
   return (
-    <div style={{ border: '1px solid #ddd', borderRadius: 10, padding: 8, minHeight: 260 }}>
-      <div style={{ fontWeight: 600, marginBottom: 8 }}>{title}</div>
+    <div style={{ border: '1px solid #ddd', borderRadius: 10, padding: 8, minHeight: 260, background: 'white' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 12, color: '#555', marginBottom: 8 }}>{subtitle}</div>}
       {src ? (
-        <div style={{ overflow: 'auto', maxHeight: 500 }}>
+        <div style={{ overflow: 'auto', maxHeight: 520, borderRadius: 8 }}>
           <img src={src} alt={title} style={{ width: '100%', height: 'auto' }} />
         </div>
       ) : (
