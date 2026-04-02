@@ -27,13 +27,9 @@ export function LookupWorkspace({
 
   useEffect(() => {
     const q = entityId.trim()
-    if (!q) {
-      setSuggestions([])
-      return
-    }
     const handle = window.setTimeout(() => {
-      suggestEntities('gallery', q, 8).then((data) => setSuggestions(data.items)).catch(() => setSuggestions([]))
-    }, 150)
+      suggestEntities('gallery', q, 12).then((data) => setSuggestions(data.items)).catch(() => setSuggestions([]))
+    }, q ? 150 : 0)
     return () => window.clearTimeout(handle)
   }, [entityId])
 
@@ -77,7 +73,17 @@ export function LookupWorkspace({
         <input value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="Enter gallery ID, e.g. anchovy" style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid #ccd6eb' }} />
         <button onClick={() => void doLookup()} disabled={!entityId || loading}>{loading ? 'Loading…' : 'Open'}</button>
       </div>
-      {suggestions.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{suggestions.map((item) => <button key={item} onClick={() => void doLookup(item)} style={{ border: '1px solid #ccd6eb', background: 'white', borderRadius: 999, padding: '6px 10px', fontSize: 13 }}>{item}</button>)}</div>}
+      {suggestions.length > 0 && (
+        <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 14, padding: 10, display: 'grid', gap: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+            <strong style={{ fontSize: 14 }}>{entityId.trim() ? 'Matching stars' : 'Browse known stars'}</strong>
+            <span style={{ fontSize: 12, color: '#667085' }}>{suggestions.length} shown</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {suggestions.map((item) => <button key={item} onClick={() => void doLookup(item)} style={{ border: '1px solid #ccd6eb', background: 'white', borderRadius: 999, padding: '6px 10px', fontSize: 13 }}>{item}</button>)}
+          </div>
+        </div>
+      )}
       {error && <div style={{ color: 'crimson', whiteSpace: 'pre-wrap' }}>{error}</div>}
 
       {result && (

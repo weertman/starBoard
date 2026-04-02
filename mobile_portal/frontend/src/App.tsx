@@ -45,11 +45,6 @@ export function App() {
 
   return (
     <div style={{ maxWidth: 430, margin: '0 auto', padding: 10, fontFamily: 'sans-serif', display: 'grid', gap: 12, background: '#fafafa', minHeight: '100vh' }}>
-      <header style={{ display: 'grid', gap: 2 }}>
-        <div style={{ fontSize: 11, color: '#667085', textTransform: 'uppercase', letterSpacing: '.08em' }}>starBoard mobile portal</div>
-        <div style={{ color: '#555', fontSize: 13 }}>{session?.authenticated_email}</div>
-      </header>
-
       {mode === 'home' && <HomeScreen localCount={files.length} onNewObservation={() => setMode('observation')} onLookup={() => setMode('lookup')} />}
       {mode === 'observation' && (
         <ObservationWorkspace
