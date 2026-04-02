@@ -40,14 +40,14 @@ export function App() {
   const inferredTargetType: 'query' | 'gallery' = archiveImage ? 'gallery' : 'query'
   const inferredTargetId = archiveImage ? 'anchovy' : ''
 
-  if (loading) return <div style={{ padding: 16 }}>Loading…</div>
-  if (error) return <div style={{ padding: 16, color: 'crimson' }}>{error}</div>
+  if (loading) return <div style={{ padding: 12 }}>Loading…</div>
+  if (error) return <div style={{ padding: 12, color: 'crimson' }}>{error}</div>
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: 16, fontFamily: 'sans-serif', display: 'grid', gap: 16, background: '#fafafa', minHeight: '100vh' }}>
-      <header style={{ display: 'grid', gap: 4 }}>
-        <div style={{ fontSize: 12, color: '#667085', textTransform: 'uppercase', letterSpacing: '.08em' }}>starBoard mobile portal</div>
-        <div style={{ color: '#555', fontSize: 14 }}>{session?.authenticated_email}</div>
+    <div style={{ maxWidth: 430, margin: '0 auto', padding: 10, fontFamily: 'sans-serif', display: 'grid', gap: 12, background: '#fafafa', minHeight: '100vh' }}>
+      <header style={{ display: 'grid', gap: 2 }}>
+        <div style={{ fontSize: 11, color: '#667085', textTransform: 'uppercase', letterSpacing: '.08em' }}>starBoard mobile portal</div>
+        <div style={{ color: '#555', fontSize: 13 }}>{session?.authenticated_email}</div>
       </header>
 
       {mode === 'home' && <HomeScreen localCount={files.length} onNewObservation={() => setMode('observation')} onLookup={() => setMode('lookup')} />}

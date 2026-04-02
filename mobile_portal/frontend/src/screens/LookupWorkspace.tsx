@@ -63,14 +63,14 @@ export function LookupWorkspace({
   }
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gap: 10 }}>
       <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 16, padding: 12, display: 'grid', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <button onClick={onBack} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: 'white' }}>Home</button>
-          <div style={{ fontWeight: 700 }}>Look up star</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Look up star</div>
           <button onClick={onOpenMetadata} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: canCompare ? '#eef4ff' : 'white' }}>Metadata</button>
         </div>
-        <div style={{ color: '#667085', fontSize: 13 }}>Open a known star first. If you already have local photos loaded, you can compare from the observation workspace.</div>
+        <div style={{ color: '#667085', fontSize: 13, lineHeight: 1.35 }}>Open a known star first. If local photos are already loaded, compare from the observation workspace.</div>
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
@@ -87,7 +87,7 @@ export function LookupWorkspace({
             <div style={{ fontSize: 13, color: '#555' }}>{result.image_window.total} archive image{result.image_window.total === 1 ? '' : 's'} found • {result.image_window.items.length} loaded</div>
             {metadataRows.length > 0 && <details><summary>Metadata summary</summary><div style={{ display: 'grid', gap: 4, marginTop: 8, fontSize: 13 }}>{metadataRows.slice(0, 12).map(([key, value]) => <div key={key}><strong>{key}</strong>: {String(value)}</div>)}</div></details>}
           </div>
-          <ZoomableImagePane title="Archive workspace" subtitle={activeArchiveImage?.label} src={activeArchiveImage?.fullres_url ?? activeArchiveImage?.preview_url} />
+          <ZoomableImagePane compact title="Archive workspace" subtitle={activeArchiveImage?.label} src={activeArchiveImage?.fullres_url ?? activeArchiveImage?.preview_url} />
           <ArchiveImageStrip items={result.image_window.items} onSelect={(img) => onSelectArchiveImage(img, result.image_window.items)} selectedImageId={activeArchiveImage?.image_id ?? null} />
           {result.image_window.next_offset != null && <button onClick={loadMore}>Load more archive images</button>}
         </>
