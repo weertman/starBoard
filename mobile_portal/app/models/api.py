@@ -61,6 +61,12 @@ class ImageWindowResponse(ImageWindow):
     pass
 
 
+class EntitySuggestionResponse(BaseModel):
+    entity_type: Literal['gallery', 'query']
+    query: str
+    items: list[str]
+
+
 class SubmissionResponse(BaseModel):
     status: str
     entity_type: Literal['gallery', 'query']

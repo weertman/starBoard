@@ -42,6 +42,12 @@ export type ArchiveEntityResponse = {
   image_window: ImageWindow
 }
 
+export type EntitySuggestionResponse = {
+  entity_type: 'gallery' | 'query'
+  query: string
+  items: string[]
+}
+
 export type SubmissionResponse = {
   status: string
   entity_type: 'gallery' | 'query'
@@ -66,6 +72,7 @@ export const getSession = () => api<SessionResponse>('/api/session')
 export const getMetadataSchema = () => api<MetadataSchemaResponse>('/api/schema/metadata')
 export const lookupEntity = (entityId: string, entityType: 'gallery' | 'query' = 'gallery') => api<ArchiveEntityResponse>(`/api/archive/entities/${encodeURIComponent(entityId)}?entity_type=${entityType}`)
 export const getEntityImages = (entityId: string, entityType: 'gallery' | 'query', offset: number, limit = 4) => api<ImageWindow>(`/api/archive/entities/${encodeURIComponent(entityId)}/images?entity_type=${entityType}&offset=${offset}&limit=${limit}`)
+export const suggestEntities = (entityType: 'gallery' | 'query', query: string, limit = 8) => api<EntitySuggestionResponse>(`/api/archive/suggest?entity_type=${entityType}&query=${encodeURIComponent(query)}&limit=${limit}`)
 
 export async function submitObservation(payload: Record<string, unknown>, files: File[]): Promise<SubmissionResponse> {
   const form = new FormData()

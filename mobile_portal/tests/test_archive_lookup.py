@@ -43,3 +43,14 @@ def test_gallery_lookup_images_endpoint_supports_offset_limit(tmp_path, monkeypa
     body = r.json()
     assert body['offset'] == 0
     assert body['count'] <= 1
+
+
+def test_gallery_suggest_returns_matching_ids(tmp_path, monkeypatch):
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_gallery(archive)
+    client = TestClient(app)
+    r = client.get('/api/archive/suggest?entity_type=gallery&query=fe', headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body['entity_type'] == 'gallery'
+    assert 'feta' in body['items']

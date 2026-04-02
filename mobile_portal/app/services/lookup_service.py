@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException, status
 
 from ..config import get_settings
-from ..adapters.archive_paths import entity_exists, latest_metadata_row
+from ..adapters.archive_paths import entity_exists, latest_metadata_row, list_entity_ids
 from ..adapters.image_manifest_adapter import window_for_entity
 
 
@@ -26,3 +26,16 @@ def get_entity_images(entity_type: str, entity_id: str, offset: int, limit: int 
     settings = get_settings()
     size = limit or settings.image_page_size
     return window_for_entity(entity_type, entity_id, offset, size)
+
+
+def suggest_entity_ids(entity_type: str, query: str, limit: int = 8) -> dict:
+    q = query.strip().lower()
+    ids = list_entity_ids(entity_type)
+    if q:
+        ids = [item for item in ids if q in item.lower()]
+    ids = ids[:limit]
+    return {
+        'entity_type': entity_type,
+        'query': query,
+        'items': ids,
+    }

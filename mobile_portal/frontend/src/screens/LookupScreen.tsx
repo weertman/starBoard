@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { lookupEntity, getEntityImages, type ArchiveEntityResponse, type ImageDescriptor } from '../api/client'
+import { useEffect, useMemo, useState } from 'react'
+import { lookupEntity, getEntityImages, suggestEntities, type ArchiveEntityResponse, type ImageDescriptor } from '../api/client'
 import { ArchiveImageStrip } from '../components/ArchiveImageStrip'
 
 export function LookupScreen({ selectedArchiveImage, onSelectArchiveImage }: { selectedArchiveImage?: ImageDescriptor | null; onSelectArchiveImage: (image: ImageDescriptor) => void }) {
@@ -7,14 +7,30 @@ export function LookupScreen({ selectedArchiveImage, onSelectArchiveImage }: { s
   const [result, setResult] = useState<ArchiveEntityResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>([])
 
   const metadataRows = useMemo(() => Object.entries(result?.metadata_summary ?? {}).filter(([, value]) => String(value ?? '').trim() !== ''), [result])
 
-  async function doLookup() {
+  useEffect(() => {
+    const q = entityId.trim()
+    if (!q) {
+      setSuggestions([])
+      return
+    }
+    const handle = window.setTimeout(() => {
+      suggestEntities('gallery', q, 8).then((data) => setSuggestions(data.items)).catch(() => setSuggestions([]))
+    }, 150)
+    return () => window.clearTimeout(handle)
+  }, [entityId])
+
+  async function doLookup(targetId?: string) {
+    const id = (targetId ?? entityId).trim()
+    if (!id) return
     setLoading(true)
     setError(null)
     try {
-      const data = await lookupEntity(entityId, 'gallery')
+      const data = await lookupEntity(id, 'gallery')
+      setEntityId(id)
       setResult(data)
       if (data.image_window.items[0]) onSelectArchiveImage(data.image_window.items[0])
     } catch (err) {
@@ -42,8 +58,15 @@ export function LookupScreen({ selectedArchiveImage, onSelectArchiveImage }: { s
       <div style={{ color: '#555', fontSize: 14 }}>Pull up a known individual without uploading anything. Images load a few at a time, and full resolution is available when you compare.</div>
       <div style={{ display: 'flex', gap: 8 }}>
         <input value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="Enter gallery ID, e.g. anchovy" style={{ flex: 1 }} />
-        <button onClick={doLookup} disabled={!entityId || loading}>{loading ? 'Loading…' : 'Look up'}</button>
+        <button onClick={() => void doLookup()} disabled={!entityId || loading}>{loading ? 'Loading…' : 'Look up'}</button>
       </div>
+      {suggestions.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {suggestions.map((item) => (
+            <button key={item} onClick={() => void doLookup(item)} style={{ border: '1px solid #ccd6eb', background: 'white', borderRadius: 999, padding: '6px 10px', fontSize: 13 }}>{item}</button>
+          ))}
+        </div>
+      )}
       {error && <div style={{ color: 'crimson', whiteSpace: 'pre-wrap' }}>{error}</div>}
       {result && (
         <>
