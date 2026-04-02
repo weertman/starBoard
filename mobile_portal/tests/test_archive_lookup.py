@@ -13,6 +13,7 @@ def _seed_gallery(archive):
     make_image(archive / 'gallery' / 'feta' / '11_16_25' / 'DSC02126.JPG', color=(10, 20, 30))
     csv_path, header = metadata_csv_for('Gallery')
     append_row(csv_path, header, {'gallery_id': 'feta', 'location': 'dock'})
+    append_row(csv_path, header, {'gallery_id': 'anchovy', 'location': 'reef'})
 
 
 def test_gallery_lookup_not_found_returns_404(tmp_path, monkeypatch):
@@ -54,3 +55,15 @@ def test_gallery_suggest_returns_matching_ids(tmp_path, monkeypatch):
     body = r.json()
     assert body['entity_type'] == 'gallery'
     assert 'feta' in body['items']
+
+
+def test_lookup_options_returns_locations_and_filtered_ids(tmp_path, monkeypatch):
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_gallery(archive)
+    client = TestClient(app)
+    r = client.get('/api/archive/options?entity_type=gallery&location=dock', headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert 'dock' in body['locations']
+    assert 'feta' in body['ids']
+    assert 'anchovy' not in body['ids']

@@ -29,8 +29,11 @@ def list_entity_ids(entity_type: str) -> list[str]:
     return list_ids(canonical, exclude_silent=exclude_silent)
 
 
-def latest_metadata_row(entity_type: str, entity_id: str) -> dict[str, str]:
+def latest_metadata_map(entity_type: str) -> dict[str, dict[str, str]]:
     canonical = 'Gallery' if entity_type == 'gallery' else 'Queries'
     rows = read_rows_multi(metadata_csv_paths_for_read(canonical))
-    row_map = last_row_per_id(rows, id_column_name(canonical))
-    return dict(row_map.get(entity_id, {}))
+    return {k: dict(v) for k, v in last_row_per_id(rows, id_column_name(canonical)).items()}
+
+
+def latest_metadata_row(entity_type: str, entity_id: str) -> dict[str, str]:
+    return latest_metadata_map(entity_type).get(entity_id, {})

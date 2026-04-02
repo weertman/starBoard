@@ -4,11 +4,23 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import require_authenticated_email
-from ..models.api import ArchiveEntityResponse, ImageWindowResponse, EntitySuggestionResponse
-from ..services.lookup_service import get_entity, get_entity_images, suggest_entity_ids
+from ..models.api import ArchiveEntityResponse, ImageWindowResponse, EntitySuggestionResponse, LookupOptionsResponse
+from ..services.lookup_service import get_entity, get_entity_images, suggest_entity_ids, lookup_options
 from ..services.audit import audit
 
 router = APIRouter()
+
+
+@router.get('/archive/options', response_model=LookupOptionsResponse)
+def archive_options(
+    entity_type: Literal['gallery', 'query'] = Query('gallery'),
+    location: str = Query(''),
+    limit: int = Query(200, ge=1, le=500),
+    user_email: str = Depends(require_authenticated_email),
+):
+    result = lookup_options(entity_type, location, limit)
+    audit('lookup_options', user_email, entity_type=entity_type, location=location, limit=limit)
+    return result
 
 
 @router.get('/archive/suggest', response_model=EntitySuggestionResponse)

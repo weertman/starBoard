@@ -67,6 +67,13 @@ class EntitySuggestionResponse(BaseModel):
     items: list[str]
 
 
+class LookupOptionsResponse(BaseModel):
+    entity_type: Literal['gallery', 'query']
+    location: str
+    locations: list[str]
+    ids: list[str]
+
+
 class SubmissionResponse(BaseModel):
     status: str
     entity_type: Literal['gallery', 'query']
