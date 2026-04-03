@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getMetadataSchema, submitObservation, suggestEntities, type SchemaField } from '../api/client'
+import { getMetadataSchema, suggestEntities, type SchemaField } from '../api/client'
+
+export type MetadataDraft = {
+  targetType: 'query' | 'gallery'
+  targetMode: 'create' | 'append'
+  targetId: string
+  encounterDate: string
+  encounterSuffix: string
+  values: Record<string, string>
+  ready: boolean
+}
 
 function renderFieldInput(field: SchemaField, value: string, setValue: (value: string) => void) {
   const common = { padding: 10, borderRadius: 10, border: '1px solid #ccd6eb', width: '100%' } as const
@@ -7,7 +17,9 @@ function renderFieldInput(field: SchemaField, value: string, setValue: (value: s
     return (
       <select value={value} onChange={(e) => setValue(e.target.value)} style={common}>
         <option value="">--</option>
-        {field.options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+        {field.options.map((option) => (
+          <option key={String(option.value)} value={String(option.value)}>{option.label}</option>
+        ))}
       </select>
     )
   }
@@ -29,26 +41,23 @@ function renderFieldInput(field: SchemaField, value: string, setValue: (value: s
 
 export function MetadataSheet({
   open,
-  files,
-  initialTargetType = 'query',
-  initialTargetId = '',
+  initialDraft,
   onClose,
+  onReady,
 }: {
   open: boolean
-  files: File[]
-  initialTargetType?: 'query' | 'gallery'
-  initialTargetId?: string
+  initialDraft: MetadataDraft
   onClose: () => void
+  onReady: (draft: MetadataDraft) => void
 }) {
   const [fields, setFields] = useState<SchemaField[]>([])
-  const [values, setValues] = useState<Record<string, string>>({})
-  const [targetType, setTargetType] = useState<'query' | 'gallery'>(initialTargetType)
-  const [targetMode, setTargetMode] = useState<'create' | 'append'>(initialTargetType === 'gallery' ? 'append' : 'create')
-  const [targetId, setTargetId] = useState(initialTargetId)
+  const [targetType, setTargetType] = useState<'query' | 'gallery'>(initialDraft.targetType)
+  const [targetMode, setTargetMode] = useState<'create' | 'append'>(initialDraft.targetMode)
+  const [targetId, setTargetId] = useState(initialDraft.targetId)
   const [targetSuggestions, setTargetSuggestions] = useState<string[]>([])
-  const [encounterDate, setEncounterDate] = useState(new Date().toISOString().slice(0, 10))
-  const [encounterSuffix, setEncounterSuffix] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
+  const [encounterDate, setEncounterDate] = useState(initialDraft.encounterDate)
+  const [encounterSuffix, setEncounterSuffix] = useState(initialDraft.encounterSuffix)
+  const [values, setValues] = useState<Record<string, string>>(initialDraft.values)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
@@ -58,10 +67,13 @@ export function MetadataSheet({
   }, [open])
 
   useEffect(() => {
-    setTargetType(initialTargetType)
-    setTargetId(initialTargetId)
-    setTargetMode(initialTargetType === 'gallery' ? 'append' : 'create')
-  }, [initialTargetId, initialTargetType])
+    setTargetType(initialDraft.targetType)
+    setTargetMode(initialDraft.targetMode)
+    setTargetId(initialDraft.targetId)
+    setEncounterDate(initialDraft.encounterDate)
+    setEncounterSuffix(initialDraft.encounterSuffix)
+    setValues(initialDraft.values)
+  }, [initialDraft])
 
   useEffect(() => {
     if (targetType === 'gallery') setTargetMode('append')
@@ -93,22 +105,22 @@ export function MetadataSheet({
     return Array.from(groups.entries())
   }, [filtered])
 
-  async function onSubmit() {
-    setError(null)
-    setMessage(null)
-    try {
-      const result = await submitObservation({
-        target_type: targetType,
-        target_mode: targetMode,
-        target_id: targetId,
-        encounter_date: encounterDate,
-        encounter_suffix: encounterSuffix,
-        metadata: values,
-      }, files)
-      setMessage(`${result.message}: ${result.entity_type}/${result.entity_id} ${result.encounter_folder}`)
-    } catch (err) {
-      setError(String(err))
+  function markReady() {
+    if (!targetId) {
+      setError('Choose a target ID before marking metadata ready.')
+      return
     }
+    const draft: MetadataDraft = {
+      targetType,
+      targetMode,
+      targetId,
+      encounterDate,
+      encounterSuffix,
+      values,
+      ready: true,
+    }
+    onReady(draft)
+    onClose()
   }
 
   if (!open) return null
@@ -120,7 +132,7 @@ export function MetadataSheet({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 700 }}>Metadata</div>
-            <div style={{ color: '#667085', fontSize: 13 }}>{files.length} local image{files.length === 1 ? '' : 's'} ready for submission</div>
+            <div style={{ color: '#667085', fontSize: 13 }}>Complete this sheet, then mark it ready. Final submission happens back in the observation workspace.</div>
           </div>
           <button onClick={onClose} style={{ border: '1px solid #ccd6eb', background: 'white', borderRadius: 10, padding: '8px 10px' }}>Close</button>
         </div>
@@ -175,8 +187,7 @@ export function MetadataSheet({
         </div>
 
         <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-          <button onClick={onSubmit} disabled={!targetId || files.length === 0} style={{ padding: 12, borderRadius: 12, background: '#2f6fed', color: 'white', border: '1px solid #2f6fed', fontWeight: 600 }}>Submit</button>
-          {message && <div style={{ color: 'green' }}>{message}</div>}
+          <button onClick={markReady} style={{ padding: 12, borderRadius: 12, background: '#2f6fed', color: 'white', border: '1px solid #2f6fed', fontWeight: 600 }}>Ready</button>
           {error && <div style={{ color: 'crimson', whiteSpace: 'pre-wrap' }}>{error}</div>}
         </div>
       </div>

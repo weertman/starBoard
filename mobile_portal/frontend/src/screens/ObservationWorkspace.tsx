@@ -1,6 +1,6 @@
 import { ZoomableImagePane } from '../components/ZoomableImagePane'
 import { LocalImageQueue } from '../components/LocalImageQueue'
-import type { ImageDescriptor } from '../api/client'
+import type { ImageDescriptor, SubmissionResponse } from '../api/client'
 
 export function ObservationWorkspace({
   localPreviews,
@@ -11,6 +11,13 @@ export function ObservationWorkspace({
   archiveImages,
   selectedArchiveIndex,
   selectArchiveIndex,
+  metadataReady,
+  metadataSummary,
+  submitDisabled,
+  submitLabel,
+  submitError,
+  submitMessage,
+  onSubmit,
   onBack,
   onOpenMetadata,
   onOpenLookup,
@@ -23,6 +30,13 @@ export function ObservationWorkspace({
   archiveImages: ImageDescriptor[]
   selectedArchiveIndex: number
   selectArchiveIndex: (index: number) => void
+  metadataReady: boolean
+  metadataSummary: string
+  submitDisabled: boolean
+  submitLabel: string
+  submitError: string | null
+  submitMessage: string | null
+  onSubmit: () => void
   onBack: () => void
   onOpenMetadata: () => void
   onOpenLookup: () => void
@@ -37,9 +51,9 @@ export function ObservationWorkspace({
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <button onClick={onBack} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: 'white' }}>Home</button>
           <div style={{ fontWeight: 700, fontSize: 15 }}>New observation</div>
-          <button onClick={onOpenMetadata} style={{ border: '1px solid #2f6fed', borderRadius: 10, padding: '8px 10px', background: '#2f6fed', color: 'white' }}>Metadata</button>
+          <button onClick={onOpenMetadata} style={{ border: metadataReady ? '1px solid #108a5b' : '1px solid #2f6fed', borderRadius: 10, padding: '8px 10px', background: metadataReady ? '#e9f7f0' : '#2f6fed', color: metadataReady ? '#108a5b' : 'white' }}>{metadataReady ? 'Metadata ready' : 'Metadata'}</button>
         </div>
-        <div style={{ color: '#667085', fontSize: 13, lineHeight: 1.35 }}>Capture or select photos first. Compare with a looked-up star only when needed.</div>
+        <div style={{ color: '#667085', fontSize: 13, lineHeight: 1.35 }}>Capture or select photos first. Compare with a looked-up star only when needed. Final submission happens below the local image workspace after metadata is marked ready.</div>
       </div>
 
       <div style={{ display: 'grid', gap: 8 }}>
@@ -62,7 +76,7 @@ export function ObservationWorkspace({
         </div>
       )}
 
-      <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 16, padding: 12, display: 'grid', gap: 8 }}>
+      <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 16, padding: 12, display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <div>
             <strong>Local photos</strong>
@@ -71,6 +85,15 @@ export function ObservationWorkspace({
           <button onClick={onOpenLookup} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: '#eef4ff' }}>Look up star</button>
         </div>
         <LocalImageQueue previews={localPreviews} onRemove={removeLocalAt} onSelect={selectLocalIndex} selectedIndex={selectedLocalIndex} />
+        <div style={{ padding: 10, border: '1px solid #e4e7ec', borderRadius: 12, background: metadataReady ? '#f0faf5' : '#fbfcfe', display: 'grid', gap: 4 }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{metadataReady ? 'Metadata ready' : 'Metadata required before submit'}</div>
+          <div style={{ color: '#667085', fontSize: 13 }}>{metadataSummary}</div>
+        </div>
+        <button onClick={onSubmit} disabled={submitDisabled} style={{ padding: 12, borderRadius: 12, background: submitDisabled ? '#d6dae1' : '#2f6fed', color: submitDisabled ? '#667085' : 'white', border: '1px solid ' + (submitDisabled ? '#d6dae1' : '#2f6fed'), fontWeight: 600 }}>
+          {submitLabel}
+        </button>
+        {submitMessage && <div style={{ color: 'green', fontSize: 13 }}>{submitMessage}</div>}
+        {submitError && <div style={{ color: 'crimson', whiteSpace: 'pre-wrap', fontSize: 13 }}>{submitError}</div>}
       </div>
 
       {archiveImages.length > 0 && (
