@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from .adapters.megastar_artifact_loader import load_megastar_artifact_availability
+
 
 @dataclass(frozen=True)
 class Settings:
+    repo_root: Path
     archive_dir: Path
     host: str
     port: int
@@ -45,6 +47,7 @@ def get_settings() -> Settings:
     ).expanduser().resolve()
     megastar_model_key_override = os.getenv('STARBOARD_MOBILE_MEGASTAR_MODEL_KEY') or None
     return Settings(
+        repo_root=repo_root,
         archive_dir=archive_dir,
         host=os.getenv('STARBOARD_MOBILE_HOST', '127.0.0.1'),
         port=int(os.getenv('STARBOARD_MOBILE_PORT', '8091')),
@@ -63,55 +66,11 @@ def get_settings() -> Settings:
 
 def get_megastar_capability_status(settings: Settings | None = None) -> MegaStarCapabilityStatus:
     settings = settings or get_settings()
-    if not settings.megastar_enabled:
-        return MegaStarCapabilityStatus(enabled=False, state='disabled', reason='feature_flag_disabled')
-
-    if not settings.megastar_registry_path.exists():
-        return MegaStarCapabilityStatus(enabled=False, state='unavailable', reason='registry_missing')
-
-    try:
-        registry = json.loads(settings.megastar_registry_path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return MegaStarCapabilityStatus(enabled=False, state='unavailable', reason='registry_invalid')
-
-    model_key = settings.megastar_model_key_override or registry.get('active_model')
-    if not model_key:
-        return MegaStarCapabilityStatus(enabled=False, state='unavailable', reason='model_not_configured')
-
-    model_entry = registry.get('models', {}).get(model_key)
-    if not isinstance(model_entry, dict):
-        return MegaStarCapabilityStatus(enabled=False, state='unavailable', reason='model_not_registered', model_key=model_key)
-
-    artifact_dir = settings.megastar_artifact_root / model_key
-    required_paths = [
-        artifact_dir / 'embeddings' / 'gallery_image_embeddings.npz',
-        artifact_dir / 'embeddings' / 'gallery_image_paths.json',
-        artifact_dir / 'similarity' / 'gallery_image_index.json',
-    ]
-    if any(not path.exists() for path in required_paths):
-        return MegaStarCapabilityStatus(
-            enabled=False,
-            state='unavailable',
-            reason='required_assets_missing',
-            model_key=model_key,
-            artifact_dir=artifact_dir,
-        )
-
-    pending_ids = registry.get('pending_ids', {})
-    pending_gallery = pending_ids.get('gallery', []) if isinstance(pending_ids, dict) else []
-    pending_queries = pending_ids.get('queries', []) if isinstance(pending_ids, dict) else []
-    if settings.megastar_require_fresh_assets and (pending_gallery or pending_queries):
-        return MegaStarCapabilityStatus(
-            enabled=False,
-            state='unavailable',
-            reason='stale_artifacts',
-            model_key=model_key,
-            artifact_dir=artifact_dir,
-        )
-
+    availability = load_megastar_artifact_availability(settings)
     return MegaStarCapabilityStatus(
-        enabled=True,
-        state='enabled',
-        model_key=model_key,
-        artifact_dir=artifact_dir,
+        enabled=availability.enabled,
+        state=availability.state,
+        reason=availability.reason,
+        model_key=availability.model_key,
+        artifact_dir=availability.artifact_dir,
     )
