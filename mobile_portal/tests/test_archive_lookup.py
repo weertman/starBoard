@@ -11,6 +11,7 @@ AUTH = {'cf-access-authenticated-user-email': 'field@example.org'}
 def _seed_gallery(archive):
     make_image(archive / 'gallery' / 'feta' / '11_16_25' / 'DSC02125.JPG')
     make_image(archive / 'gallery' / 'feta' / '11_16_25' / 'DSC02126.JPG', color=(10, 20, 30))
+    make_image(archive / 'gallery' / 'feta' / '11_17_25' / 'DSC03125.JPG', color=(30, 40, 60))
     csv_path, header = metadata_csv_for('Gallery')
     append_row(csv_path, header, {'gallery_id': 'feta', 'location': 'dock'})
     append_row(csv_path, header, {'gallery_id': 'anchovy', 'location': 'reef'})
@@ -33,6 +34,7 @@ def test_gallery_lookup_returns_image_window_for_real_id(tmp_path, monkeypatch):
     assert body['entity_id'] == 'feta'
     assert body['metadata_summary']['location'] == 'dock'
     assert body['image_window']['count'] >= 1
+    assert len(body['encounters']) >= 1
 
 
 def test_gallery_lookup_images_endpoint_supports_offset_limit(tmp_path, monkeypatch):
@@ -67,3 +69,14 @@ def test_lookup_options_returns_locations_and_filtered_ids(tmp_path, monkeypatch
     assert 'dock' in body['locations']
     assert 'feta' in body['ids']
     assert 'anchovy' not in body['ids']
+
+
+def test_lookup_can_filter_by_encounter_date_folder(tmp_path, monkeypatch):
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_gallery(archive)
+    client = TestClient(app)
+    r = client.get('/api/archive/entities/feta?entity_type=gallery&encounter=11_17_25', headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body['selected_encounter'] == '11_17_25'
+    assert body['image_window']['total'] == 1

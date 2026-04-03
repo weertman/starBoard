@@ -4,10 +4,10 @@ from fastapi import HTTPException, status
 
 from ..config import get_settings
 from ..adapters.archive_paths import entity_exists, latest_metadata_row, list_entity_ids, latest_metadata_map
-from ..adapters.image_manifest_adapter import window_for_entity
+from ..adapters.image_manifest_adapter import window_for_entity, list_entity_encounters
 
 
-def get_entity(entity_type: str, entity_id: str, window_size: int | None = None) -> dict:
+def get_entity(entity_type: str, entity_id: str, window_size: int | None = None, encounter: str | None = None) -> dict:
     if not entity_exists(entity_type, entity_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'{entity_type} ID not found: {entity_id}')
     settings = get_settings()
@@ -16,16 +16,28 @@ def get_entity(entity_type: str, entity_id: str, window_size: int | None = None)
         'entity_type': entity_type,
         'entity_id': entity_id,
         'metadata_summary': latest_metadata_row(entity_type, entity_id),
-        'image_window': window_for_entity(entity_type, entity_id, 0, size),
+        'encounters': list_entity_encounters(entity_type, entity_id),
+        'selected_encounter': encounter or '',
+        'image_window': window_for_entity(entity_type, entity_id, 0, size, encounter=encounter),
     }
 
 
-def get_entity_images(entity_type: str, entity_id: str, offset: int, limit: int | None = None) -> dict:
+def get_entity_images(entity_type: str, entity_id: str, offset: int, limit: int | None = None, encounter: str | None = None) -> dict:
     if not entity_exists(entity_type, entity_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'{entity_type} ID not found: {entity_id}')
     settings = get_settings()
     size = limit or settings.image_page_size
-    return window_for_entity(entity_type, entity_id, offset, size)
+    return window_for_entity(entity_type, entity_id, offset, size, encounter=encounter)
+
+
+def get_entity_encounters(entity_type: str, entity_id: str) -> dict:
+    if not entity_exists(entity_type, entity_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'{entity_type} ID not found: {entity_id}')
+    return {
+        'entity_type': entity_type,
+        'entity_id': entity_id,
+        'encounters': list_entity_encounters(entity_type, entity_id),
+    }
 
 
 def suggest_entity_ids(entity_type: str, query: str, limit: int = 8) -> dict:

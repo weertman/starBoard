@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from collections import OrderedDict
 
 from PIL import Image
 
 from src.data.image_index import list_image_files
+from src.data.encounter_info import get_encounter_date
 
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'}
 
@@ -13,6 +14,25 @@ IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'}
 def list_entity_images(entity_type: str, entity_id: str) -> list[Path]:
     canonical = 'Gallery' if entity_type == 'gallery' else 'Queries'
     return list(list_image_files(canonical, entity_id))
+
+
+def list_entity_encounters(entity_type: str, entity_id: str) -> list[dict]:
+    canonical = 'Gallery' if entity_type == 'gallery' else 'Queries'
+    images = list_entity_images(entity_type, entity_id)
+    encounters: OrderedDict[str, dict] = OrderedDict()
+    for image in images:
+        try:
+            encounter_name = image.parent.name
+        except Exception:
+            continue
+        if encounter_name not in encounters:
+            date_value = get_encounter_date(canonical, entity_id, encounter_name)
+            encounters[encounter_name] = {
+                'encounter': encounter_name,
+                'date': date_value.isoformat() if date_value else '',
+                'label': f"{encounter_name} ({date_value.isoformat() if date_value else 'unknown date'})",
+            }
+    return list(encounters.values())
 
 
 def build_image_id(entity_type: str, entity_id: str, index: int) -> str:
@@ -35,9 +55,11 @@ def image_descriptor(entity_type: str, entity_id: str, index: int, image_path: P
     except Exception:
         pass
     iid = build_image_id(entity_type, entity_id, index)
+    encounter_name = image_path.parent.name if image_path.parent else ''
     return {
         'image_id': iid,
         'label': image_path.name,
+        'encounter': encounter_name,
         'fullres_url': f'/api/archive/media/{iid}/full',
         'preview_url': f'/api/archive/media/{iid}/preview',
         'width': width,
@@ -45,16 +67,20 @@ def image_descriptor(entity_type: str, entity_id: str, index: int, image_path: P
     }
 
 
-def window_for_entity(entity_type: str, entity_id: str, offset: int, limit: int) -> dict:
+def window_for_entity(entity_type: str, entity_id: str, offset: int, limit: int, encounter: str | None = None) -> dict:
     images = list_entity_images(entity_type, entity_id)
-    items = [image_descriptor(entity_type, entity_id, idx, p) for idx, p in enumerate(images[offset:offset+limit], start=offset)]
+    indexed = list(enumerate(images))
+    if encounter:
+        indexed = [(idx, p) for idx, p in indexed if p.parent.name == encounter]
+    sliced = indexed[offset:offset+limit]
+    items = [image_descriptor(entity_type, entity_id, idx, p) for idx, p in sliced]
     next_offset = offset + len(items)
     return {
         'offset': offset,
         'count': len(items),
-        'total': len(images),
+        'total': len(indexed),
         'items': items,
-        'next_offset': next_offset if next_offset < len(images) else None,
+        'next_offset': next_offset if next_offset < len(indexed) else None,
     }
 
 

@@ -36,10 +36,23 @@ class MetadataSchemaResponse(BaseModel):
 class ImageDescriptor(BaseModel):
     image_id: str
     label: str
+    encounter: str | None = None
     fullres_url: str
     preview_url: str
     width: int | None = None
     height: int | None = None
+
+
+class EncounterOption(BaseModel):
+    encounter: str
+    date: str = ''
+    label: str
+
+
+class EncounterOptionsResponse(BaseModel):
+    entity_type: Literal['gallery', 'query']
+    entity_id: str
+    encounters: list[EncounterOption] = Field(default_factory=list)
 
 
 class ImageWindow(BaseModel):
@@ -54,6 +67,8 @@ class ArchiveEntityResponse(BaseModel):
     entity_type: Literal['gallery', 'query']
     entity_id: str
     metadata_summary: dict[str, Any]
+    encounters: list[EncounterOption] = Field(default_factory=list)
+    selected_encounter: str = ''
     image_window: ImageWindow
 
 

@@ -21,10 +21,23 @@ export type MetadataSchemaResponse = { fields: SchemaField[] }
 export type ImageDescriptor = {
   image_id: string
   label: string
+  encounter?: string | null
   fullres_url: string
   preview_url: string
   width?: number
   height?: number
+}
+
+export type EncounterOption = {
+  encounter: string
+  date: string
+  label: string
+}
+
+export type EncounterOptionsResponse = {
+  entity_type: 'gallery' | 'query'
+  entity_id: string
+  encounters: EncounterOption[]
 }
 
 export type ImageWindow = {
@@ -39,6 +52,8 @@ export type ArchiveEntityResponse = {
   entity_type: 'gallery' | 'query'
   entity_id: string
   metadata_summary: Record<string, string>
+  encounters: EncounterOption[]
+  selected_encounter: string
   image_window: ImageWindow
 }
 
@@ -77,8 +92,9 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getSession = () => api<SessionResponse>('/api/session')
 export const getMetadataSchema = () => api<MetadataSchemaResponse>('/api/schema/metadata')
-export const lookupEntity = (entityId: string, entityType: 'gallery' | 'query' = 'gallery') => api<ArchiveEntityResponse>(`/api/archive/entities/${encodeURIComponent(entityId)}?entity_type=${entityType}`)
-export const getEntityImages = (entityId: string, entityType: 'gallery' | 'query', offset: number, limit = 4) => api<ImageWindow>(`/api/archive/entities/${encodeURIComponent(entityId)}/images?entity_type=${entityType}&offset=${offset}&limit=${limit}`)
+export const lookupEntity = (entityId: string, entityType: 'gallery' | 'query' = 'gallery', encounter = '') => api<ArchiveEntityResponse>(`/api/archive/entities/${encodeURIComponent(entityId)}?entity_type=${entityType}${encounter ? `&encounter=${encodeURIComponent(encounter)}` : ''}`)
+export const getEntityImages = (entityId: string, entityType: 'gallery' | 'query', offset: number, limit = 4, encounter = '') => api<ImageWindow>(`/api/archive/entities/${encodeURIComponent(entityId)}/images?entity_type=${entityType}&offset=${offset}&limit=${limit}${encounter ? `&encounter=${encodeURIComponent(encounter)}` : ''}`)
+export const getEntityEncounters = (entityId: string, entityType: 'gallery' | 'query' = 'gallery') => api<EncounterOptionsResponse>(`/api/archive/entities/${encodeURIComponent(entityId)}/encounters?entity_type=${entityType}`)
 export const suggestEntities = (entityType: 'gallery' | 'query', query: string, limit = 8) => api<EntitySuggestionResponse>(`/api/archive/suggest?entity_type=${entityType}&query=${encodeURIComponent(query)}&limit=${limit}`)
 export const getLookupOptions = (entityType: 'gallery' | 'query', location = '', limit = 200) => api<LookupOptionsResponse>(`/api/archive/options?entity_type=${entityType}&location=${encodeURIComponent(location)}&limit=${limit}`)
 
