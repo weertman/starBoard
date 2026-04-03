@@ -132,13 +132,25 @@ Pipeline contract
 11. Temp cleanup / no-write guarantee
 
 Provenance freeze requirement
-Before implementation, freeze these facts:
-- Which exact active/default model artifact source will be used: existing DLRegistry active model or an explicit portal override
-- Whether current archive artifacts were built from raw images, YOLO-cached crops, or another pipeline
-- Which exact transform path produced those artifacts
-- TTA policy used during artifact generation
-- Whether artifacts are portable across hosts or still rely on absolute host-specific paths
-- Whether stale artifacts are acceptable for v1
+The following provenance facts are frozen for v1 implementation and must not be re-decided during route/UI work.
+
+Chosen source of truth
+- Portal lookup uses the existing DLRegistry active model selection as the single source of truth; v1 does not add a portal-specific model override.
+- Frozen model key: `default_megastarid_v1`.
+- Frozen model checkpoint metadata source: `archive/_dl_precompute/_dl_registry.json` `models.default_megastarid_v1` plus `active_model`, with code contract defined by `src/dl/registry.py`.
+- Frozen artifact root: `archive/_dl_precompute/default_megastarid_v1`.
+- Capability logic for later phases must only consider lookup available when the registry active model resolves to a precomputed artifact root that exists on disk and matches this active selection.
+- Because the current repo state already has exactly one precomputed active model, choosing the active DLRegistry path is the least ambiguous and most reversible contract.
+
+Frozen preprocessing provenance
+- The current archive embeddings were not generated from raw archive images alone. `src/dl/precompute.py` first builds `star_identification/precompute_cache` via `src/dl/image_cache.py`, then extracts embeddings from those cached images with `use_yolo_preprocessing=False` because YOLO preprocessing has already happened upstream.
+- Cache build provenance is frozen as: original archive image -> optional YOLO instance-segmentation crop via `ReIDAdapter.load_yolo_preprocessor()` / `wildlife_reid_inference.preprocessing.YOLOPreprocessor` when the YOLO model is available, else original RGB image fallback -> downscale-only resize to fit within 640 px (`CACHE_SIZE`) -> save cached PNG under `star_identification/precompute_cache`.
+- Embedding transform provenance is frozen as the transform actually hard-coded in `ReIDAdapter.extract_batch`, not the Albumentations `megastarid.transforms.get_star_test_transforms()` path: resize cached image to `(384, 384)` with bicubic interpolation, convert to tensor, normalize with ImageNet mean/std `[0.485, 0.456, 0.406]` / `[0.229, 0.224, 0.225]`.
+- TTA provenance is frozen from the stored artifact metadata at `archive/_dl_precompute/default_megastarid_v1/similarity/metadata.json`: `use_tta=true`. In this codebase, that means original embedding plus horizontal-flip embedding plus vertical-flip embedding, averaged and re-normalized in `ReIDAdapter.extract_batch`.
+- Stored similarity metadata also records `use_reranking=true`, but that reranking is part of offline query-vs-gallery matrix generation; it is not part of the single-image portal query preprocessing contract.
+- The current per-image artifact references are not portable: `embeddings/gallery_image_paths.json` stores absolute Windows paths into `star_identification/precompute_cache`. Later implementation must treat those files as scientifically valid embedding provenance but operationally non-portable for result resolution; portal result-image resolution must reconstruct archive descriptors from stable archive identity/image information or disable the capability.
+- Canonical v1 query contract: decode uploaded image safely, apply EXIF transpose, convert to RGB, run the same YOLO-or-original cache preprocessing semantics as the archive build, apply the same downscale-only-to-640 cache step, then the same `(384,384)` bicubic + tensor + ImageNet normalization transform, then the same TTA policy (`true`) before similarity search.
+- Do not claim “exact MegaStar preprocessing” more broadly than this; this frozen contract is specifically the preprocessing path that produced the current `default_megastarid_v1` archive artifacts.
 
 The feature must not proceed until query preprocessing and archive artifact provenance are frozen.
 
@@ -182,9 +194,12 @@ Required artifact properties
   - stale/pending state visibility
 
 Stale artifact policy
-Must be explicit before rollout. Recommended v1 policy:
-- If active artifact set is stale or pending_ids is non-empty for the selected model, fail closed and disable MegaStar capability
-Alternative warning-open mode is only acceptable if explicitly approved.
+- Frozen v1 policy: fail closed.
+- `archive/_dl_precompute/_dl_registry.json` currently shows `active_model=default_megastarid_v1` and non-empty `pending_ids` for both gallery and queries, so the current artifact state must be treated as stale for portal capability purposes.
+- Capability must be disabled when any of the following is true for the chosen active model: model entry missing, `precomputed` is false, artifact root missing, required embedding/index files missing, or `pending_ids.gallery`/`pending_ids.queries` is non-empty.
+- No warn-open behavior in v1. The portal must hide/disable MegaStar lookup rather than serving results from a known-stale artifact set.
+- Re-enablement condition: run precomputation until the chosen active model remains precomputed and both pending-id lists are empty, then re-evaluate capability at startup/request time.
+- This policy is intentionally stricter than the desktop fallback behavior because the portal feature is new and must not silently present results from a partially outdated archive snapshot.
 
 Ranking contract
 Retrieval target for v1
@@ -348,9 +363,7 @@ Start with Phase 0 and Phase 1 only:
 - freeze capability behavior
 - freeze artifact and response contracts
 
-Open questions to resolve before coding
-- Which exact active model / checkpoint should v1 use?
-- Are current archive artifacts portable and trustworthy enough for portal reuse?
-- Must query preprocessing include YOLO segmentation/cropping to match artifact provenance?
+Open questions remaining after Phase 0 provenance freeze
+- How should tasks 4-9 resolve archive result images when the current per-image artifact path stores are absolute Windows cache paths rather than portable archive descriptors?
 - Which aggregation rule wins the offline ablation for single-image query -> ID ranking?
-- Is fail-closed on stale artifacts acceptable for v1?
+- Does the portal need a minimal artifact-manifest adapter that reconstructs stable archive image descriptors from archive identity/image metadata instead of trusting cached path JSON directly?
