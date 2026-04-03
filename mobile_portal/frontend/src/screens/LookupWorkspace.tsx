@@ -150,7 +150,7 @@ export function LookupWorkspace({
         <div style={{ color: '#667085', fontSize: 13, lineHeight: 1.35 }}>Browse by type, location, ID, and then observation date for that selected ID.</div>
       </div>
 
-      <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 16, padding: 12, display: 'grid', gap: 10, width: '100%', minWidth: 0, overflow: 'hidden' }}>
+      <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 16, padding: 10, display: 'grid', gap: 8, width: 'calc(100% - 12px)', maxWidth: 'calc(100vw - 32px)', minWidth: 0, overflow: 'hidden', justifySelf: 'center' }}>
         <label style={fieldStyle}>
           <span style={{ fontSize: 13, color: '#667085' }}>Type</span>
           <select
