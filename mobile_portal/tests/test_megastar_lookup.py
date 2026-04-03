@@ -1,4 +1,6 @@
+import io
 import json
+from pathlib import Path
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -14,14 +16,23 @@ from mobile_portal.app.adapters.megastar_model_adapter import MegaStarModelAdapt
 from mobile_portal.app.adapters.megastar_query_preprocess import MegaStarQueryPreprocessor
 from mobile_portal.app.adapters.megastar_result_resolver import MegaStarArtifactMatch, MegaStarResultResolver
 from mobile_portal.app.config import get_settings
+from mobile_portal.app.models.megastar_api import MegaStarLookupCandidate, MegaStarLookupResponse
+from mobile_portal.app.services.megastar_lookup_service import MegaStarLookupService
 
 from .conftest import build_test_app, make_image
 
-AUTH={'cf-a...il': 'field@example.org'}
+AUTH = {'cf-access-authenticated-user-email': 'field@example.org'}
 
 
-def _upload_file_tuple():
-    return {'file': ('selected.jpg', b'fake-image-bytes', 'image/jpeg')}
+def _upload_file_tuple(content: bytes | None = None, *, filename: str = 'selected.jpg', content_type: str = 'image/jpeg'):
+    return {'file': (filename, content or b'fake-image-bytes', content_type)}
+
+
+def _make_image_bytes(color=(200, 80, 40)) -> bytes:
+    image = Image.new('RGB', (120, 90), color)
+    buf = io.BytesIO()
+    image.save(buf, format='JPEG')
+    return buf.getvalue()
 
 
 def _seed_available_megastar_assets(tmp_path, archive_dir, *, pending_gallery=None, pending_queries=None):
@@ -57,6 +68,78 @@ def _seed_available_megastar_assets(tmp_path, archive_dir, *, pending_gallery=No
                     }
                 },
                 'pending_ids': {'gallery': pending_gallery or [], 'queries': pending_queries or []},
+            }
+        )
+    )
+    return model_key
+
+
+def _seed_searchable_megastar_assets(tmp_path, archive_dir):
+    model_key = 'test_megastar_model'
+    checkpoint_path = tmp_path / 'star_identification' / 'checkpoints' / 'default' / 'best.pth'
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_bytes(b'checkpoint')
+
+    make_image(archive_dir / 'gallery' / 'alpha' / 'enc-2026-04-03' / 'alpha1.jpg', color=(220, 60, 60))
+    make_image(archive_dir / 'gallery' / 'alpha' / 'enc-2026-04-03' / 'alpha2.jpg', color=(210, 50, 50))
+    make_image(archive_dir / 'gallery' / 'beta' / 'enc-2026-04-04' / 'beta1.jpg', color=(60, 220, 60))
+    make_image(archive_dir / 'gallery' / 'delta' / 'enc-2026-04-06' / 'delta1.jpg', color=(200, 220, 60))
+    make_image(archive_dir / 'gallery' / 'gamma' / 'enc-2026-04-05' / 'gamma1.jpg', color=(60, 60, 220))
+
+    root = archive_dir / '_dl_precompute' / model_key
+    embeddings_dir = root / 'embeddings'
+    similarity_dir = root / 'similarity'
+    embeddings_dir.mkdir(parents=True, exist_ok=True)
+    similarity_dir.mkdir(parents=True, exist_ok=True)
+
+    np.savez_compressed(
+        embeddings_dir / 'gallery_image_embeddings.npz',
+        alpha=np.array([[1.0, 0.0, 0.0, 0.0], [0.97, 0.03, 0.0, 0.0]], dtype=np.float32),
+        beta=np.array([[0.6, 0.8, 0.0, 0.0]], dtype=np.float32),
+        delta=np.array([[0.0, 1.0, 0.0, 0.0]], dtype=np.float32),
+        gamma=np.array([[-1.0, 0.0, 0.0, 0.0]], dtype=np.float32),
+    )
+    (embeddings_dir / 'gallery_image_paths.json').write_text(
+        json.dumps(
+            {
+                'alpha': [
+                    'C:\\cache\\gallery\\alpha\\alpha1.png',
+                    'C:\\cache\\gallery\\alpha\\alpha2.png',
+                ],
+                'beta': ['C:\\cache\\gallery\\beta\\beta1.png'],
+                'delta': ['C:\\cache\\gallery\\delta\\delta1.png'],
+                'gamma': ['C:\\cache\\gallery\\gamma\\gamma1.png'],
+            }
+        )
+    )
+    (similarity_dir / 'gallery_image_index.json').write_text(
+        json.dumps(
+            [
+                {'id': 'alpha', 'local_idx': 0, 'path': 'C:\\cache\\gallery\\alpha\\alpha1.png'},
+                {'id': 'alpha', 'local_idx': 1, 'path': 'C:\\cache\\gallery\\alpha\\alpha2.png'},
+                {'id': 'beta', 'local_idx': 0, 'path': 'C:\\cache\\gallery\\beta\\beta1.png'},
+                {'id': 'delta', 'local_idx': 0, 'path': 'C:\\cache\\gallery\\delta\\delta1.png'},
+                {'id': 'gamma', 'local_idx': 0, 'path': 'C:\\cache\\gallery\\gamma\\gamma1.png'},
+            ]
+        )
+    )
+    (similarity_dir / 'metadata.json').write_text(
+        json.dumps({'use_tta': False, 'image_size': 384, 'embedding_dim': 4})
+    )
+
+    registry_path = archive_dir / '_dl_precompute' / '_dl_registry.json'
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                'active_model': model_key,
+                'models': {
+                    model_key: {
+                        'precomputed': True,
+                        'checkpoint_path': 'star_identification/checkpoints/default/best.pth',
+                    }
+                },
+                'pending_ids': {'gallery': [], 'queries': []},
             }
         )
     )
@@ -114,6 +197,42 @@ class _FakeBackend:
         return 384
 
 
+class _ConstantEmbeddingModel:
+    def eval(self):
+        return self
+
+    def __call__(self, batch, return_normalized=True):
+        assert torch is not None
+        embedding = torch.tensor([[1.0, 0.0, 0.0, 0.0]], dtype=torch.float32, device=batch.device)
+        return embedding
+
+
+class _ConstantEmbeddingBackend:
+    def __init__(self):
+        assert torch is not None
+        self._model = None
+        self._device = torch.device('cpu')
+        self._loaded_model_path = None
+
+    def is_model_loaded(self):
+        return self._model is not None
+
+    def get_loaded_model_path(self):
+        return self._loaded_model_path
+
+    def load_model(self, checkpoint_path):
+        self._model = _ConstantEmbeddingModel()
+        self._loaded_model_path = checkpoint_path
+        return True
+
+    def get_image_size(self):
+        return 384
+
+
+def _archive_file_set(root: Path) -> set[str]:
+    return {str(path.relative_to(root)) for path in root.rglob('*') if path.is_file()}
+
+
 def test_megastar_lookup_requires_auth(tmp_path, monkeypatch):
     monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
     app, _archive = build_test_app(tmp_path, monkeypatch)
@@ -139,6 +258,23 @@ def test_megastar_lookup_returns_controlled_unavailable_response_when_assets_mis
     assert body['availability_reason'] == 'registry_missing'
     assert body['candidates'] == []
     assert body['processing_ms'] >= 0
+
+
+def test_megastar_lookup_rejects_non_image_upload(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_searchable_megastar_assets(tmp_path, archive)
+    client = TestClient(app)
+
+    r = client.post(
+        '/api/megastar/lookup',
+        headers=AUTH,
+        files=_upload_file_tuple(b'plain-text', filename='selected.txt', content_type='text/plain'),
+    )
+
+    assert r.status_code == 400
+    assert r.json()['detail'] == 'unsupported_media_type'
 
 
 def test_megastar_artifact_loader_reports_enabled_with_portable_checkpoint_resolution(tmp_path, monkeypatch):
@@ -248,3 +384,162 @@ def test_megastar_result_resolver_maps_windows_artifact_path_to_portal_descripto
     assert descriptor['encounter'] == 'enc-2026-04-03'
     assert descriptor['preview_url'].endswith('/api/archive/media/gallery:specimen-1:0/preview')
     assert descriptor['fullres_url'].endswith('/api/archive/media/gallery:specimen-1:0/full')
+
+
+def test_megastar_lookup_service_returns_ranked_gallery_ids_from_image_hits(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
+    build_test_app(tmp_path, monkeypatch)
+    archive = tmp_path / 'archive'
+    _seed_searchable_megastar_assets(tmp_path, archive)
+
+    service = MegaStarLookupService(settings=get_settings())
+    availability = load_megastar_artifact_availability(get_settings())
+    hits = service.search_image_hits(np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32), availability=availability)
+    candidates = service.aggregate_id_candidates(hits)
+
+    assert [hit.entity_id for hit in hits[:3]] == ['alpha', 'alpha', 'beta']
+    assert [candidate.entity_id for candidate in candidates] == ['alpha', 'beta']
+    assert candidates[0].best_hit.local_idx == 0
+    assert candidates[0].encounter == 'enc-2026-04-03'
+    assert candidates[0].encounter_date == '2026-04-03'
+    assert candidates[0].retrieval_score > candidates[1].retrieval_score
+
+
+def test_megastar_lookup_service_reports_empty_when_no_candidates_clear_threshold(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
+    build_test_app(tmp_path, monkeypatch)
+    archive = tmp_path / 'archive'
+    _seed_searchable_megastar_assets(tmp_path, archive)
+
+    service = MegaStarLookupService(settings=get_settings())
+    availability = load_megastar_artifact_availability(get_settings())
+    hits = service.search_image_hits(np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32), availability=availability)
+    candidates = service.aggregate_id_candidates(hits)
+
+    assert candidates == []
+    assert service._result_status(candidates) == 'empty'
+
+
+def test_megastar_lookup_service_reports_weak_when_top_result_is_low_confidence(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
+    build_test_app(tmp_path, monkeypatch)
+    archive = tmp_path / 'archive'
+    _seed_searchable_megastar_assets(tmp_path, archive)
+
+    service = MegaStarLookupService(settings=get_settings())
+    availability = load_megastar_artifact_availability(get_settings())
+    hits = service.search_image_hits(np.array([0.3, 0.9539392, 0.0, 0.0], dtype=np.float32), availability=availability)
+    candidates = service.aggregate_id_candidates(hits)
+
+    assert candidates[0].entity_id == 'delta'
+    assert candidates[1].entity_id == 'beta'
+    assert candidates[0].retrieval_score - candidates[1].retrieval_score < 0.03
+    assert service._result_status(candidates) == 'weak'
+
+
+def test_megastar_lookup_route_returns_real_results_without_archive_writes(tmp_path, monkeypatch):
+    if torch is None:
+        return
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_searchable_megastar_assets(tmp_path, archive)
+
+    import mobile_portal.app.routes.megastar_lookup as route_mod
+
+    monkeypatch.setattr(
+        route_mod,
+        'get_megastar_lookup_service',
+        lambda: MegaStarLookupService(settings=get_settings(), backend_factory=_ConstantEmbeddingBackend),
+    )
+
+    before_files = _archive_file_set(archive)
+    client = TestClient(app)
+    r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
+    after_files = _archive_file_set(archive)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body['status'] == 'ok'
+    assert [item['entity_id'] for item in body['candidates']] == ['alpha', 'beta']
+    assert body['candidates'][0]['best_match_image']['image_id'] == 'gallery:alpha:0'
+    assert body['candidates'][0]['encounter_date'] == '2026-04-03'
+    assert body['processing_ms'] >= 0
+    assert before_files == after_files
+
+
+def test_megastar_lookup_route_can_return_empty_state(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_searchable_megastar_assets(tmp_path, archive)
+
+    import mobile_portal.app.routes.megastar_lookup as route_mod
+
+    class _StubService:
+        def lookup_upload(self, *, filename, content, content_type=None):
+            return MegaStarLookupResponse(
+                query_image_name=filename,
+                status='empty',
+                candidates=[],
+                processing_ms=7,
+                capability_state='enabled',
+            )
+
+    monkeypatch.setattr(route_mod, 'get_megastar_lookup_service', lambda: _StubService())
+    client = TestClient(app)
+    r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body['status'] == 'empty'
+    assert body['candidates'] == []
+
+
+def test_megastar_lookup_route_can_return_weak_state(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_searchable_megastar_assets(tmp_path, archive)
+
+    import mobile_portal.app.routes.megastar_lookup as route_mod
+
+    class _StubService:
+        def lookup_upload(self, *, filename, content, content_type=None):
+            return MegaStarLookupResponse(
+                query_image_name=filename,
+                status='weak',
+                candidates=[
+                    MegaStarLookupCandidate(
+                        rank=1,
+                        entity_id='beta',
+                        retrieval_score=0.31,
+                        best_match_image={
+                            'image_id': 'gallery:beta:0',
+                            'label': 'beta1.jpg',
+                            'encounter': 'enc-2026-04-04',
+                            'fullres_url': '/api/archive/media/gallery:beta:0/full',
+                            'preview_url': '/api/archive/media/gallery:beta:0/preview',
+                            'width': 120,
+                            'height': 90,
+                        },
+                        best_match_label='beta1.jpg',
+                        encounter='enc-2026-04-04',
+                        encounter_date='2026-04-04',
+                    )
+                ],
+                processing_ms=9,
+                capability_state='enabled',
+            )
+
+    monkeypatch.setattr(route_mod, 'get_megastar_lookup_service', lambda: _StubService())
+    client = TestClient(app)
+    r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body['status'] == 'weak'
+    assert body['candidates'][0]['entity_id'] == 'beta'

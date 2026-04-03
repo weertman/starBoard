@@ -20,7 +20,7 @@ class MegaStarLookupCandidate(BaseModel):
 
 class MegaStarLookupResponse(BaseModel):
     query_image_name: str
-    status: Literal['ok', 'unavailable']
+    status: Literal['ok', 'empty', 'weak', 'unavailable']
     candidates: list[MegaStarLookupCandidate] = Field(default_factory=list)
     processing_ms: int = 0
     capability_state: Literal['enabled', 'disabled', 'unavailable'] | None = None
