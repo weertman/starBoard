@@ -81,6 +81,26 @@ export type SubmissionResponse = {
   message: string
 }
 
+export type MegaStarLookupCandidate = {
+  rank: number
+  entity_type: 'gallery'
+  entity_id: string
+  retrieval_score: number
+  best_match_image: ImageDescriptor
+  best_match_label?: string | null
+  encounter?: string | null
+  encounter_date?: string | null
+}
+
+export type MegaStarLookupResponse = {
+  query_image_name: string
+  status: 'ok' | 'unavailable'
+  candidates: MegaStarLookupCandidate[]
+  processing_ms: number
+  capability_state?: 'enabled' | 'disabled' | 'unavailable' | null
+  availability_reason?: string | null
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
@@ -97,6 +117,18 @@ export const getEntityImages = (entityId: string, entityType: 'gallery' | 'query
 export const getEntityEncounters = (entityId: string, entityType: 'gallery' | 'query' = 'gallery') => api<EncounterOptionsResponse>(`/api/archive/entities/${encodeURIComponent(entityId)}/encounters?entity_type=${entityType}`)
 export const suggestEntities = (entityType: 'gallery' | 'query', query: string, limit = 8) => api<EntitySuggestionResponse>(`/api/archive/suggest?entity_type=${entityType}&query=${encodeURIComponent(query)}&limit=${limit}`)
 export const getLookupOptions = (entityType: 'gallery' | 'query', location = '', limit = 200) => api<LookupOptionsResponse>(`/api/archive/options?entity_type=${entityType}&location=${encodeURIComponent(location)}&limit=${limit}`)
+
+export async function lookupMegaStar(file: File): Promise<MegaStarLookupResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch('/api/megastar/lookup', { method: 'POST', body: form })
+  const text = await res.text()
+  const payload = text ? JSON.parse(text) : null
+  if (!res.ok) {
+    throw new Error(payload?.availability_reason || payload?.detail || `MegaStar lookup failed: ${res.status}`)
+  }
+  return payload as MegaStarLookupResponse
+}
 
 export async function submitObservation(payload: Record<string, unknown>, files: File[]): Promise<SubmissionResponse> {
   const form = new FormData()

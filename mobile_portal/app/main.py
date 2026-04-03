@@ -13,6 +13,7 @@ from .routes.session import router as session_router
 from .routes.schema import router as schema_router
 from .routes.archive_lookup import router as archive_lookup_router
 from .routes.archive_media import router as archive_media_router
+from .routes.megastar_lookup import router as megastar_lookup_router
 from .routes.submissions import router as submissions_router
 
 
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(schema_router, prefix='/api')
     app.include_router(archive_lookup_router, prefix='/api')
     app.include_router(archive_media_router, prefix='/api')
+    app.include_router(megastar_lookup_router, prefix='/api')
     app.include_router(submissions_router, prefix='/api')
 
     built_assets_dir = Path(__file__).resolve().parents[1] / 'frontend' / 'dist' / 'assets'
