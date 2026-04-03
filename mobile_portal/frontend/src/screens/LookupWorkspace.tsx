@@ -29,6 +29,18 @@ const fieldStyle = {
   minWidth: 0,
 } as const
 
+function truncateLabel(value: string, max = 24): string {
+  if (value.length <= max) return value
+  const head = Math.max(8, Math.floor((max - 1) / 2))
+  const tail = Math.max(6, max - head - 1)
+  return `${value.slice(0, head)}…${value.slice(-tail)}`
+}
+
+function displayEncounterLabel(item: EncounterOption): string {
+  if (item.date) return item.date
+  return truncateLabel(item.label, 24)
+}
+
 export function LookupWorkspace({
   selectedArchiveImage,
   onSelectArchiveImage,
@@ -171,7 +183,7 @@ export function LookupWorkspace({
             <option value="">All locations</option>
             {locationOptions.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {truncateLabel(item, 26)}
               </option>
             ))}
           </select>
@@ -191,7 +203,7 @@ export function LookupWorkspace({
             <option value="">Select an ID</option>
             {idOptions.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {truncateLabel(item, 24)}
               </option>
             ))}
           </select>
@@ -208,7 +220,7 @@ export function LookupWorkspace({
             <option value="">All observation dates</option>
             {encounterOptions.map((item) => (
               <option key={item.encounter} value={item.encounter}>
-                {item.label}
+                {displayEncounterLabel(item)}
               </option>
             ))}
           </select>
