@@ -3,13 +3,6 @@ import { lookupEntity, getEntityImages, getEntityEncounters, getLookupOptions, t
 import { ArchiveImageStrip } from '../components/ArchiveImageStrip'
 import { ZoomableImagePane } from '../components/ZoomableImagePane'
 
-function imageIndex(image: ImageDescriptor | null | undefined): number {
-  if (!image) return 0
-  const parts = image.image_id.split(':')
-  const value = Number(parts[parts.length - 1])
-  return Number.isFinite(value) ? value : 0
-}
-
 export function LookupWorkspace({
   selectedArchiveImage,
   onSelectArchiveImage,
@@ -35,10 +28,7 @@ export function LookupWorkspace({
   const [loading, setLoading] = useState(false)
 
   const metadataRows = useMemo(() => Object.entries(result?.metadata_summary ?? {}).filter(([, value]) => String(value ?? '').trim() !== ''), [result])
-  const currentWindow = result?.image_window.items ?? []
-  const activeArchiveImage = selectedArchiveImage ?? currentWindow[0] ?? null
-  const activeWindowIndex = currentWindow.findIndex((item) => item.image_id === activeArchiveImage?.image_id)
-  const activeAbsoluteIndex = imageIndex(activeArchiveImage)
+  const activeArchiveImage = selectedArchiveImage ?? result?.image_window.items[0] ?? null
 
   useEffect(() => {
     getLookupOptions(entityType, location, 300)
@@ -68,29 +58,19 @@ export function LookupWorkspace({
       .catch((err) => setError(String(err)))
   }, [entityId, entityType])
 
-  async function doLookup(targetId?: string, encounterOverride?: string, offset = 0) {
+  async function doLookup(targetId?: string, encounterOverride?: string) {
     const id = (targetId ?? entityId).trim()
     if (!id) return
     setLoading(true)
     setError(null)
     try {
       const useEncounter = encounterOverride ?? selectedEncounter
-      const data = offset === 0
-        ? await lookupEntity(id, entityType, useEncounter)
-        : {
-            ...(result ?? { entity_type: entityType, entity_id: id, metadata_summary: {}, encounters: encounterOptions, selected_encounter: useEncounter, image_window: { offset: 0, count: 0, total: 0, items: [], next_offset: null } }),
-            image_window: await getEntityImages(id, entityType, offset, 4, useEncounter),
-            selected_encounter: useEncounter,
-            encounters: encounterOptions,
-          }
+      const data = await lookupEntity(id, entityType, useEncounter)
       setEntityId(id)
-      setResult(data as ArchiveEntityResponse)
-      if (offset === 0 && 'encounters' in data) {
-        setEncounterOptions((data as ArchiveEntityResponse).encounters)
-        setSelectedEncounter((data as ArchiveEntityResponse).selected_encounter || useEncounter || '')
-      }
-      const first = (data as ArchiveEntityResponse).image_window.items[0]
-      if (first) onSelectArchiveImage(first, (data as ArchiveEntityResponse).image_window.items)
+      setResult(data)
+      setEncounterOptions(data.encounters)
+      setSelectedEncounter(data.selected_encounter || useEncounter || '')
+      if (data.image_window.items[0]) onSelectArchiveImage(data.image_window.items[0], data.image_window.items)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -98,53 +78,19 @@ export function LookupWorkspace({
     }
   }
 
-  async function shiftWindow(targetAbsoluteIndex: number) {
-    if (!entityId) return
-    const nextOffset = Math.max(0, targetAbsoluteIndex - 1)
-    setLoading(true)
-    setError(null)
-    try {
-      const imageWindow = await getEntityImages(entityId, entityType, nextOffset, 4, selectedEncounter)
-      const nextResult: ArchiveEntityResponse = {
-        entity_type: entityType,
-        entity_id: entityId,
-        metadata_summary: result?.metadata_summary ?? {},
-        encounters: encounterOptions,
-        selected_encounter: selectedEncounter,
-        image_window: imageWindow,
-      }
-      setResult(nextResult)
-      const chosen = imageWindow.items.find((item) => imageIndex(item) === targetAbsoluteIndex) ?? imageWindow.items[0]
-      if (chosen) onSelectArchiveImage(chosen, imageWindow.items)
-    } catch (err) {
-      setError(String(err))
-    } finally {
-      setLoading(false)
+  async function loadMore() {
+    if (!result?.image_window.next_offset) return
+    const next = await getEntityImages(result.entity_id, entityType, result.image_window.next_offset, 4, selectedEncounter)
+    const mergedItems = [...result.image_window.items, ...next.items]
+    const mergedResult: ArchiveEntityResponse = {
+      ...result,
+      image_window: {
+        ...next,
+        items: mergedItems,
+      },
     }
-  }
-
-  function selectFromCurrentWindow(image: ImageDescriptor) {
-    onSelectArchiveImage(image, currentWindow)
-  }
-
-  function prevImage() {
-    if (!result || activeAbsoluteIndex <= 0) return
-    const target = activeAbsoluteIndex - 1
-    if (activeWindowIndex > 0) {
-      selectFromCurrentWindow(currentWindow[activeWindowIndex - 1])
-      return
-    }
-    void shiftWindow(target)
-  }
-
-  function nextImage() {
-    if (!result || activeAbsoluteIndex >= result.image_window.total - 1) return
-    const target = activeAbsoluteIndex + 1
-    if (activeWindowIndex >= 0 && activeWindowIndex < currentWindow.length - 1) {
-      selectFromCurrentWindow(currentWindow[activeWindowIndex + 1])
-      return
-    }
-    void shiftWindow(target)
+    setResult(mergedResult)
+    if (activeArchiveImage) onSelectArchiveImage(activeArchiveImage, mergedItems)
   }
 
   return (
@@ -196,16 +142,12 @@ export function LookupWorkspace({
         <>
           <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 16, padding: 12, display: 'grid', gap: 8 }}>
             <div style={{ fontSize: 14 }}>Opened <strong>{result.entity_id}</strong></div>
-            <div style={{ fontSize: 13, color: '#555' }}>{result.entity_type} • {selectedEncounter || 'all observation dates'} • image {activeAbsoluteIndex + 1} of {result.image_window.total}</div>
+            <div style={{ fontSize: 13, color: '#555' }}>{result.entity_type} • {selectedEncounter || 'all observation dates'} • {result.image_window.total} archive image{result.image_window.total === 1 ? '' : 's'} found • {result.image_window.items.length} loaded</div>
             {metadataRows.length > 0 && <details><summary>Metadata summary</summary><div style={{ display: 'grid', gap: 4, marginTop: 8, fontSize: 13 }}>{metadataRows.slice(0, 12).map(([key, value]) => <div key={key}><strong>{key}</strong>: {String(value)}</div>)}</div></details>}
           </div>
           <ZoomableImagePane compact title="Archive workspace" subtitle={activeArchiveImage?.label} src={activeArchiveImage?.fullres_url ?? activeArchiveImage?.preview_url} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={prevImage} disabled={loading || activeAbsoluteIndex <= 0} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #ccd6eb', background: 'white' }}>Previous</button>
-            <button onClick={nextImage} disabled={loading || activeAbsoluteIndex >= result.image_window.total - 1} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #ccd6eb', background: 'white' }}>Next</button>
-          </div>
-          <div style={{ color: '#667085', fontSize: 12 }}>Only a small rolling window of archive images is kept loaded at a time.</div>
-          <ArchiveImageStrip items={currentWindow} onSelect={selectFromCurrentWindow} selectedImageId={activeArchiveImage?.image_id ?? null} />
+          <ArchiveImageStrip items={result.image_window.items} onSelect={(img) => onSelectArchiveImage(img, result.image_window.items)} selectedImageId={activeArchiveImage?.image_id ?? null} />
+          {result.image_window.next_offset != null && <button onClick={loadMore}>Load more archive images</button>}
         </>
       )}
     </div>
