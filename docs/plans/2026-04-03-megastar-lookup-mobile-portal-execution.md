@@ -94,6 +94,8 @@ Verification:
 ### Task 4: Freeze result semantics
 Objective: Decide exactly what MegaStar results do in the current mobile workflow.
 
+Status: complete 2026-04-03. The implementation plan now freezes Compare best image as the primary action, Open ID in archive browser as optional secondary action, Clear results semantics, selected-image-bound invalidation, and an explicit no-metadata-mutation rule for v1.
+
 Files:
 - Modify: docs/plans/2026-04-03-megastar-lookup-mobile-portal.md
 - Reference: mobile_portal/frontend/src/App.tsx
@@ -117,6 +119,8 @@ Verification:
 ### Task 5: Freeze API and capability contract
 Objective: Define the backend/public contract before coding.
 
+Status: complete 2026-04-03. The implementation plan now freezes session capability key `megastar_lookup`, route name `POST /api/megastar/lookup`, single-image multipart request scope, minimum candidate response fields, and controlled unavailable behavior when the capability is false.
+
 Files:
 - Modify: docs/plans/2026-04-03-megastar-lookup-mobile-portal.md
 
@@ -135,6 +139,8 @@ Verification:
 
 ### Task 6: Freeze v1 ranking scope
 Objective: Remove ambiguous scope around queries and ranking style.
+
+Status: complete 2026-04-03. The implementation plan now freezes gallery-ID-only ranking, read-only per-image gallery embedding retrieval, best-supporting image carry-through, and explicitly excludes centroid-only retrieval from v1.
 
 Files:
 - Modify: docs/plans/2026-04-03-megastar-lookup-mobile-portal.md

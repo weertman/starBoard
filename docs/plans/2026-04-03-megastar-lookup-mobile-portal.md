@@ -61,6 +61,22 @@ Local image selection
 - If selected local image changes, existing MegaStar results become stale and must be cleared or marked stale
 - If selected local image is removed, MegaStar results must be cleared
 
+Frozen frontend result semantics
+- MegaStar results live only inside the ObservationWorkspace state that already owns local image selection and archive compare state.
+- The primary v1 result action is Compare best image. Triggering it must hydrate the existing archiveImages / selectedArchiveIndex state used by the current compare flow and keep the user in ObservationWorkspace.
+- The secondary v1 result action is Open ID in archive browser. This action is optional UI, and if exposed it must hand off to the existing LookupWorkspace as a browse-only convenience without changing metadata draft state.
+- A Clear results action must always be available after a lookup succeeds, returns empty, or becomes stale. Clear results removes MegaStar result rows and any stale/running/error banner for that bound local image, but it does not clear local uploads, archiveImages loaded from manual lookup, or metadata draft state.
+- MegaStar results are advisory only. No MegaStar action may auto-fill, mutate, or infer metadata targetType, targetMode, targetId, encounterDate, or any other submission field in v1.
+- Compare behavior remains image-centric. MegaStar can select an archive comparison image, but it must not silently navigate into submit, mark metadata ready, or convert the observation into a gallery/query submission target.
+- Result rows should expose exactly one best-supporting archive image per ranked ID in v1. Additional support images are out of scope until a later phase.
+
+Frozen result invalidation rules
+- Results are bound to the selected local image identity at request start, not merely the array index shown later.
+- If the selected local image changes before a new lookup runs, the previous MegaStar results immediately become stale and the UI must either clear them or show them only behind an explicit stale state that cannot be mistaken for current results.
+- If the local image bound to the current MegaStar results is removed from the queue, the MegaStar results must be cleared immediately.
+- Adding more local images without changing the current selected image does not invalidate existing MegaStar results.
+- Manual archive lookup results loaded through LookupWorkspace are not invalidated by clearing MegaStar results; only the MegaStar result panel state is reset.
+
 Archive comparison interaction
 - MegaStar candidate actions must hydrate the same archiveImages / selectedArchiveIndex state already used for compare flow
 - “Compare candidate” should keep user in ObservationWorkspace and set the chosen archive image for comparison
@@ -75,6 +91,32 @@ Capability / rollback contract
 - Capability false when env flag disabled, model missing, artifact missing, artifact stale per policy, or startup validation fails
 - Frontend renders no MegaStar UI when capability false
 - Existing portal startup must succeed even if MegaStar assets are missing
+
+Frozen API and capability contract
+- Session capability key is exactly megastar_lookup.
+- The MegaStar route name is exactly POST /api/megastar/lookup.
+- The request contract for v1 is multipart/form-data carrying exactly one uploaded local image file. No metadata draft fields are part of the lookup request.
+- When session capability megastar_lookup is false, the frontend must hide MegaStar controls entirely rather than render a disabled button.
+- When POST /api/megastar/lookup is called while the capability is disabled or assets are unavailable, the backend must return a controlled unavailable response/error; it must not fall through to generic startup failure and must not require MegaStar assets for portal boot.
+- A successful response must be concrete enough to drive existing compare UI without extra archive fetches for the best-match image.
+
+Frozen lookup response shape
+- Top-level response fields for v1:
+  - query_image_name
+  - status
+  - candidates
+  - processing_ms
+  - capability_state or availability_reason when unavailable/degraded handling needs to be surfaced
+- Candidate objects for v1 must include at minimum:
+  - rank
+  - entity_type with value gallery
+  - entity_id
+  - retrieval_score
+  - best_match_image as an ImageDescriptor-compatible object containing image_id, label, preview_url, fullres_url, and encounter when available
+  - best_match_label when distinct from the image label
+  - encounter and/or encounter_date when available for the best supporting image
+- Candidate objects may include debug/provenance fields later, but the above fields are the minimum frozen public contract for Tasks 8-9.
+- Empty-result success is allowed and must return status indicating no candidates rather than overloading transport errors.
 
 Pipeline contract
 1. Frontend selected-image capture
@@ -148,6 +190,14 @@ Ranking contract
 Retrieval target for v1
 - Gallery IDs only
 - Query IDs are out of scope for v1
+
+Frozen v1 ranking scope
+- V1 ranks gallery IDs only. Query IDs, mixed gallery/query ranking, and query-side suggestions are explicitly out of scope.
+- The search index for v1 is the read-only per-image gallery embedding set, not a gallery-centroid-only index.
+- Retrieval scoring happens first at image level against gallery images. ID ranking is produced only after grouping those image-level hits by gallery entity_id.
+- Each ranked gallery ID must carry the single best-supporting archive image that earned that ID its highest retained evidence for comparison UI.
+- Centroid-only retrieval, centroid-first retrieval, or replacing per-image search with identity prototypes is out of scope for v1 even if such artifacts exist elsewhere in the repo.
+- Any future hybrid or centroid reranking must ship as a later phase behind a new evaluation decision; Tasks 7-9 should assume per-image gallery retrieval only.
 
 Similarity stage
 - Search query embedding against per-image gallery embeddings
