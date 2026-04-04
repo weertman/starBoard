@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mobile_portal.app.adapters.megastar_artifact_loader import load_megastar_artifact_availability
+from mobile_portal.app.config import Settings as PortalSettings
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class WorkerSettings:
     artifact_root: Path
     registry_path: Path
     require_fresh_assets: bool
+    max_upload_mb: int
 
 
 def get_settings() -> WorkerSettings:
@@ -35,6 +37,27 @@ def get_settings() -> WorkerSettings:
         artifact_root=artifact_root,
         registry_path=registry_path,
         require_fresh_assets=os.getenv('STARBOARD_MEGASTAR_REQUIRE_FRESH_ASSETS', '1') == '1',
+        max_upload_mb=int(os.getenv('STARBOARD_MEGASTAR_MAX_UPLOAD_MB', '250')),
+    )
+
+
+def as_portal_settings(settings: WorkerSettings | None = None) -> PortalSettings:
+    settings = settings or get_settings()
+    return PortalSettings(
+        repo_root=settings.repo_root,
+        archive_dir=settings.archive_dir,
+        host=settings.host,
+        port=settings.port,
+        initial_image_window=4,
+        image_page_size=4,
+        max_upload_mb=settings.max_upload_mb,
+        cf_bypass_localhost=False,
+        preview_cache_dir=(settings.repo_root / 'mobile_portal/.cache/previews').resolve(),
+        megastar_enabled=settings.enabled,
+        megastar_model_key_override=settings.model_key_override,
+        megastar_artifact_root=settings.artifact_root,
+        megastar_registry_path=settings.registry_path,
+        megastar_require_fresh_assets=settings.require_fresh_assets,
     )
 
 
@@ -49,13 +72,4 @@ def capability_status(settings: WorkerSettings | None = None):
             artifact_dir = None
         return Disabled()
 
-    class AdapterSettings:
-        repo_root = settings.repo_root
-        archive_dir = settings.archive_dir
-        megastar_enabled = settings.enabled
-        megastar_model_key_override = settings.model_key_override
-        megastar_artifact_root = settings.artifact_root
-        megastar_registry_path = settings.registry_path
-        megastar_require_fresh_assets = settings.require_fresh_assets
-
-    return load_megastar_artifact_availability(AdapterSettings())
+    return load_megastar_artifact_availability(as_portal_settings(settings))
