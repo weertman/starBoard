@@ -12,6 +12,7 @@ Tech Stack: FastAPI, Python adapters/services in mobile_portal/app, a new MegaSt
 
 Hard constraints
 - Preserve current archive browsing and submission flows
+- Both local mode and worker mode must use the same chosen model checkpoint / model key source of truth
 - Keep MegaStar advisory-only in v1 of worker refactor
 - No archive writes from MegaStar worker
 - Worker must be independently enableable/disableable
@@ -26,6 +27,7 @@ Current state:
 - this is good for prototyping but mixes inference lifecycle with normal portal request serving
 Target state:
 - MegaStar has two supported execution backends behind one stable portal API:
+  - both backends must resolve the same active model key/checkpoint contract for a given deployment state
   - local mode: existing in-process execution inside the mobile portal process
   - worker mode: separate MegaStar worker service
 - the selected backend owns:
@@ -144,10 +146,11 @@ Files:
 
 Tasks:
 1. Freeze worker API shape (/health, /status, /lookup).
-2. Freeze portal API stability requirement (/api/session and /api/megastar/lookup stay stable).
-3. Freeze backend selector contract: local mode and worker mode must both satisfy the same portal request/response semantics.
-4. Freeze what code remains shared versus duplicated.
-5. Commit docs.
+2. Freeze the shared model-key/checkpoint source-of-truth rule for both local and worker backends.
+3. Freeze portal API stability requirement (/api/session and /api/megastar/lookup stay stable).
+4. Freeze backend selector contract: local mode and worker mode must both satisfy the same portal request/response semantics.
+5. Freeze what code remains shared versus duplicated.
+6. Commit docs.
 
 ### Phase 1: Scaffold worker service
 Objective: Create a standalone MegaStar worker app with health and status routes.
