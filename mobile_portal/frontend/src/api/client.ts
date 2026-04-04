@@ -94,7 +94,7 @@ export type MegaStarLookupCandidate = {
 
 export type MegaStarLookupResponse = {
   query_image_name: string
-  status: 'ok' | 'unavailable'
+  status: 'ok' | 'empty' | 'weak' | 'unavailable'
   candidates: MegaStarLookupCandidate[]
   processing_ms: number
   capability_state?: 'enabled' | 'disabled' | 'unavailable' | null

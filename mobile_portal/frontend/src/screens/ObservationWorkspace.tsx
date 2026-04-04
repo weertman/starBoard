@@ -1,6 +1,18 @@
 import { ZoomableImagePane } from '../components/ZoomableImagePane'
 import { LocalImageQueue } from '../components/LocalImageQueue'
-import type { ImageDescriptor, SubmissionResponse } from '../api/client'
+import type { ImageDescriptor, MegaStarLookupCandidate, MegaStarLookupResponse } from '../api/client'
+
+function statusTone(status: MegaStarLookupResponse['status']) {
+  if (status === 'ok') return { background: '#eff8ff', border: '#b2ddff', color: '#175cd3', title: 'MegaStar candidates ready' }
+  if (status === 'weak') return { background: '#fffaeb', border: '#fedf89', color: '#b54708', title: 'MegaStar found weak candidates' }
+  if (status === 'empty') return { background: '#f8f9fc', border: '#d0d5dd', color: '#344054', title: 'MegaStar found no candidates' }
+  return { background: '#fef3f2', border: '#fecdca', color: '#b42318', title: 'MegaStar unavailable' }
+}
+
+function candidateSubtitle(candidate: MegaStarLookupCandidate) {
+  const date = candidate.encounter_date || candidate.encounter || 'date unknown'
+  return `${candidate.entity_id} • score ${candidate.retrieval_score.toFixed(3)} • ${date}`
+}
 
 export function ObservationWorkspace({
   localPreviews,
@@ -17,6 +29,15 @@ export function ObservationWorkspace({
   submitLabel,
   submitError,
   submitMessage,
+  megastarEnabled,
+  megastarLoading,
+  megastarResult,
+  megastarError,
+  onMegaStarLookup,
+  onClearMegaStar,
+  onRetryMegaStar,
+  onCompareMegaStarCandidate,
+  onOpenMegaStarCandidate,
   onSubmit,
   onBack,
   onOpenMetadata,
@@ -36,6 +57,15 @@ export function ObservationWorkspace({
   submitLabel: string
   submitError: string | null
   submitMessage: string | null
+  megastarEnabled: boolean
+  megastarLoading: boolean
+  megastarResult: MegaStarLookupResponse | null
+  megastarError: string | null
+  onMegaStarLookup: () => void
+  onClearMegaStar: () => void
+  onRetryMegaStar: () => void
+  onCompareMegaStarCandidate: (candidate: MegaStarLookupCandidate) => void
+  onOpenMegaStarCandidate: (candidate: MegaStarLookupCandidate) => void
   onSubmit: () => void
   onBack: () => void
   onOpenMetadata: () => void
@@ -44,6 +74,8 @@ export function ObservationWorkspace({
   const localPreview = localPreviews[selectedLocalIndex]
   const archiveImage = archiveImages[selectedArchiveIndex]
   const compareMode = !!archiveImage && !!localPreview
+  const megastarTone = megastarResult ? statusTone(megastarResult.status) : null
+  const hasMegaStarState = !!megastarResult || !!megastarError || megastarLoading
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -85,6 +117,79 @@ export function ObservationWorkspace({
           <button onClick={onOpenLookup} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: '#eef4ff' }}>Look up star</button>
         </div>
         <LocalImageQueue previews={localPreviews} onRemove={removeLocalAt} onSelect={selectLocalIndex} selectedIndex={selectedLocalIndex} />
+        {megastarEnabled && (
+          <div style={{ padding: 10, border: '1px solid #d6dae1', borderRadius: 12, background: '#fbfcfe', display: 'grid', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>MegaStar lookup</div>
+                <div style={{ color: '#667085', fontSize: 13 }}>Advisory only. Uses the currently selected local image and never changes your submission metadata.</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={onMegaStarLookup} disabled={!localPreview || megastarLoading} style={{ border: '1px solid #7f56d9', borderRadius: 10, padding: '8px 10px', background: megastarLoading ? '#eaecf0' : '#f4f3ff', color: '#6941c6' }}>
+                  {megastarLoading ? 'MegaStar searching…' : 'MegaStar Lookup'}
+                </button>
+                {hasMegaStarState && (
+                  <button onClick={onClearMegaStar} disabled={megastarLoading} style={{ border: '1px solid #d0d5dd', borderRadius: 10, padding: '8px 10px', background: 'white' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+            {!localPreview && <div style={{ color: '#667085', fontSize: 13 }}>Select a local image first to run MegaStar.</div>}
+            {megastarError && (
+              <div style={{ padding: 10, borderRadius: 12, border: '1px solid #fecdca', background: '#fef3f2', color: '#b42318', display: 'grid', gap: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>MegaStar lookup failed</div>
+                <div style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}>{megastarError}</div>
+                <div>
+                  <button onClick={onRetryMegaStar} disabled={!localPreview || megastarLoading} style={{ border: '1px solid #f97066', borderRadius: 10, padding: '8px 10px', background: 'white' }}>
+                    Retry
+                  </button>
+                </div>
+              </div>
+            )}
+            {megastarResult && megastarTone && (
+              <div style={{ padding: 10, borderRadius: 12, border: `1px solid ${megastarTone.border}`, background: megastarTone.background, display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: megastarTone.color }}>{megastarTone.title}</div>
+                    <div style={{ color: '#475467', fontSize: 13 }}>{megastarResult.query_image_name} • {megastarResult.processing_ms} ms</div>
+                  </div>
+                  <button onClick={onRetryMegaStar} disabled={!localPreview || megastarLoading} style={{ border: '1px solid #d0d5dd', borderRadius: 10, padding: '8px 10px', background: 'white' }}>
+                    Retry
+                  </button>
+                </div>
+                {megastarResult.availability_reason && <div style={{ fontSize: 13, color: '#475467' }}>{megastarResult.availability_reason}</div>}
+                {megastarResult.candidates.length === 0 && (
+                  <div style={{ fontSize: 13, color: '#475467' }}>No archive candidates were returned for this local image.</div>
+                )}
+                {megastarResult.candidates.length > 0 && (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {megastarResult.candidates.map((candidate) => (
+                      <div key={`${candidate.entity_id}-${candidate.rank}`} style={{ border: '1px solid rgba(16,24,40,0.08)', borderRadius: 12, background: 'white', padding: 10, display: 'grid', gap: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>#{candidate.rank} {candidate.best_match_label || candidate.best_match_image.label}</div>
+                            <div style={{ fontSize: 13, color: '#475467' }}>{candidateSubtitle(candidate)}</div>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#667085' }}>{candidate.entity_type}</div>
+                        </div>
+                        <img src={candidate.best_match_image.preview_url} alt={candidate.best_match_label || candidate.best_match_image.label} style={{ width: '100%', borderRadius: 10 }} />
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button onClick={() => onCompareMegaStarCandidate(candidate)} style={{ border: '1px solid #2f6fed', borderRadius: 10, padding: '8px 10px', background: '#eef4ff', color: '#175cd3' }}>
+                            Compare here
+                          </button>
+                          <button onClick={() => onOpenMegaStarCandidate(candidate)} style={{ border: '1px solid #d0d5dd', borderRadius: 10, padding: '8px 10px', background: 'white' }}>
+                            Open in archive browser
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ padding: 10, border: '1px solid #e4e7ec', borderRadius: 12, background: metadataReady ? '#f0faf5' : '#fbfcfe', display: 'grid', gap: 4 }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{metadataReady ? 'Metadata ready' : 'Metadata required before submit'}</div>
           <div style={{ color: '#667085', fontSize: 13 }}>{metadataSummary}</div>

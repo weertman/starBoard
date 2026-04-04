@@ -47,12 +47,20 @@ export function LookupWorkspace({
   onBack,
   onOpenMetadata,
   canCompare,
+  initialRequest,
 }: {
   selectedArchiveImage?: ImageDescriptor | null
   onSelectArchiveImage: (image: ImageDescriptor, loadedItems?: ImageDescriptor[]) => void
   onBack: () => void
   onOpenMetadata: () => void
   canCompare: boolean
+  initialRequest?: {
+    entityType: 'gallery' | 'query'
+    entityId: string
+    encounter: string
+    preferredImageId?: string | null
+    nonce: number
+  } | null
 }) {
   const [entityType, setEntityType] = useState<'gallery' | 'query'>('gallery')
   const [entityId, setEntityId] = useState('')
@@ -84,7 +92,7 @@ export function LookupWorkspace({
         }
       })
       .catch((err) => setError(String(err)))
-  }, [entityType, location])
+  }, [entityType, location, entityId])
 
   useEffect(() => {
     if (!entityId) {
@@ -95,25 +103,38 @@ export function LookupWorkspace({
     getEntityEncounters(entityId, entityType)
       .then((data) => {
         setEncounterOptions(data.encounters)
-        setSelectedEncounter('')
+        setSelectedEncounter((prev) => (prev && data.encounters.some((item) => item.encounter === prev) ? prev : ''))
       })
       .catch((err) => setError(String(err)))
   }, [entityId, entityType])
 
-  async function doLookup(targetId?: string, encounterOverride?: string) {
+  useEffect(() => {
+    if (!initialRequest) return
+    setEntityType(initialRequest.entityType)
+    setEntityId(initialRequest.entityId)
+    setLocation('')
+    setSelectedEncounter(initialRequest.encounter)
+    void doLookup(initialRequest.entityId, initialRequest.encounter, initialRequest.entityType, initialRequest.preferredImageId)
+  }, [initialRequest?.nonce])
+
+  async function doLookup(targetId?: string, encounterOverride?: string, entityTypeOverride?: 'gallery' | 'query', preferredImageId?: string | null) {
     const id = (targetId ?? entityId).trim()
+    const nextEntityType = entityTypeOverride ?? entityType
     if (!id) return
     setLoading(true)
     setError(null)
     try {
       const useEncounter = encounterOverride ?? selectedEncounter
-      const data = await lookupEntity(id, entityType, useEncounter)
+      const data = await lookupEntity(id, nextEntityType, useEncounter)
+      setEntityType(nextEntityType)
       setEntityId(id)
       setResult(data)
       setEncounterOptions(data.encounters)
       setSelectedEncounter(data.selected_encounter || useEncounter || '')
-      if (data.image_window.items[0]) {
-        onSelectArchiveImage(data.image_window.items[0], data.image_window.items)
+      const preferredImage = preferredImageId ? data.image_window.items.find((item) => item.image_id === preferredImageId) : null
+      const nextImage = preferredImage ?? data.image_window.items[0]
+      if (nextImage) {
+        onSelectArchiveImage(nextImage, data.image_window.items)
       }
     } catch (err) {
       setError(String(err))
@@ -135,7 +156,8 @@ export function LookupWorkspace({
     }
     setResult(mergedResult)
     if (activeArchiveImage) {
-      onSelectArchiveImage(activeArchiveImage, mergedItems)
+      const refreshedActiveImage = mergedItems.find((item) => item.image_id === activeArchiveImage.image_id) ?? activeArchiveImage
+      onSelectArchiveImage(refreshedActiveImage, mergedItems)
     }
   }
 
@@ -143,7 +165,7 @@ export function LookupWorkspace({
     <div style={{ display: 'grid', gap: 10 }}>
       <div style={{ background: 'white', border: '1px solid #d6dae1', borderRadius: 16, padding: 12, display: 'grid', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-          <button onClick={onBack} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: 'white' }}>Home</button>
+          <button onClick={onBack} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: 'white' }}>Back</button>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Look up star</div>
           <button onClick={onOpenMetadata} style={{ border: '1px solid #ccd6eb', borderRadius: 10, padding: '8px 10px', background: canCompare ? '#eef4ff' : 'white' }}>Metadata</button>
         </div>
@@ -256,7 +278,7 @@ export function LookupWorkspace({
 
           <ZoomableImagePane compact title="Archive workspace" subtitle={activeArchiveImage?.label} src={activeArchiveImage?.fullres_url ?? activeArchiveImage?.preview_url} />
           <ArchiveImageStrip items={result.image_window.items} onSelect={(img) => onSelectArchiveImage(img, result.image_window.items)} selectedImageId={activeArchiveImage?.image_id ?? null} />
-          {result.image_window.next_offset != null && <button onClick={loadMore}>Load more archive images</button>}
+          {result.image_window.next_offset != null && <button onClick={() => void loadMore()}>Load more archive images</button>}
         </>
       )}
     </div>
