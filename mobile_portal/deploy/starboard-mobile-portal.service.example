@@ -1,0 +1,24 @@
+[Unit]
+Description=starBoard Mobile Portal (FastAPI)
+After=network-online.target
+Wants=network-online.target
+Requires=starboard-megastar-worker.service
+
+[Service]
+Type=simple
+User=weertman
+Group=weertman
+WorkingDirectory=/home/weertman/Documents/starBoard
+Environment=STARBOARD_ARCHIVE_DIR=/home/weertman/Documents/starBoard/archive
+Environment=STARBOARD_MOBILE_HOST=127.0.0.1
+Environment=STARBOARD_MOBILE_PORT=8091
+Environment=STARBOARD_MOBILE_MEGASTAR_ENABLED=1
+Environment=STARBOARD_MOBILE_MEGASTAR_BACKEND=worker
+Environment=STARBOARD_MOBILE_MEGASTAR_WORKER_URL=http://127.0.0.1:8093
+Environment=STARBOARD_MOBILE_MEGASTAR_REQUIRE_FRESH_ASSETS=1
+ExecStart=/bin/bash /home/weertman/Documents/starBoard/scripts/python -m uvicorn mobile_portal.app.main:app --host 127.0.0.1 --port 8091
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

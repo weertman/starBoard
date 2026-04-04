@@ -225,6 +225,10 @@ Recommended units:
 - `starboard-megastar-worker.service`
 - existing `cloudflared-starboard.service`
 
+Example unit files included in this repo:
+- `mobile_portal/deploy/starboard-mobile-portal.service.example`
+- `mobile_portal/deploy/starboard-megastar-worker.service.example`
+
 Operational goal:
 - restart worker without restarting portal
 - stop worker and leave portal up
