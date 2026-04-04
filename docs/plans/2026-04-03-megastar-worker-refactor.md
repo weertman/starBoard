@@ -2,9 +2,9 @@
 
 > For Hermes: Use subagent-driven-development skill to implement this plan task-by-task.
 
-Goal: Refactor MegaStar lookup out of the in-process mobile portal server into a separate backend worker/service that can be turned on and off independently while preserving the current mobile portal workflow and fail-closed safety guarantees.
+Goal: Refactor MegaStar lookup so it can work in both cases: (1) direct in-process execution inside the mobile portal for development/fallback, and (2) a separate backend worker/service for cleaner production operation, while preserving the current mobile portal workflow and fail-closed safety guarantees.
 
-Architecture: The mobile portal FastAPI app remains the main user-facing web API for auth, archive browsing, metadata, and submission. MegaStar inference moves into a dedicated worker FastAPI service with its own health/capability endpoints, model lifecycle, artifact loading, and retrieval execution. The portal computes UI capability from a combination of local feature flags and worker health/status, then proxies user MegaStar requests to the worker instead of running inference in-process.
+Architecture: The mobile portal FastAPI app remains the main user-facing web API for auth, archive browsing, metadata, and submission. MegaStar execution should support two backends behind one stable portal contract: a local in-process backend and a dedicated worker FastAPI service with its own health/capability endpoints, model lifecycle, artifact loading, and retrieval execution. The portal computes MegaStar capability from local feature flags plus backend availability, and routes requests through a backend selector that can use either direct local execution or worker proxy mode.
 
 Tech Stack: FastAPI, Python adapters/services in mobile_portal/app, a new MegaStar worker app under mobile_portal/megastar_worker or similar, existing src/dl and star_identification/megastarid code, current portal frontend React/TypeScript, optional systemd service config for the worker.
 
@@ -24,23 +24,25 @@ Current state:
 - mobile_portal FastAPI app directly hosts MegaStar capability logic, route, preprocessing, model adapter, artifact loading, and retrieval service in-process
 - frontend hides or shows MegaStar based on session megastar_lookup state
 - this is good for prototyping but mixes inference lifecycle with normal portal request serving
-
 Target state:
-- new MegaStar worker service owns:
+- MegaStar has two supported execution backends behind one stable portal API:
+  - local mode: existing in-process execution inside the mobile portal process
+  - worker mode: separate MegaStar worker service
+- the selected backend owns:
   - artifact availability checks
   - model loading / caching
   - query preprocessing
   - retrieval/index search
-  - candidate response generation
-- main portal owns:
+  - request-level inference execution
+- main portal always owns:
   - auth
   - user session/capability exposure
   - UI API surface
-  - proxying selected local image lookup to worker
+  - backend selection and request dispatch
 - portal capability becomes a composition of:
   - local feature flag enabled
-  - worker reachable/healthy
-  - worker reports assets fresh/enabled
+  - selected backend available/healthy
+  - selected backend reports assets fresh/enabled
 
 Recommended directory split
 - mobile_portal/app/...
@@ -77,8 +79,11 @@ Worker API proposal
   - returns same MegaStarLookupResponse contract already used by portal UI
 
 Portal API after refactor
-- keep GET /api/session unchanged in shape, but its megastar_lookup info is now derived from worker status + local config
-- keep POST /api/megastar/lookup unchanged for frontend, but internally proxy to worker
+- keep GET /api/session unchanged in shape, but its megastar_lookup info is derived from the selected backend status + local config
+- keep POST /api/megastar/lookup unchanged for frontend, but internally dispatch through a backend selector
+- backend selector modes for v1 refactor:
+  - local: call existing in-process service path
+  - worker: proxy to worker
 
 Important design choice
 Keep the frontend contract stable.
@@ -128,8 +133,8 @@ Validation strategy
 
 Execution phases
 
-### Phase 0: Freeze refactor boundary
-Objective: Decide exactly what moves into the worker and what remains in portal.
+### Phase 0: Freeze dual-mode boundary
+Objective: Decide exactly what remains shared, what runs in local mode, and what runs in worker mode.
 
 Files:
 - Modify: docs/plans/2026-04-03-megastar-worker-refactor.md
@@ -140,8 +145,9 @@ Files:
 Tasks:
 1. Freeze worker API shape (/health, /status, /lookup).
 2. Freeze portal API stability requirement (/api/session and /api/megastar/lookup stay stable).
-3. Freeze proxy-vs-direct responsibility split.
-4. Commit docs.
+3. Freeze backend selector contract: local mode and worker mode must both satisfy the same portal request/response semantics.
+4. Freeze what code remains shared versus duplicated.
+5. Commit docs.
 
 ### Phase 1: Scaffold worker service
 Objective: Create a standalone MegaStar worker app with health and status routes.
@@ -179,8 +185,8 @@ Tasks:
 5. Implement worker /lookup using the current real retrieval service logic.
 6. Keep no-write behavior and tests.
 
-### Phase 3: Add portal-side worker client
-Objective: Main portal talks to the worker instead of doing inference locally.
+### Phase 3: Add portal-side backend selector and worker client
+Objective: Main portal can choose between local execution and worker execution without changing the frontend contract.
 
 Files:
 - Create: mobile_portal/app/adapters/megastar_worker_client.py
@@ -191,10 +197,13 @@ Files:
 
 Tasks:
 1. Add worker client for /status and /lookup.
-2. Replace in-process capability computation in /api/session with worker-aware capability computation.
-3. Replace in-process /api/megastar/lookup route implementation with proxy logic.
-4. Preserve current response contract.
-5. Add tests for worker unavailable / stale / enabled paths.
+2. Add a backend selector abstraction with at least two modes:
+   - local: call current in-process MegaStar service path
+   - worker: proxy to worker
+3. Replace direct capability computation in /api/session with backend-selector-aware capability computation.
+4. Replace direct /api/megastar/lookup implementation with backend-selector dispatch.
+5. Preserve current response contract.
+6. Add tests for local mode, worker mode, worker unavailable, stale, and enabled paths.
 
 ### Phase 4: Preserve frontend behavior
 Objective: Ensure frontend contract remains stable.
@@ -245,11 +254,11 @@ Key technical decisions to keep
 
 Recommended first implementation chunk
 Do only Phases 0-1 first:
-- freeze worker boundary
+- freeze dual-mode boundary
 - scaffold worker app with /health and /status
-- no proxy switch yet
+- no portal cutover yet
 
-That gives us a clean service boundary before moving inference host logic.
+That gives us a clean service boundary while preserving the current local in-process path as a working fallback.
 
 Verification commands
 - Portal backend tests:
