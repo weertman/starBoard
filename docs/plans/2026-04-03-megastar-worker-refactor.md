@@ -61,6 +61,18 @@ Worker responsibilities
 - status response with exact availability reason
 - request-level inference execution
 
+Runtime policy
+- Preferred runtime mode is CPU-warm, GPU-on-demand.
+- Both local mode and worker mode should keep the chosen MegaStar model loaded in CPU RAM when idle.
+- Neither mode should keep the model resident on GPU between requests.
+- For an incoming lookup request:
+  - preprocess on CPU
+  - move the warmed model and batch-1 tensor onto GPU only for the embedding forward pass when CUDA is available
+  - move results back to CPU immediately after inference
+  - run archive embedding comparison on CPU
+  - release transient GPU memory after the request
+- If CUDA is unavailable, both modes run fully on CPU under the same checkpoint/artifact contract.
+
 Portal responsibilities after refactor
 - call worker /status or /health+capability endpoint
 - expose megastar_lookup status to frontend via /api/session

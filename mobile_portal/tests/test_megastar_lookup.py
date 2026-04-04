@@ -380,6 +380,7 @@ def test_megastar_model_adapter_loads_once_and_returns_normalized_embedding(tmp_
     assert embedding1.shape == (4,)
     assert np.isclose(np.linalg.norm(embedding1), 1.0)
     assert np.allclose(embedding1, embedding2)
+    assert str(adapter._backend._device) == 'cpu'
 
 
 def test_megastar_result_resolver_maps_windows_artifact_path_to_portal_descriptor(tmp_path, monkeypatch):
