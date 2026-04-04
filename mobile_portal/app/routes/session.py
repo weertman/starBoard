@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from ..auth import require_authenticated_email
-from ..config import get_megastar_capability_status
+from ..services.megastar_backend_selector import get_megastar_capability_status
 from ..models.api import SessionResponse
 
 router = APIRouter()
@@ -22,6 +22,7 @@ def session(user_email: str = Depends(require_authenticated_email)):
         'megastar_lookup': {
             'enabled': megastar.enabled,
             'state': megastar.state,
+            'backend': megastar.backend,
             'reason': megastar.reason,
             'model_key': megastar.model_key,
         },

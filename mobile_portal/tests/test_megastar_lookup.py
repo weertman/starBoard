@@ -1,6 +1,7 @@
 import io
 import json
 from pathlib import Path
+from urllib.error import URLError
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -24,8 +25,24 @@ from .conftest import build_test_app, make_image
 AUTH = {'cf-access-authenticated-user-email': 'field@example.org'}
 
 
+class _FakeUrlopenResponse:
+    def __init__(self, payload, *, status=200):
+        self.payload = json.dumps(payload).encode('utf-8')
+        self.status = status
+
+    def read(self):
+        return self.payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
 def _upload_file_tuple(content: bytes | None = None, *, filename: str = 'selected.jpg', content_type: str = 'image/jpeg'):
     return {'file': (filename, content or b'fake-image-bytes', content_type)}
+
 
 
 def _make_image_bytes(color=(200, 80, 40)) -> bytes:
@@ -452,8 +469,17 @@ def test_megastar_lookup_route_returns_real_results_without_archive_writes(tmp_p
 
     monkeypatch.setattr(
         route_mod,
-        'get_megastar_lookup_service',
-        lambda: MegaStarLookupService(settings=get_settings(), backend_factory=_ConstantEmbeddingBackend),
+        'get_megastar_lookup_backend',
+        lambda: type(
+            'LocalBackend',
+            (),
+            {
+                'lookup_upload': lambda self, *, filename, content, content_type=None: MegaStarLookupService(
+                    settings=get_settings(),
+                    backend_factory=_ConstantEmbeddingBackend,
+                ).lookup_upload(filename=filename, content=content, content_type=content_type)
+            },
+        )(),
     )
 
     before_files = _archive_file_set(archive)
@@ -489,7 +515,7 @@ def test_megastar_lookup_route_can_return_empty_state(tmp_path, monkeypatch):
                 capability_state='enabled',
             )
 
-    monkeypatch.setattr(route_mod, 'get_megastar_lookup_service', lambda: _StubService())
+    monkeypatch.setattr(route_mod, 'get_megastar_lookup_backend', lambda: _StubService())
     client = TestClient(app)
     r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
 
@@ -535,7 +561,7 @@ def test_megastar_lookup_route_can_return_weak_state(tmp_path, monkeypatch):
                 capability_state='enabled',
             )
 
-    monkeypatch.setattr(route_mod, 'get_megastar_lookup_service', lambda: _StubService())
+    monkeypatch.setattr(route_mod, 'get_megastar_lookup_backend', lambda: _StubService())
     client = TestClient(app)
     r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
 
@@ -543,3 +569,85 @@ def test_megastar_lookup_route_can_return_weak_state(tmp_path, monkeypatch):
     body = r.json()
     assert body['status'] == 'weak'
     assert body['candidates'][0]['entity_id'] == 'beta'
+
+
+
+def test_megastar_lookup_route_dispatches_to_worker_backend_when_selected(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_BACKEND', 'worker')
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_WORKER_URL', 'http://megastar-worker.test')
+    app, _archive = build_test_app(tmp_path, monkeypatch)
+    client = TestClient(app)
+
+    def _fake_urlopen(req, timeout=0):
+        if req.full_url.endswith('/status'):
+            return _FakeUrlopenResponse(
+                {
+                    'enabled': True,
+                    'state': 'enabled',
+                    'reason': None,
+                    'model_key': 'worker-model-v1',
+                }
+            )
+        if req.full_url.endswith('/lookup'):
+            return _FakeUrlopenResponse(
+                {
+                    'query_image_name': 'selected.jpg',
+                    'status': 'ok',
+                    'candidates': [
+                        {
+                            'rank': 1,
+                            'entity_type': 'gallery',
+                            'entity_id': 'anchovy',
+                            'retrieval_score': 0.91,
+                            'best_match_image': {
+                                'image_id': 'gallery:anchovy:0',
+                                'label': 'best.jpg',
+                                'encounter': 'enc-2026-04-03',
+                                'preview_url': '/api/archive/media/gallery:anchovy:0/preview',
+                                'fullres_url': '/api/archive/media/gallery:anchovy:0/full',
+                                'width': 120,
+                                'height': 90,
+                            },
+                            'best_match_label': 'best.jpg',
+                            'encounter': 'enc-2026-04-03',
+                            'encounter_date': '2026-04-03',
+                        }
+                    ],
+                    'processing_ms': 12,
+                    'capability_state': 'enabled',
+                    'availability_reason': None,
+                }
+            )
+        raise AssertionError(f'unexpected worker URL: {req.full_url}')
+
+    monkeypatch.setattr('mobile_portal.app.services.megastar_worker_client.request.urlopen', _fake_urlopen)
+
+    r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body['status'] == 'ok'
+    assert body['candidates'][0]['entity_id'] == 'anchovy'
+    assert body['capability_state'] == 'enabled'
+
+
+
+def test_megastar_lookup_route_returns_unavailable_when_worker_backend_unreachable(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
+    monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_BACKEND', 'worker')
+    app, _archive = build_test_app(tmp_path, monkeypatch)
+    client = TestClient(app)
+
+    def _fail_urlopen(req, timeout=0):
+        raise URLError('connection refused')
+
+    monkeypatch.setattr('mobile_portal.app.services.megastar_worker_client.request.urlopen', _fail_urlopen)
+
+    r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
+
+    assert r.status_code == 503
+    body = r.json()
+    assert body['status'] == 'unavailable'
+    assert body['capability_state'] == 'unavailable'
+    assert body['availability_reason'] == 'worker_unreachable'

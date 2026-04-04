@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class MegaStarCapabilityInfo(BaseModel):
     enabled: bool
     state: Literal['enabled', 'disabled', 'unavailable']
+    backend: Literal['local', 'worker']
     reason: str | None = None
     model_key: str | None = None
 

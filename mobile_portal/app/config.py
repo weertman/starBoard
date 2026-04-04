@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .adapters.megastar_artifact_loader import load_megastar_artifact_availability
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -20,6 +18,9 @@ class Settings:
     cf_bypass_localhost: bool
     preview_cache_dir: Path
     megastar_enabled: bool
+    megastar_backend: Literal['local', 'worker']
+    megastar_worker_url: str
+    megastar_worker_timeout_seconds: float
     megastar_model_key_override: str | None
     megastar_artifact_root: Path
     megastar_registry_path: Path
@@ -30,6 +31,7 @@ class Settings:
 class MegaStarCapabilityStatus:
     enabled: bool
     state: Literal['enabled', 'disabled', 'unavailable']
+    backend: Literal['local', 'worker']
     reason: str | None = None
     model_key: str | None = None
     artifact_dir: Path | None = None
@@ -57,6 +59,9 @@ def get_settings() -> Settings:
         cf_bypass_localhost=os.getenv('STARBOARD_MOBILE_CF_BYPASS_LOCALHOST', '0') == '1',
         preview_cache_dir=cache_dir,
         megastar_enabled=os.getenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '0') == '1',
+        megastar_backend='worker' if os.getenv('STARBOARD_MOBILE_MEGASTAR_BACKEND', 'local').strip().lower() == 'worker' else 'local',
+        megastar_worker_url=os.getenv('STARBOARD_MOBILE_MEGASTAR_WORKER_URL', 'http://127.0.0.1:8092').rstrip('/'),
+        megastar_worker_timeout_seconds=float(os.getenv('STARBOARD_MOBILE_MEGASTAR_WORKER_TIMEOUT_SECONDS', '5')),
         megastar_model_key_override=megastar_model_key_override,
         megastar_artifact_root=megastar_artifact_root,
         megastar_registry_path=megastar_registry_path,
@@ -65,12 +70,6 @@ def get_settings() -> Settings:
 
 
 def get_megastar_capability_status(settings: Settings | None = None) -> MegaStarCapabilityStatus:
-    settings = settings or get_settings()
-    availability = load_megastar_artifact_availability(settings)
-    return MegaStarCapabilityStatus(
-        enabled=availability.enabled,
-        state=availability.state,
-        reason=availability.reason,
-        model_key=availability.model_key,
-        artifact_dir=availability.artifact_dir,
-    )
+    from .services.megastar_backend_selector import get_megastar_capability_status as _get_megastar_capability_status
+
+    return _get_megastar_capability_status(settings or get_settings())

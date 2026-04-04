@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from ..auth import require_authenticated_email
-from ..config import get_megastar_capability_status
 from ..models.megastar_api import MegaStarLookupResponse
 from ..services.audit import audit
-from ..services.megastar_lookup_service import MegaStarLookupUnavailable, get_megastar_lookup_service
+from ..services.megastar_backend_selector import get_megastar_capability_status, get_megastar_lookup_backend
+from ..services.megastar_lookup_service import MegaStarLookupUnavailable
 
 router = APIRouter()
 
@@ -42,7 +42,7 @@ async def megastar_lookup(
 
     try:
         payload = await file.read()
-        response = get_megastar_lookup_service().lookup_upload(
+        response = get_megastar_lookup_backend().lookup_upload(
             filename=file.filename or 'upload.jpg',
             content=payload,
             content_type=file.content_type,
