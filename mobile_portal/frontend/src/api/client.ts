@@ -1,6 +1,14 @@
+export type MegaStarCapabilityInfo = {
+  enabled: boolean
+  state: 'enabled' | 'disabled' | 'unavailable'
+  reason?: string | null
+  model_key?: string | null
+}
+
 export type SessionResponse = {
   authenticated_email: string
   capabilities: Record<string, boolean>
+  megastar_lookup?: MegaStarCapabilityInfo | null
 }
 
 export type SchemaField = {
@@ -94,7 +102,7 @@ export type MegaStarLookupCandidate = {
 
 export type MegaStarLookupResponse = {
   query_image_name: string
-  status: 'ok' | 'empty' | 'weak' | 'unavailable'
+  status: 'ok' | 'weak' | 'empty' | 'unavailable'
   candidates: MegaStarLookupCandidate[]
   processing_ms: number
   capability_state?: 'enabled' | 'disabled' | 'unavailable' | null
@@ -123,9 +131,14 @@ export async function lookupMegaStar(file: File): Promise<MegaStarLookupResponse
   form.append('file', file)
   const res = await fetch('/api/megastar/lookup', { method: 'POST', body: form })
   const text = await res.text()
-  const payload = text ? JSON.parse(text) : null
+  let payload: MegaStarLookupResponse | null = null
+  try {
+    payload = text ? (JSON.parse(text) as MegaStarLookupResponse) : null
+  } catch {
+    payload = null
+  }
   if (!res.ok) {
-    throw new Error(payload?.availability_reason || payload?.detail || `MegaStar lookup failed: ${res.status}`)
+    throw new Error(payload?.availability_reason || `MegaStar lookup failed: ${res.status}`)
   }
   return payload as MegaStarLookupResponse
 }

@@ -4,9 +4,17 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+class MegaStarCapabilityInfo(BaseModel):
+    enabled: bool
+    state: Literal['enabled', 'disabled', 'unavailable']
+    reason: str | None = None
+    model_key: str | None = None
+
+
 class SessionResponse(BaseModel):
     authenticated_email: str
     capabilities: dict[str, bool]
+    megastar_lookup: MegaStarCapabilityInfo | None = None
 
 
 class SchemaFieldOption(BaseModel):

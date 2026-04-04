@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSession } from './state/session'
 import { useLocalImages } from './state/localImages'
-import type { ImageDescriptor, MegaStarLookupCandidate, MegaStarLookupResponse } from './api/client'
+import type { ImageDescriptor, MegaStarCapabilityInfo, MegaStarLookupCandidate, MegaStarLookupResponse } from './api/client'
 import { lookupMegaStar, submitObservation } from './api/client'
 import { HomeScreen } from './screens/HomeScreen'
 import { ObservationWorkspace } from './screens/ObservationWorkspace'
@@ -63,7 +63,8 @@ export function App() {
   const megastarRequestIdRef = useRef(0)
 
   const selectedLocalKey = getLocalImageKey(selectedPreview?.file)
-  const megastarEnabled = !!session?.capabilities?.megastar_lookup
+  const megastarInfo: MegaStarCapabilityInfo = session?.megastar_lookup ?? { enabled: false, state: 'disabled', reason: 'session_not_loaded' }
+  const megastarEnabled = megastarInfo.enabled
 
   useEffect(() => {
     if (megastar.sourceKey && megastar.sourceKey !== selectedLocalKey) {
@@ -112,7 +113,7 @@ export function App() {
 
   async function handleMegaStarLookup() {
     const localFile = selectedPreview?.file
-    if (!localFile) return
+    if (!localFile || !megastarEnabled) return
     const sourceKey = getLocalImageKey(localFile)
     const requestId = megastarRequestIdRef.current + 1
     megastarRequestIdRef.current = requestId
@@ -134,7 +135,7 @@ export function App() {
 
   const archiveImage = archiveImages[selectedArchiveIndex] ?? null
   const inferredTargetType: 'query' | 'gallery' = archiveImage ? 'gallery' : 'query'
-  const inferredTargetId = metadataDraft.targetId || (archiveImage ? 'anchovy' : '')
+  const inferredTargetId = metadataDraft.targetId || ''
 
   function handleReady(nextDraft: MetadataDraft) {
     setMetadataDraft(nextDraft)
@@ -205,6 +206,7 @@ export function App() {
           submitError={submitError}
           submitMessage={submitMessage}
           megastarEnabled={megastarEnabled}
+          megastarInfo={megastarInfo}
           megastarLoading={megastar.loading}
           megastarResult={megastar.result}
           megastarError={megastar.error}

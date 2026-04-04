@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from fastapi import APIRouter, Depends
 
 from ..auth import require_authenticated_email
@@ -19,5 +18,11 @@ def session(user_email: str = Depends(require_authenticated_email)):
             'submit_query': True,
             'submit_gallery': True,
             'megastar_lookup': megastar.enabled,
+        },
+        'megastar_lookup': {
+            'enabled': megastar.enabled,
+            'state': megastar.state,
+            'reason': megastar.reason,
+            'model_key': megastar.model_key,
         },
     }
