@@ -4,10 +4,12 @@ Target hostname:
 - `mobile.fhl-star-board.com`
 
 Runtime model:
-- FastAPI service on `127.0.0.1:8091`
-- Cloudflare Access in front of the hostname
-- cloudflared ingress routes hostname to local FastAPI service
-- service runs independently of desktop `main.py`
+- Public portal FastAPI service on `127.0.0.1:8091`
+- Internal MegaStar worker on `127.0.0.1:8093`
+- Cloudflare Access in front of the public hostname only
+- cloudflared ingress routes hostname to the local portal service
+- worker remains localhost-only and is called internally by the portal
+- services run independently of desktop `main.py`
 
 Required env:
 - `STARBOARD_ARCHIVE_DIR`

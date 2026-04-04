@@ -6,7 +6,8 @@ Current status:
 - The existing tunnel service on this machine is `cloudflared-starboard.service` for tunnel `fhl-star-board`.
 
 Target origin:
-- `http://127.0.0.1:8091`
+- Public portal only: `http://127.0.0.1:8091`
+- Do not expose the MegaStar worker publicly; keep it on localhost only (for example `http://127.0.0.1:8093`).
 
 Add this hostname to the existing tunnel ingress:
 
