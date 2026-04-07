@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getMetadataSchema, getLookupOptions, type SchemaField } from '../api/client'
+import 'leaflet/dist/leaflet.css'
 
 export type MetadataDraft = {
   targetType: 'query' | 'gallery'
@@ -196,7 +197,66 @@ function renderFieldInput(field: SchemaField, value: string, setValue: (value: s
   return <input type="text" value={value} onChange={(e) => setValue(e.target.value)} style={inputStyle} />
 }
 
-// ---- Location group: name + lat + lon ----
+// ---- Map picker (lazy-loaded to avoid SSR issues with leaflet) ----
+function MapPicker({ lat, lon, onPick }: {
+  lat: number; lon: number; onPick: (lat: number, lon: number) => void
+}) {
+  const mapRef = useRef<HTMLDivElement>(null)
+  const mapInstance = useRef<any>(null)
+  const markerRef = useRef<any>(null)
+
+  useEffect(() => {
+    if (!mapRef.current || mapInstance.current) return
+    import('leaflet').then(L => {
+      // Fix default marker icon paths (webpack/vite strips them)
+      delete (L.Icon.Default.prototype as any)._getIconUrl
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      })
+
+      const map = L.map(mapRef.current!, { zoomControl: true }).setView([lat, lon], 12)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19,
+      }).addTo(map)
+      const marker = L.marker([lat, lon], { draggable: true }).addTo(map)
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng()
+        onPick(pos.lat, pos.lng)
+      })
+      map.on('click', (e: any) => {
+        marker.setLatLng(e.latlng)
+        onPick(e.latlng.lat, e.latlng.lng)
+      })
+      mapInstance.current = map
+      markerRef.current = marker
+
+      // Force a resize after mount (fixes grey tiles in modals)
+      setTimeout(() => map.invalidateSize(), 200)
+    })
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove()
+        mapInstance.current = null
+        markerRef.current = null
+      }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Update marker if lat/lon change externally
+  useEffect(() => {
+    if (markerRef.current && mapInstance.current) {
+      markerRef.current.setLatLng([lat, lon])
+      mapInstance.current.setView([lat, lon], mapInstance.current.getZoom())
+    }
+  }, [lat, lon])
+
+  return <div ref={mapRef} style={{ height: 220, borderRadius: 10, border: '1px solid #ccd6eb', marginTop: 6 }} />
+}
+
+// ---- Location group: name + lat + lon + map ----
 function LocationGroup({
   fields, values, setValues,
 }: {
@@ -204,10 +264,19 @@ function LocationGroup({
   values: Record<string, string>
   setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }) {
+  const [showMap, setShowMap] = useState(false)
   const locField = fields.find(f => f.name === 'location')
   const latField = fields.find(f => f.name === 'latitude')
   const lonField = fields.find(f => f.name === 'longitude')
   function set(name: string, val: string) { setValues(prev => ({ ...prev, [name]: val })) }
+
+  const lat = parseFloat(values['latitude'] || '') || 48.546
+  const lon = parseFloat(values['longitude'] || '') || -123.013
+
+  function handleMapPick(newLat: number, newLon: number) {
+    set('latitude', newLat.toFixed(6))
+    set('longitude', newLon.toFixed(6))
+  }
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -235,6 +304,13 @@ function LocationGroup({
           </label>
         )}
       </div>
+      <button
+        onClick={() => setShowMap(prev => !prev)}
+        style={{ ...pillStyle, alignSelf: 'start', color: '#2f6fed' }}
+      >
+        {showMap ? '▾ Hide map' : '🗺 Pick on map'}
+      </button>
+      {showMap && <MapPicker lat={lat} lon={lon} onPick={handleMapPick} />}
     </div>
   )
 }
