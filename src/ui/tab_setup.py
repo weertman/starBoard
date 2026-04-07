@@ -1576,17 +1576,18 @@ class TabSetup(QWidget):
         if not encounters:
             self._log_batch(f"No dated encounters found in {id_str}.")
             return
-        n_img = sum(len(imgs) for _, _, imgs in encounters)
-        it = QListWidgetItem(
-            f"{id_str}  —  {len(encounters)} encounter{'s' if len(encounters) != 1 else ''}, {n_img} images"
-        )
-        enc_data = [
-            (fn, dt.isoformat(), [str(p) for p in imgs])
-            for fn, dt, imgs in encounters
-        ]
-        it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
-        self.list_discovered.addItem(it)
-        self._log_batch(f"Found 1 ID ({id_str}) with {len(encounters)} encounters.")
+        # Show each encounter as its own row
+        for fn, dt, imgs in encounters:
+            suffix = _encounter_suffix(fn)
+            label = dt.strftime("%m/%d/%Y")
+            if suffix:
+                label += f"  {suffix}"
+            label += f"  —  {len(imgs)} images"
+            it = QListWidgetItem(label)
+            enc_data = [(fn, dt.isoformat(), [str(p) for p in imgs])]
+            it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
+            self.list_discovered.addItem(it)
+        self._log_batch(f"Found {len(encounters)} encounters for {id_str}.")
         # Hide date row since encounters have their own dates
         for w in self._date_row_widgets:
             w.setVisible(False)
