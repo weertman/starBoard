@@ -9,19 +9,26 @@ COLOR_FIELDS = {
     'rosette_color', 'papillae_stripe_color', 'madreporite_color', 'overall_color'
 }
 
+# Groups that are auto-populated by the desktop app and not meaningful on mobile
+_MOBILE_EXCLUDED_GROUPS = {'morphometric_auto', 'sync'}
+
 
 def _mobile_widget(field) -> str:
     t = field.annotation_type
     if t in {AnnotationType.NUMERIC_INT, AnnotationType.NUMERIC_FLOAT}:
         return 'number'
     if t == AnnotationType.MORPHOMETRIC_CODE:
-        return 'text'
+        return 'short_arm_code'
     if t == AnnotationType.TEXT_FREE:
         return 'textarea'
-    if t == AnnotationType.TEXT_HISTORY:
-        return 'text'
+    if field.name in COLOR_FIELDS:
+        return 'color_select'
+    if field.name == 'location':
+        return 'location'
     if field.options:
         return 'select'
+    if t == AnnotationType.TEXT_HISTORY:
+        return 'text'
     return 'text'
 
 
@@ -29,12 +36,14 @@ def project_schema() -> list[dict]:
     vocab = get_vocabulary_store()
     fields = []
     for field in FIELD_DEFINITIONS:
+        if field.group in _MOBILE_EXCLUDED_GROUPS:
+            continue
         group = GROUP_BY_NAME[field.group]
         vocabulary = []
         if field.name in COLOR_FIELDS:
-            vocabulary = vocab.get_colors(field.name)
+            vocabulary = sorted(set(vocab.get_colors(field.name)))
         elif field.name == 'location':
-            vocabulary = vocab.get_locations()
+            vocabulary = sorted(set(vocab.get_locations()))
         fields.append({
             'name': field.name,
             'display_name': field.display_name,

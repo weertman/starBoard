@@ -19,6 +19,8 @@ export type SchemaField = {
   group_display_name: string
   required: boolean
   tooltip: string
+  min_value: number | null
+  max_value: number | null
   options: { label: string; value: string | number }[]
   vocabulary: string[]
   mobile_widget: string
