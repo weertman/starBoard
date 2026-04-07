@@ -124,7 +124,7 @@ def download_models(project_root: Path = None, interactive: bool = True) -> Tupl
     
     # Calculate total size (approximate)
     size_estimates = {
-        "megastarid_default.pth": 336,
+        "megastarid_default.pth": 337,
         "megastarid_finetune.pth": 336,
         "verification_circleloss.pth": 624,
         "starseg_best.pt": 53,

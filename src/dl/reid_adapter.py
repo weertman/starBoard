@@ -192,11 +192,19 @@ class ReIDAdapter:
             # Load checkpoint
             checkpoint = torch.load(checkpoint_path, map_location=self._device, weights_only=False)
             
-            # Extract config if present
+            # Extract config if present (must be a dataclass with .model attr;
+            # plain dicts from pretrain_depth_sweep checkpoints are ignored)
             config = checkpoint.get('config', None)
-            
-            # Determine image size from config or use default
-            if config and hasattr(config, 'model') and hasattr(config.model, 'image_size'):
+            if isinstance(config, dict):
+                # Dict config from training scripts — extract image_size if present,
+                # then discard so _create_model_from_checkpoint uses state_dict inference
+                model_cfg = config.get('model', {})
+                if isinstance(model_cfg, dict) and 'image_size' in model_cfg:
+                    self._image_size = model_cfg['image_size']
+                else:
+                    self._image_size = 384
+                config = None
+            elif config and hasattr(config, 'model') and hasattr(config.model, 'image_size'):
                 self._image_size = config.model.image_size
             else:
                 self._image_size = 384

@@ -130,7 +130,16 @@ class MegaStarModelAdapter:
             cpu_device = torch.device('cpu')
             checkpoint = torch.load(checkpoint_path, map_location=cpu_device, weights_only=False)
             config = checkpoint.get('config', None)
-            if config and hasattr(config, 'model') and hasattr(config.model, 'image_size'):
+            if isinstance(config, dict):
+                # Dict config from training scripts — extract image_size if present,
+                # then discard so _create_model_from_checkpoint uses state_dict inference
+                model_cfg = config.get('model', {})
+                if isinstance(model_cfg, dict) and 'image_size' in model_cfg:
+                    backend._image_size = model_cfg['image_size']
+                else:
+                    backend._image_size = 384
+                config = None
+            elif config and hasattr(config, 'model') and hasattr(config.model, 'image_size'):
                 backend._image_size = config.model.image_size
             else:
                 backend._image_size = 384
