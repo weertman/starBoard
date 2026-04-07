@@ -210,6 +210,58 @@ _ENC_DATE_RE = _re.compile(
 )
 
 
+def detect_folder_depth(root_dir) -> str:
+    """Probe a directory to guess its structure depth.
+
+    Returns one of:
+        "single_id"  — root contains dated encounter folders directly
+        "ids"        — root contains ID folders with dated encounters inside
+        "grouped"    — root contains group folders containing ID folders
+        "flat"       — root contains folders with images but no dated structure
+        "empty"      — nothing recognisable found
+
+    The heuristic checks the first few subdirectories at each level.
+    """
+    root = Path(root_dir)
+    if not root.is_dir():
+        return "empty"
+
+    children = sorted(p for p in root.iterdir() if p.is_dir())
+    if not children:
+        return "empty"
+
+    # Check if children themselves are dated encounter folders
+    dated_children = sum(1 for c in children if _parse_encounter_date(c.name) is not None)
+    if dated_children > 0 and dated_children >= len(children) * 0.5:
+        return "single_id"
+
+    # Check grandchildren: if most children contain dated sub-folders -> "ids" level
+    sampled = children[:8]
+    ids_with_encounters = 0
+    ids_with_sub_ids = 0
+    for child in sampled:
+        grandchildren = sorted(p for p in child.iterdir() if p.is_dir())
+        if not grandchildren:
+            continue
+        dated_gc = sum(1 for gc in grandchildren if _parse_encounter_date(gc.name) is not None)
+        if dated_gc > 0 and dated_gc >= len(grandchildren) * 0.5:
+            ids_with_encounters += 1
+        else:
+            # Check one more level: do grandchildren contain dated folders?
+            for gc in grandchildren[:4]:
+                ggc = [p for p in gc.iterdir() if p.is_dir()]
+                dated_ggc = sum(1 for g in ggc if _parse_encounter_date(g.name) is not None)
+                if dated_ggc > 0:
+                    ids_with_sub_ids += 1
+                    break
+
+    if ids_with_encounters > 0 and ids_with_encounters >= len(sampled) * 0.3:
+        return "ids"
+    if ids_with_sub_ids > 0 and ids_with_sub_ids >= len(sampled) * 0.3:
+        return "grouped"
+    return "flat"
+
+
 def _parse_encounter_date(folder_name: str) -> Optional[date]:
     """Parse a date from an encounter folder name.
 

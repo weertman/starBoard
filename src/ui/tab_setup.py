@@ -25,7 +25,7 @@ from src.data.id_registry import list_ids, id_exists, invalidate_id_cache
 from src.data.ingest import (
     ensure_encounter_name, place_images, discover_ids_and_images,
     discover_ids_with_encounters, discover_grouped_ids_with_encounters,
-    _encounter_suffix,
+    detect_folder_depth, _encounter_suffix, _parse_encounter_date,
 )
 from src.data.batch_undo import (
     generate_batch_id, record_batch_upload, list_batches,
@@ -1518,22 +1518,106 @@ class TabSetup(QWidget):
         self.list_discovered.clear()
 
         if mode == 0:
-            # Flat: ID / images  (original behaviour)
-            items = discover_ids_and_images(parent)
-            for id_str, files in items:
-                it = QListWidgetItem(f"{id_str}  —  {len(files)} images")
-                it.setData(Qt.UserRole, ("flat", id_str, [str(p) for p in files]))
-                self.list_discovered.addItem(it)
-            self._log_batch(f"Discovered {len(items)} IDs (flat).")
+            # Flat mode — always use original flat discovery
+            self._discover_flat(parent)
+        else:
+            # Encounter-aware modes: auto-detect depth to handle any folder level
+            depth = detect_folder_depth(parent)
+            self._log_batch(f"Detected structure: {depth}")
 
-        elif mode == 1:
-            # With Encounters: ID / date_encounter / images
-            items = discover_ids_with_encounters(parent)
-            for id_str, encounters in items:
+            if depth == "single_id":
+                # User selected a single ID folder (e.g. ursa_minor/)
+                self._discover_single_id(parent)
+            elif depth == "ids":
+                # User selected a folder of IDs (e.g. ADULT_FHL_STARS/)
+                self._discover_encounters(parent)
+            elif depth == "grouped":
+                # User selected a folder of groups (e.g. star_dataset_raw/)
+                self._discover_grouped(parent)
+            else:
+                # Fallback: try encounters first, then flat
+                items = discover_ids_with_encounters(parent)
+                if items:
+                    self._discover_encounters(parent)
+                else:
+                    self._log_batch("No dated encounters found, falling back to flat scan.")
+                    self._discover_flat(parent)
+
+        logger.info("Discovered %d entries under %s (mode=%d)",
+                     self.list_discovered.count(), str(parent), mode)
+        self._update_id_preview()
+
+    def _discover_flat(self, parent: str):
+        """Flat scan: each subfolder is one ID, all images lumped together."""
+        items = discover_ids_and_images(parent)
+        for id_str, files in items:
+            it = QListWidgetItem(f"{id_str}  —  {len(files)} images")
+            it.setData(Qt.UserRole, ("flat", id_str, [str(p) for p in files]))
+            self.list_discovered.addItem(it)
+        self._log_batch(f"Discovered {len(items)} IDs (flat).")
+
+    def _discover_single_id(self, id_folder: str):
+        """The user selected an individual ID folder that contains encounter sub-folders."""
+        from pathlib import Path
+        folder = Path(id_folder)
+        id_str = folder.name
+        encounters = []
+        from src.data.ingest import IMAGE_EXTS
+        for enc_dir in sorted(p for p in folder.iterdir() if p.is_dir()):
+            parsed = _parse_encounter_date(enc_dir.name)
+            if parsed is None:
+                continue
+            images = sorted(
+                p for p in enc_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+            )
+            if images:
+                encounters.append((enc_dir.name, parsed, images))
+        if not encounters:
+            self._log_batch(f"No dated encounters found in {id_str}.")
+            return
+        n_img = sum(len(imgs) for _, _, imgs in encounters)
+        it = QListWidgetItem(
+            f"{id_str}  —  {len(encounters)} encounter{'s' if len(encounters) != 1 else ''}, {n_img} images"
+        )
+        enc_data = [
+            (fn, dt.isoformat(), [str(p) for p in imgs])
+            for fn, dt, imgs in encounters
+        ]
+        it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
+        self.list_discovered.addItem(it)
+        self._log_batch(f"Found 1 ID ({id_str}) with {len(encounters)} encounters.")
+        # Hide date row since encounters have their own dates
+        for w in self._date_row_widgets:
+            w.setVisible(False)
+
+    def _discover_encounters(self, parent: str):
+        """Scan folder of IDs with dated encounter sub-folders."""
+        items = discover_ids_with_encounters(parent)
+        for id_str, encounters in items:
+            n_enc = len(encounters)
+            n_img = sum(len(imgs) for _, _, imgs in encounters)
+            it = QListWidgetItem(
+                f"{id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
+            )
+            enc_data = [
+                (fn, dt.isoformat(), [str(p) for p in imgs])
+                for fn, dt, imgs in encounters
+            ]
+            it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
+            self.list_discovered.addItem(it)
+        self._log_batch(f"Discovered {len(items)} IDs with encounters.")
+
+    def _discover_grouped(self, parent: str):
+        """Scan folder of groups containing IDs with dated encounters."""
+        groups = discover_grouped_ids_with_encounters(parent)
+        total_ids = 0
+        for group_name, ids in groups:
+            for id_str, encounters in ids:
                 n_enc = len(encounters)
                 n_img = sum(len(imgs) for _, _, imgs in encounters)
                 it = QListWidgetItem(
-                    f"{id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
+                    f"[{group_name}] {id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
                 )
                 enc_data = [
                     (fn, dt.isoformat(), [str(p) for p in imgs])
@@ -1541,33 +1625,10 @@ class TabSetup(QWidget):
                 ]
                 it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
                 self.list_discovered.addItem(it)
-            self._log_batch(f"Discovered {len(items)} IDs with encounters.")
-
-        else:
-            # Grouped: group / ID / date_encounter / images
-            groups = discover_grouped_ids_with_encounters(parent)
-            total_ids = 0
-            for group_name, ids in groups:
-                for id_str, encounters in ids:
-                    n_enc = len(encounters)
-                    n_img = sum(len(imgs) for _, _, imgs in encounters)
-                    it = QListWidgetItem(
-                        f"[{group_name}] {id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
-                    )
-                    enc_data = [
-                        (fn, dt.isoformat(), [str(p) for p in imgs])
-                        for fn, dt, imgs in encounters
-                    ]
-                    it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
-                    self.list_discovered.addItem(it)
-                    total_ids += 1
-            self._log_batch(
-                f"Discovered {total_ids} IDs across {len(groups)} groups."
-            )
-
-        logger.info("Discovered %d entries under %s (mode=%d)",
-                     self.list_discovered.count(), str(parent), mode)
-        self._update_id_preview()
+                total_ids += 1
+        self._log_batch(
+            f"Discovered {total_ids} IDs across {len(groups)} groups."
+        )
 
     def _on_add_existing(self):
         """Launch the Add to Existing wizard for matching folders to existing IDs."""
