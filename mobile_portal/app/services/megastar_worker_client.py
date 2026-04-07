@@ -63,7 +63,7 @@ class MegaStarWorkerClient:
             artifact_dir=None,
         )
 
-    def lookup_upload(self, *, filename: str, content: bytes, content_type: str | None = None) -> MegaStarLookupResponse:
+    def lookup_upload(self, *, filename: str, content: bytes, content_type: str | None = None, max_candidates: int = 5) -> MegaStarLookupResponse:
         boundary = f'----starboard-megastar-{uuid.uuid4().hex}'
         file_content_type = content_type or 'application/octet-stream'
         body = b''.join(
@@ -79,7 +79,7 @@ class MegaStarWorkerClient:
             )
         )
         payload = self._request_json(
-            '/lookup',
+            f'/lookup?max_candidates={max_candidates}',
             method='POST',
             data=body,
             headers={'Content-Type': f'multipart/form-data; boundary={boundary}'},

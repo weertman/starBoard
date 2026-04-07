@@ -128,10 +128,10 @@ export const getEntityEncounters = (entityId: string, entityType: 'gallery' | 'q
 export const suggestEntities = (entityType: 'gallery' | 'query', query: string, limit = 8) => api<EntitySuggestionResponse>(`/api/archive/suggest?entity_type=${entityType}&query=${encodeURIComponent(query)}&limit=${limit}`)
 export const getLookupOptions = (entityType: 'gallery' | 'query', location = '', limit = 200) => api<LookupOptionsResponse>(`/api/archive/options?entity_type=${entityType}&location=${encodeURIComponent(location)}&limit=${limit}`)
 
-export async function lookupMegaStar(file: File): Promise<MegaStarLookupResponse> {
+export async function lookupMegaStar(file: File, maxCandidates = 5): Promise<MegaStarLookupResponse> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch('/api/megastar/lookup', { method: 'POST', body: form })
+  const res = await fetch(`/api/megastar/lookup?max_candidates=${maxCandidates}`, { method: 'POST', body: form })
   const text = await res.text()
   let payload: MegaStarLookupResponse | null = null
   try {

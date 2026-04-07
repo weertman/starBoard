@@ -43,6 +43,7 @@ export function ObservationWorkspace({
   onMegaStarLookup,
   onClearMegaStar,
   onRetryMegaStar,
+  onLoadMoreMegaStar,
   onCompareMegaStarCandidate,
   onOpenMegaStarCandidate,
   onSubmit,
@@ -72,6 +73,7 @@ export function ObservationWorkspace({
   onMegaStarLookup: () => void
   onClearMegaStar: () => void
   onRetryMegaStar: () => void
+  onLoadMoreMegaStar: (n: number) => void
   onCompareMegaStarCandidate: (candidate: MegaStarLookupCandidate) => void
   onOpenMegaStarCandidate: (candidate: MegaStarLookupCandidate) => void
   onSubmit: () => void
@@ -192,6 +194,13 @@ export function ObservationWorkspace({
                       </div>
                     </div>
                   ))}
+                  <button
+                    onClick={() => onLoadMoreMegaStar(megastarResult.candidates.length + 5)}
+                    disabled={megastarLoading}
+                    style={{ border: '1px solid #d0d5dd', borderRadius: 10, padding: '10px 12px', background: 'white', color: '#344054', fontWeight: 500 }}
+                  >
+                    {megastarLoading ? 'Loading…' : `Load more (showing ${megastarResult.candidates.length})`}
+                  </button>
                 </div>
               )}
             </div>

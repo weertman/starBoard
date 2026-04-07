@@ -24,9 +24,8 @@ ALLOWED_IMAGE_CONTENT_TYPES = {
     'image/tiff',
     'image/webp',
 }
-TOP_IMAGE_MATCHES = 25
-MAX_CANDIDATES = 5
-MIN_CANDIDATE_SCORE = 0.05
+TOP_IMAGE_MATCHES = 50
+DEFAULT_MAX_CANDIDATES = 5
 WEAK_CANDIDATE_SCORE = 0.35
 WEAK_MARGIN_SCORE = 0.03
 
@@ -73,7 +72,7 @@ class MegaStarLookupService:
         self.yolo_preprocessor = yolo_preprocessor
         self.result_resolver = result_resolver or MegaStarResultResolver()
 
-    def lookup_upload(self, *, filename: str, content: bytes, content_type: str | None = None) -> MegaStarLookupResponse:
+    def lookup_upload(self, *, filename: str, content: bytes, content_type: str | None = None, max_candidates: int = DEFAULT_MAX_CANDIDATES) -> MegaStarLookupResponse:
         started = perf_counter()
         self._validate_upload(filename=filename, content=content, content_type=content_type)
         availability = load_megastar_artifact_availability(self.settings)
@@ -89,7 +88,7 @@ class MegaStarLookupService:
             model = MegaStarModelAdapter(availability=availability, backend_factory=self.backend_factory)
             query_embedding = model.extract_embedding(preprocessed.image_tensor)
             hits = self.search_image_hits(query_embedding=query_embedding, availability=availability)
-            candidates = self.aggregate_id_candidates(hits)
+            candidates = self.aggregate_id_candidates(hits, max_candidates=max_candidates)
             response_candidates = self._build_response_candidates(candidates)
         except MegaStarQueryPreprocessError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -150,7 +149,7 @@ class MegaStarLookupService:
             )
         return hits
 
-    def aggregate_id_candidates(self, hits: list[MegaStarImageSearchHit], *, max_candidates: int = MAX_CANDIDATES) -> list[MegaStarIdCandidate]:
+    def aggregate_id_candidates(self, hits: list[MegaStarImageSearchHit], *, max_candidates: int = DEFAULT_MAX_CANDIDATES) -> list[MegaStarIdCandidate]:
         grouped: dict[str, MegaStarImageSearchHit] = {}
         for hit in hits:
             current = grouped.get(hit.entity_id)
@@ -160,8 +159,6 @@ class MegaStarLookupService:
         ranked = sorted(grouped.values(), key=lambda hit: (-hit.retrieval_score, hit.entity_id))
         filtered: list[MegaStarIdCandidate] = []
         for hit in ranked:
-            if hit.retrieval_score < MIN_CANDIDATE_SCORE:
-                continue
             encounter = None
             encounter_date = None
             try:

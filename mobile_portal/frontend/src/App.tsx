@@ -111,7 +111,7 @@ export function App() {
     setMode('lookup')
   }
 
-  async function handleMegaStarLookup() {
+  async function handleMegaStarLookup(maxCandidates = 5) {
     const localFile = selectedPreview?.file
     if (!localFile || !megastarEnabled) return
     const sourceKey = getLocalImageKey(localFile)
@@ -119,7 +119,7 @@ export function App() {
     megastarRequestIdRef.current = requestId
     setMegaStar({ sourceKey, loading: true, result: null, error: null })
     try {
-      const result = await lookupMegaStar(localFile)
+      const result = await lookupMegaStar(localFile, maxCandidates)
       if (megastarRequestIdRef.current !== requestId) return
       setMegaStar({ sourceKey, loading: false, result, error: null })
     } catch (err) {
@@ -210,9 +210,10 @@ export function App() {
           megastarLoading={megastar.loading}
           megastarResult={megastar.result}
           megastarError={megastar.error}
-          onMegaStarLookup={() => void handleMegaStarLookup()}
+          onMegaStarLookup={() => void handleMegaStarLookup(5)}
           onClearMegaStar={clearMegaStar}
-          onRetryMegaStar={() => void handleMegaStarLookup()}
+          onRetryMegaStar={() => void handleMegaStarLookup(5)}
+          onLoadMoreMegaStar={(n) => void handleMegaStarLookup(n)}
           onCompareMegaStarCandidate={compareMegaStarCandidate}
           onOpenMegaStarCandidate={openMegaStarCandidateInLookup}
           onSubmit={() => void handleSubmit()}

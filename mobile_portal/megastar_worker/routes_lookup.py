@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from mobile_portal.app.models.megastar_api import MegaStarLookupResponse
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.post('/lookup', response_model=MegaStarLookupResponse)
-async def lookup(file: UploadFile = File(...)):
+async def lookup(file: UploadFile = File(...), max_candidates: int = Query(default=5, ge=1, le=50)):
     started = perf_counter()
     capability = capability_status()
     if not capability.enabled:
@@ -35,6 +35,7 @@ async def lookup(file: UploadFile = File(...)):
             filename=file.filename or 'upload.jpg',
             content=payload,
             content_type=file.content_type,
+            max_candidates=max_candidates,
         )
         return response
     except MegaStarLookupUnavailable as exc:

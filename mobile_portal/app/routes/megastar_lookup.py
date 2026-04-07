@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from ..auth import require_authenticated_email
@@ -17,6 +17,7 @@ router = APIRouter()
 @router.post('/megastar/lookup', response_model=MegaStarLookupResponse)
 async def megastar_lookup(
     file: UploadFile = File(...),
+    max_candidates: int = Query(default=5, ge=1, le=50),
     user_email: str = Depends(require_authenticated_email),
 ):
     started = perf_counter()
@@ -46,6 +47,7 @@ async def megastar_lookup(
             filename=file.filename or 'upload.jpg',
             content=payload,
             content_type=file.content_type,
+            max_candidates=max_candidates,
         )
     except MegaStarLookupUnavailable as exc:
         error_payload = MegaStarLookupResponse(
