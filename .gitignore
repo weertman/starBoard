@@ -107,3 +107,5 @@ metadata_embeddings.json
 *.temp
 python_files.json
 *.npz
+mobile_portal/.cache/
+mobile_portal/layout_demos/
