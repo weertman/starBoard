@@ -1595,40 +1595,42 @@ class TabSetup(QWidget):
     def _discover_encounters(self, parent: str):
         """Scan folder of IDs with dated encounter sub-folders."""
         items = discover_ids_with_encounters(parent)
+        total_enc = 0
         for id_str, encounters in items:
-            n_enc = len(encounters)
-            n_img = sum(len(imgs) for _, _, imgs in encounters)
-            it = QListWidgetItem(
-                f"{id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
-            )
-            enc_data = [
-                (fn, dt.isoformat(), [str(p) for p in imgs])
-                for fn, dt, imgs in encounters
-            ]
-            it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
-            self.list_discovered.addItem(it)
-        self._log_batch(f"Discovered {len(items)} IDs with encounters.")
+            for fn, dt, imgs in encounters:
+                suffix = _encounter_suffix(fn)
+                label = f"{id_str}  {dt.strftime('%m/%d/%Y')}"
+                if suffix:
+                    label += f"  {suffix}"
+                label += f"  —  {len(imgs)} images"
+                it = QListWidgetItem(label)
+                enc_data = [(fn, dt.isoformat(), [str(p) for p in imgs])]
+                it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
+                self.list_discovered.addItem(it)
+                total_enc += 1
+        self._log_batch(f"Discovered {total_enc} encounters across {len(items)} IDs.")
 
     def _discover_grouped(self, parent: str):
         """Scan folder of groups containing IDs with dated encounters."""
         groups = discover_grouped_ids_with_encounters(parent)
+        total_enc = 0
         total_ids = 0
         for group_name, ids in groups:
             for id_str, encounters in ids:
-                n_enc = len(encounters)
-                n_img = sum(len(imgs) for _, _, imgs in encounters)
-                it = QListWidgetItem(
-                    f"[{group_name}] {id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
-                )
-                enc_data = [
-                    (fn, dt.isoformat(), [str(p) for p in imgs])
-                    for fn, dt, imgs in encounters
-                ]
-                it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
-                self.list_discovered.addItem(it)
                 total_ids += 1
+                for fn, dt, imgs in encounters:
+                    suffix = _encounter_suffix(fn)
+                    label = f"[{group_name}] {id_str}  {dt.strftime('%m/%d/%Y')}"
+                    if suffix:
+                        label += f"  {suffix}"
+                    label += f"  —  {len(imgs)} images"
+                    it = QListWidgetItem(label)
+                    enc_data = [(fn, dt.isoformat(), [str(p) for p in imgs])]
+                    it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
+                    self.list_discovered.addItem(it)
+                    total_enc += 1
         self._log_batch(
-            f"Discovered {total_ids} IDs across {len(groups)} groups."
+            f"Discovered {total_enc} encounters across {total_ids} IDs in {len(groups)} groups."
         )
 
     def _on_add_existing(self):
