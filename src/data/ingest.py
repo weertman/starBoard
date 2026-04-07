@@ -199,3 +199,113 @@ def discover_ids_and_images(parent_dir: Path) -> List[Tuple[str, List[Path]]]:
         out.append((id_str, files))
     log.info("Discovered %d IDs under %s", len(out), str(parent))
     return out
+
+
+import re as _re
+
+# Match encounter folder names like  6_10_2022_description  or  06_10_22
+# Supports both M_D_YYYY (star_dataset) and MM_DD_YY (starBoard) conventions.
+_ENC_DATE_RE = _re.compile(
+    r"^(\d{1,2})_(\d{1,2})_(\d{2,4})"
+)
+
+
+def _parse_encounter_date(folder_name: str) -> Optional[date]:
+    """Parse a date from an encounter folder name.
+
+    Accepts M_D_YYYY (e.g. 6_10_2022_notes), MM_DD_YY (e.g. 06_10_22),
+    and similar variants.  Returns None if no date can be parsed.
+    """
+    m = _ENC_DATE_RE.match(folder_name)
+    if not m:
+        return None
+    a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    # Distinguish M_D_YYYY (year >= 100) from MM_DD_YY (year < 100)
+    if c >= 100:
+        month, day, year = a, b, c
+    else:
+        month, day, year = a, b, 2000 + c
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _encounter_suffix(folder_name: str) -> str:
+    """Extract the descriptive suffix after the date portion of a folder name."""
+    m = _ENC_DATE_RE.match(folder_name)
+    if not m:
+        return ""
+    rest = folder_name[m.end():]
+    return rest.lstrip("_")
+
+
+# Return type for encounter-aware discovery: list of
+#   (id_str, [(encounter_folder_name, parsed_date, [image_paths]), ...])
+EncounterList = List[Tuple[str, date, List[Path]]]
+IdWithEncounters = Tuple[str, EncounterList]
+
+
+def discover_ids_with_encounters(
+    parent_dir: Path,
+) -> List[IdWithEncounters]:
+    """Scan a directory of ID folders that each contain dated encounter sub-folders.
+
+    Structure:  parent / individual_id / M_D_YYYY_description / images
+
+    Encounter folders whose names cannot be parsed as dates are skipped.
+    If an ID folder has images at its top level (no encounter sub-folders),
+    those images are collected into a single encounter named after the ID
+    folder with today's date.
+    """
+    parent = Path(parent_dir)
+    out: List[IdWithEncounters] = []
+    if not parent.exists() or not parent.is_dir():
+        return out
+
+    for id_dir in sorted(p for p in parent.iterdir() if p.is_dir()):
+        id_str = id_dir.name
+        encounters: EncounterList = []
+        for enc_dir in sorted(p for p in id_dir.iterdir() if p.is_dir()):
+            parsed = _parse_encounter_date(enc_dir.name)
+            if parsed is None:
+                log.debug("Skipping folder (no date match): %s", enc_dir)
+                continue
+            images = sorted(
+                p for p in enc_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+            )
+            if images:
+                encounters.append((enc_dir.name, parsed, images))
+        if encounters:
+            out.append((id_str, encounters))
+
+    log.info("discover_ids_with_encounters: %d IDs under %s", len(out), parent)
+    return out
+
+
+def discover_grouped_ids_with_encounters(
+    parent_dir: Path,
+) -> List[Tuple[str, List[IdWithEncounters]]]:
+    """Scan a directory with an extra grouping level above IDs.
+
+    Structure:  parent / data_group / individual_id / M_D_YYYY_desc / images
+
+    Returns list of (group_name, [IdWithEncounters, ...]).
+    """
+    parent = Path(parent_dir)
+    out: List[Tuple[str, List[IdWithEncounters]]] = []
+    if not parent.exists() or not parent.is_dir():
+        return out
+
+    for group_dir in sorted(p for p in parent.iterdir() if p.is_dir()):
+        ids = discover_ids_with_encounters(group_dir)
+        if ids:
+            out.append((group_dir.name, ids))
+
+    total_ids = sum(len(ids) for _, ids in out)
+    log.info(
+        "discover_grouped_ids_with_encounters: %d groups, %d IDs under %s",
+        len(out), total_ids, parent,
+    )
+    return out

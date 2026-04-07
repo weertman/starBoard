@@ -22,7 +22,11 @@ from src.data.csv_io import (
     append_row, read_rows_multi, last_row_per_id, normalize_id_value
 )
 from src.data.id_registry import list_ids, id_exists, invalidate_id_cache
-from src.data.ingest import ensure_encounter_name, place_images, discover_ids_and_images
+from src.data.ingest import (
+    ensure_encounter_name, place_images, discover_ids_and_images,
+    discover_ids_with_encounters, discover_grouped_ids_with_encounters,
+    _encounter_suffix,
+)
 from src.data.batch_undo import (
     generate_batch_id, record_batch_upload, list_batches,
     undo_batch, redo_batch, check_redo_sources, BatchInfo,
@@ -1346,6 +1350,22 @@ class TabSetup(QWidget):
         self.cmb_target_batch.currentIndexChanged.connect(
             lambda: self._ilog.log("combo_change", "cmb_target_batch", value=self.cmb_target_batch.currentText()))
         row.addWidget(self.cmb_target_batch)
+
+        row.addWidget(QLabel("Scan mode:"))
+        self.cmb_scan_mode = QComboBox()
+        self.cmb_scan_mode.addItems([
+            "Flat (ID / images)",
+            "With Encounters (ID / date / images)",
+            "Grouped (group / ID / date / images)",
+        ])
+        self.cmb_scan_mode.setToolTip(
+            "Flat: each subfolder is one ID, all images lumped together.\n"
+            "With Encounters: each ID subfolder contains dated encounter folders.\n"
+            "Grouped: an extra grouping level above the ID folders."
+        )
+        self.cmb_scan_mode.currentIndexChanged.connect(self._on_scan_mode_changed)
+        row.addWidget(self.cmb_scan_mode)
+
         self.btn_discover = QPushButton("Discover IDs…")
         self.btn_discover.clicked.connect(self._on_discover)
         row.addWidget(self.btn_discover)
@@ -1356,23 +1376,31 @@ class TabSetup(QWidget):
         row.addWidget(self.btn_add_existing)
         lay.addLayout(row)
 
-        # Date selection row (shared by both batch workflows)
+        # Date selection row (only used in Flat mode; hidden in encounter modes)
+        self._date_row_widgets = []  # track widgets to show/hide
         date_row = QHBoxLayout()
-        date_row.addWidget(QLabel("Encounter date:"))
+        _lbl_enc_date = QLabel("Encounter date:")
+        date_row.addWidget(_lbl_enc_date)
+        self._date_row_widgets.append(_lbl_enc_date)
         self.date_batch = QDateEdit()
         self.date_batch.setCalendarPopup(True)
         self.date_batch.setDate(QDate.currentDate())
         self.date_batch.dateChanged.connect(self._on_batch_date_changed)
         date_row.addWidget(self.date_batch)
+        self._date_row_widgets.append(self.date_batch)
 
-        date_row.addWidget(QLabel("Suffix:"))
+        _lbl_suffix = QLabel("Suffix:")
+        date_row.addWidget(_lbl_suffix)
+        self._date_row_widgets.append(_lbl_suffix)
         self.edit_suffix_batch = QLineEdit()
         self.edit_suffix_batch.setPlaceholderText("optional")
         date_row.addWidget(self.edit_suffix_batch)
+        self._date_row_widgets.append(self.edit_suffix_batch)
 
         self.lbl_date_warning = QLabel("Today's date selected")
         self.lbl_date_warning.setStyleSheet("color: orange; font-style: italic;")
         date_row.addWidget(self.lbl_date_warning)
+        self._date_row_widgets.append(self.lbl_date_warning)
         date_row.addStretch(1)
         lay.addLayout(date_row)
 
@@ -1463,6 +1491,15 @@ class TabSetup(QWidget):
         is_today = (selected == QDate.currentDate())
         self.lbl_date_warning.setVisible(is_today)
 
+    def _on_scan_mode_changed(self):
+        """Show/hide the date row depending on whether the scan mode is flat."""
+        is_flat = self.cmb_scan_mode.currentIndex() == 0
+        for w in self._date_row_widgets:
+            w.setVisible(is_flat)
+        # Clear discovered list when mode changes
+        self.list_discovered.clear()
+        self._update_id_preview()
+
     def _populate_batch_locations(self):
         """Populate batch location combo from known metadata + outing locations."""
         current_text = self.cmb_location_batch.currentText()
@@ -1474,17 +1511,62 @@ class TabSetup(QWidget):
 
     def _on_discover(self):
         self._ilog.log("button_click", "btn_discover", value="clicked")
+        mode = self.cmb_scan_mode.currentIndex()  # 0=flat, 1=encounters, 2=grouped
         parent = QFileDialog.getExistingDirectory(self, "Select base folder to scan")
         if not parent:
             return
         self.list_discovered.clear()
-        items = discover_ids_and_images(parent)
-        for id_str, files in items:
-            it = QListWidgetItem(f"{id_str}  —  {len(files)} images")
-            it.setData(Qt.UserRole, (id_str, [str(p) for p in files]))
-            self.list_discovered.addItem(it)
-        logger.info("Discovered %d IDs under %s", len(items), str(parent))
-        self._log_batch(f"Discovered {len(items)} IDs.")
+
+        if mode == 0:
+            # Flat: ID / images  (original behaviour)
+            items = discover_ids_and_images(parent)
+            for id_str, files in items:
+                it = QListWidgetItem(f"{id_str}  —  {len(files)} images")
+                it.setData(Qt.UserRole, ("flat", id_str, [str(p) for p in files]))
+                self.list_discovered.addItem(it)
+            self._log_batch(f"Discovered {len(items)} IDs (flat).")
+
+        elif mode == 1:
+            # With Encounters: ID / date_encounter / images
+            items = discover_ids_with_encounters(parent)
+            for id_str, encounters in items:
+                n_enc = len(encounters)
+                n_img = sum(len(imgs) for _, _, imgs in encounters)
+                it = QListWidgetItem(
+                    f"{id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
+                )
+                enc_data = [
+                    (fn, dt.isoformat(), [str(p) for p in imgs])
+                    for fn, dt, imgs in encounters
+                ]
+                it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
+                self.list_discovered.addItem(it)
+            self._log_batch(f"Discovered {len(items)} IDs with encounters.")
+
+        else:
+            # Grouped: group / ID / date_encounter / images
+            groups = discover_grouped_ids_with_encounters(parent)
+            total_ids = 0
+            for group_name, ids in groups:
+                for id_str, encounters in ids:
+                    n_enc = len(encounters)
+                    n_img = sum(len(imgs) for _, _, imgs in encounters)
+                    it = QListWidgetItem(
+                        f"[{group_name}] {id_str}  —  {n_enc} encounter{'s' if n_enc != 1 else ''}, {n_img} images"
+                    )
+                    enc_data = [
+                        (fn, dt.isoformat(), [str(p) for p in imgs])
+                        for fn, dt, imgs in encounters
+                    ]
+                    it.setData(Qt.UserRole, ("encounters", id_str, enc_data))
+                    self.list_discovered.addItem(it)
+                    total_ids += 1
+            self._log_batch(
+                f"Discovered {total_ids} IDs across {len(groups)} groups."
+            )
+
+        logger.info("Discovered %d entries under %s (mode=%d)",
+                     self.list_discovered.count(), str(parent), mode)
         self._update_id_preview()
 
     def _on_add_existing(self):
@@ -1601,6 +1683,14 @@ class TabSetup(QWidget):
         suffix = self.edit_id_suffix.text()
         return f"{prefix}{original_id}{suffix}"
 
+    def _id_from_item_data(self, data) -> str:
+        """Extract the original ID string from a list item's UserRole data."""
+        # data is ("flat", id_str, files) or ("encounters", id_str, enc_data)
+        if isinstance(data, tuple) and len(data) >= 2 and isinstance(data[0], str) and data[0] in ("flat", "encounters"):
+            return data[1]
+        # Legacy format: (id_str, files)
+        return data[0]
+
     def _update_id_preview(self):
         """Update the ID transformation preview and conflict indicators."""
         if self.list_discovered.count() == 0:
@@ -1609,7 +1699,7 @@ class TabSetup(QWidget):
         
         # Show preview of first ID transformation
         first_item = self.list_discovered.item(0)
-        original_id, _ = first_item.data(Qt.UserRole)
+        original_id = self._id_from_item_data(first_item.data(Qt.UserRole))
         transformed = self._transform_id(original_id)
         
         # Count conflicts
@@ -1617,7 +1707,7 @@ class TabSetup(QWidget):
         target = self.cmb_target_batch.currentText()
         for i in range(self.list_discovered.count()):
             item = self.list_discovered.item(i)
-            orig_id, _ = item.data(Qt.UserRole)
+            orig_id = self._id_from_item_data(item.data(Qt.UserRole))
             trans_id = self._transform_id(orig_id)
             if id_exists(target, trans_id):
                 existing_count += 1
@@ -1647,7 +1737,7 @@ class TabSetup(QWidget):
         
         for i in range(self.list_discovered.count()):
             item = self.list_discovered.item(i)
-            original_id, _ = item.data(Qt.UserRole)
+            original_id = self._id_from_item_data(item.data(Qt.UserRole))
             transformed_id = self._transform_id(original_id)
             
             if id_exists(target, transformed_id):
@@ -1687,9 +1777,6 @@ class TabSetup(QWidget):
                 self._log_batch("Batch cancelled due to ID conflicts.")
                 return
         
-        y, m, d = qdate_to_ymd(self.date_batch)
-        enc = ensure_encounter_name(y, m, d, self.edit_suffix_batch.text().strip())
-        obs_date = _date(y, m, d)  # Create date object for encounter_dates.csv
         root = ap.root_for(target)
         csv_path, header = ap.metadata_csv_for(target)
         id_col = ap.id_column_name(target)
@@ -1699,58 +1786,113 @@ class TabSetup(QWidget):
         all_file_ops: list[tuple[Path, Path]] = []
         new_ids: set[str] = set()
 
-        logger.info("Batch start: target=%s enc=%s count=%d batch_id=%s", 
-                    target, enc, self.list_discovered.count(), batch_id)
+        # Determine mode from first item's data tag
+        first_data = self.list_discovered.item(0).data(Qt.UserRole)
+        is_encounter_mode = (
+            isinstance(first_data, tuple) and len(first_data) >= 1
+            and first_data[0] == "encounters"
+        )
 
-        for i in range(self.list_discovered.count()):
-            item = self.list_discovered.item(i)
-            original_id, files = item.data(Qt.UserRole)
-            id_str = self._transform_id(original_id)  # Apply prefix/suffix
-            exists = id_exists(target, id_str)
-            rep = place_images(root, id_str, enc, [Path(f) for f in files], move=False, observation_date=obs_date)
-            
-            # Track file operations for batch history
-            for op in rep.ops:
-                all_file_ops.append((op.src, op.dest))
-            
-            if not exists:
-                new_ids.add(id_str)
-                row = {col: "" for col in header}
-                row[id_col] = id_str
-                # Apply batch location if specified
-                batch_location = self.cmb_location_batch.currentText().strip()
-                if batch_location:
-                    row['location'] = batch_location
-                append_row(csv_path, header, row)
-                
-                # Record metadata history for new Gallery IDs (create action)
-                if target == "Gallery":
-                    from src.data.metadata_history import record_bulk_update, SOURCE_BATCH_UPLOAD
-                    record_bulk_update(
-                        gallery_id=id_str,
-                        old_values={},
-                        new_values=row,
-                        source=SOURCE_BATCH_UPLOAD,
-                        source_ref=f"batch_{batch_id}",
+        if not is_encounter_mode:
+            # ---- Flat mode: single encounter date for all IDs ----
+            y, m, d = qdate_to_ymd(self.date_batch)
+            enc = ensure_encounter_name(y, m, d, self.edit_suffix_batch.text().strip())
+            obs_date = _date(y, m, d)
+
+            logger.info("Batch start (flat): target=%s enc=%s count=%d batch_id=%s",
+                        target, enc, self.list_discovered.count(), batch_id)
+
+            for i in range(self.list_discovered.count()):
+                item = self.list_discovered.item(i)
+                data = item.data(Qt.UserRole)
+                original_id = self._id_from_item_data(data)
+                # files are in data[2] for tagged format, data[1] for legacy
+                files = data[2] if len(data) == 3 and data[0] == "flat" else data[1]
+                id_str = self._transform_id(original_id)
+                exists = id_exists(target, id_str)
+                rep = place_images(root, id_str, enc, [Path(f) for f in files],
+                                   move=False, observation_date=obs_date)
+                for op in rep.ops:
+                    all_file_ops.append((op.src, op.dest))
+                if not exists:
+                    new_ids.add(id_str)
+                    self._batch_create_id_row(
+                        csv_path, header, id_col, id_str, target, batch_id
                     )
-                
-                self._log_batch(f"Created new ID {id_str}: {len(rep.ops)} images.")
-            else:
-                self._log_batch(f"Appended to existing ID {id_str}: {len(rep.ops)} images.")
-            if rep.errors:
-                self._log_batch("Errors:\n - " + "\n - ".join(rep.errors))
+                    self._log_batch(f"Created new ID {id_str}: {len(rep.ops)} images.")
+                else:
+                    self._log_batch(f"Appended to existing ID {id_str}: {len(rep.ops)} images.")
+                if rep.errors:
+                    self._log_batch("Errors:\n - " + "\n - ".join(rep.errors))
+
+            enc_label = enc  # for batch record
+
+        else:
+            # ---- Encounter mode: dates parsed from folder names ----
+            logger.info("Batch start (encounters): target=%s count=%d batch_id=%s",
+                        target, self.list_discovered.count(), batch_id)
+
+            for i in range(self.list_discovered.count()):
+                item = self.list_discovered.item(i)
+                _, original_id, enc_data = item.data(Qt.UserRole)
+                id_str = self._transform_id(original_id)
+                exists = id_exists(target, id_str)
+                id_img_count = 0
+
+                for folder_name, date_iso, files in enc_data:
+                    obs_date = _date.fromisoformat(date_iso)
+                    suffix = _encounter_suffix(folder_name)
+                    enc = ensure_encounter_name(
+                        obs_date.year, obs_date.month, obs_date.day, suffix
+                    )
+                    rep = place_images(root, id_str, enc, [Path(f) for f in files],
+                                       move=False, observation_date=obs_date)
+                    for op in rep.ops:
+                        all_file_ops.append((op.src, op.dest))
+                    id_img_count += len(rep.ops)
+                    if rep.errors:
+                        self._log_batch(
+                            f"  Errors for {id_str}/{enc}: " + "; ".join(rep.errors)
+                        )
+
+                if not exists and id_img_count > 0:
+                    new_ids.add(id_str)
+                    self._batch_create_id_row(
+                        csv_path, header, id_col, id_str, target, batch_id
+                    )
+                    self._log_batch(f"Created new ID {id_str}: {id_img_count} images.")
+                elif id_img_count > 0:
+                    self._log_batch(f"Appended to existing ID {id_str}: {id_img_count} images.")
+
+            enc_label = "encounter_import"
 
         # Record batch for undo/redo
         if all_file_ops:
-            record_batch_upload(target, batch_id, all_file_ops, new_ids, enc)
+            record_batch_upload(target, batch_id, all_file_ops, new_ids, enc_label)
             self._log_batch(f"Batch recorded (ID: {batch_id[:20]}…)")
 
         info("Batch complete.", self)
-        # First‑order refresh: new IDs/rows may be available
         self._notify_first_order_refresh()
         self.archiveDataChanged.emit()
-        # Refresh batch history combo
         self._refresh_batch_history()
+
+    def _batch_create_id_row(self, csv_path, header, id_col, id_str, target, batch_id):
+        """Create a CSV row and metadata history entry for a new ID during batch import."""
+        row = {col: "" for col in header}
+        row[id_col] = id_str
+        batch_location = self.cmb_location_batch.currentText().strip()
+        if batch_location:
+            row['location'] = batch_location
+        append_row(csv_path, header, row)
+        if target == "Gallery":
+            from src.data.metadata_history import record_bulk_update, SOURCE_BATCH_UPLOAD
+            record_bulk_update(
+                gallery_id=id_str,
+                old_values={},
+                new_values=row,
+                source=SOURCE_BATCH_UPLOAD,
+                source_ref=f"batch_{batch_id}",
+            )
 
     def _log_batch(self, msg: str):
         logger.info(msg)
