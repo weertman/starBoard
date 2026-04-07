@@ -241,18 +241,15 @@ def load_megastar_artifact_availability(settings) -> MegaStarArtifactAvailabilit
     pending_ids = registry.get('pending_ids', {}) if isinstance(registry.get('pending_ids', {}), dict) else {}
     pending_gallery = pending_ids.get('gallery', []) or []
     pending_queries = pending_ids.get('queries', []) or []
-    if settings.megastar_require_fresh_assets and (pending_gallery or pending_queries):
-        return MegaStarArtifactAvailability(
-            enabled=False,
-            state='unavailable',
-            reason='stale_artifacts',
-            model_key=model_key,
-            artifact_dir=artifact_dir,
-            registry_path=registry_path,
-            checkpoint_path=checkpoint_path,
-            raw_registry=registry,
-            raw_model_entry=model_entry,
-            raw_metadata=metadata,
+    # Pending IDs are logged but no longer block lookups — the existing
+    # gallery embeddings are still valid for the IDs that have been computed.
+    if pending_gallery or pending_queries:
+        import logging
+        _log = logging.getLogger('starBoard.megastar.artifacts')
+        _log.warning(
+            "MegaStar has pending IDs (gallery=%d, queries=%d) — "
+            "results will not include these until precompute is re-run.",
+            len(pending_gallery), len(pending_queries),
         )
 
     return MegaStarArtifactAvailability(
