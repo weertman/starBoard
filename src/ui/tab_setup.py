@@ -1442,6 +1442,13 @@ class TabSetup(QWidget):
         row3.addWidget(self.btn_start_batch)
         lay.addLayout(row3)
 
+        # Progress bar
+        from PySide6.QtWidgets import QProgressBar
+        self.progress_batch = QProgressBar()
+        self.progress_batch.setTextVisible(True)
+        self.progress_batch.setVisible(False)
+        lay.addWidget(self.progress_batch)
+
         # Log
         self.log_batch = QPlainTextEdit()
         self.log_batch.setReadOnly(True)
@@ -1848,6 +1855,14 @@ class TabSetup(QWidget):
             and first_data[0] == "encounters"
         )
 
+        total = self.list_discovered.count()
+        self.progress_batch.setRange(0, total)
+        self.progress_batch.setValue(0)
+        self.progress_batch.setFormat("%v / %m items")
+        self.progress_batch.setVisible(True)
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.processEvents()
+
         if not is_encounter_mode:
             # ---- Flat mode: single encounter date for all IDs ----
             y, m, d = qdate_to_ymd(self.date_batch)
@@ -1857,7 +1872,7 @@ class TabSetup(QWidget):
             logger.info("Batch start (flat): target=%s enc=%s count=%d batch_id=%s",
                         target, enc, self.list_discovered.count(), batch_id)
 
-            for i in range(self.list_discovered.count()):
+            for i in range(total):
                 item = self.list_discovered.item(i)
                 data = item.data(Qt.UserRole)
                 original_id = self._id_from_item_data(data)
@@ -1879,6 +1894,8 @@ class TabSetup(QWidget):
                     self._log_batch(f"Appended to existing ID {id_str}: {len(rep.ops)} images.")
                 if rep.errors:
                     self._log_batch("Errors:\n - " + "\n - ".join(rep.errors))
+                self.progress_batch.setValue(i + 1)
+                QCoreApplication.processEvents()
 
             enc_label = enc  # for batch record
 
@@ -1887,7 +1904,7 @@ class TabSetup(QWidget):
             logger.info("Batch start (encounters): target=%s count=%d batch_id=%s",
                         target, self.list_discovered.count(), batch_id)
 
-            for i in range(self.list_discovered.count()):
+            for i in range(total):
                 item = self.list_discovered.item(i)
                 _, original_id, enc_data = item.data(Qt.UserRole)
                 id_str = self._transform_id(original_id)
@@ -1918,6 +1935,8 @@ class TabSetup(QWidget):
                     self._log_batch(f"Created new ID {id_str}: {id_img_count} images.")
                 elif id_img_count > 0:
                     self._log_batch(f"Appended to existing ID {id_str}: {id_img_count} images.")
+                self.progress_batch.setValue(i + 1)
+                QCoreApplication.processEvents()
 
             enc_label = "encounter_import"
 
@@ -1926,6 +1945,7 @@ class TabSetup(QWidget):
             record_batch_upload(target, batch_id, all_file_ops, new_ids, enc_label)
             self._log_batch(f"Batch recorded (ID: {batch_id[:20]}…)")
 
+        self.progress_batch.setVisible(False)
         info("Batch complete.", self)
         self._notify_first_order_refresh()
         self.archiveDataChanged.emit()
