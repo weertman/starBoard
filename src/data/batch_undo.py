@@ -443,25 +443,39 @@ def undo_batch(target: str, batch_id: str, permanent: bool = False) -> UndoRepor
             _backup_csv_rows(target, batch_id, new_ids)
         report.csv_rows_removed = _remove_csv_rows(target, new_ids)
     
-    # Clean up empty directories
+    # Clean up empty directories (treating metadata-only dirs as empty)
+    _UNDO_KEEP_FILES = {"_metadata_history.csv", "_pins_first_order.json",
+                        "_second_order_labels.csv"}
     for id_str in ids_affected:
         id_dir = target_root / id_str
-        if id_dir.exists():
-            # Check encounter directories
-            for enc_dir in id_dir.iterdir():
-                if enc_dir.is_dir() and not any(enc_dir.iterdir()):
-                    try:
-                        enc_dir.rmdir()
-                        log.debug("Removed empty encounter dir: %s", enc_dir)
-                    except Exception:
-                        pass
-            # Check if ID dir is now empty
-            if id_dir.is_dir() and not any(id_dir.iterdir()):
+        if not id_dir.exists():
+            continue
+        # Remove empty encounter directories
+        for enc_dir in list(id_dir.iterdir()):
+            if enc_dir.is_dir() and not any(enc_dir.iterdir()):
                 try:
-                    id_dir.rmdir()
-                    log.debug("Removed empty ID dir: %s", id_dir)
+                    enc_dir.rmdir()
+                    log.debug("Removed empty encounter dir: %s", enc_dir)
                 except Exception:
                     pass
+        # Check if ID dir has only metadata tracking files (no real content)
+        remaining = list(id_dir.iterdir())
+        real_content = [
+            p for p in remaining
+            if p.is_dir() or p.name not in _UNDO_KEEP_FILES
+        ]
+        if not real_content:
+            # Only metadata files left — remove them and the directory
+            for p in remaining:
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+            try:
+                id_dir.rmdir()
+                log.debug("Removed ID dir (metadata-only): %s", id_dir)
+            except Exception:
+                pass
     
     report.ids_affected = list(ids_affected)
     
