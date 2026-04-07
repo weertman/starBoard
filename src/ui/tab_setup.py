@@ -1404,15 +1404,10 @@ class TabSetup(QWidget):
         date_row.addStretch(1)
         lay.addLayout(date_row)
 
-        # Location row
-        loc_row = QHBoxLayout()
-        loc_row.addWidget(QLabel("Location:"))
-        self.cmb_location_batch = QComboBox()
-        self.cmb_location_batch.setEditable(True)
-        self.cmb_location_batch.lineEdit().setPlaceholderText("optional - applies to all new IDs")
-        self.cmb_location_batch.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        loc_row.addWidget(self.cmb_location_batch)
-        lay.addLayout(loc_row)
+        # Location group (name + lat/lon + map picker)
+        from src.ui.location_input import LocationInputGroup
+        self.batch_location_group = LocationInputGroup()
+        lay.addWidget(self.batch_location_group)
 
         # Results list
         self.list_discovered = QListWidget()
@@ -1501,13 +1496,8 @@ class TabSetup(QWidget):
         self._update_id_preview()
 
     def _populate_batch_locations(self):
-        """Populate batch location combo from known metadata + outing locations."""
-        current_text = self.cmb_location_batch.currentText()
-        self.cmb_location_batch.blockSignals(True)
-        self.cmb_location_batch.clear()
-        self.cmb_location_batch.addItems(self._collect_known_locations())
-        self.cmb_location_batch.setCurrentText(current_text)
-        self.cmb_location_batch.blockSignals(False)
+        """No-op: LocationInputGroup handles its own autocomplete via vocabulary store."""
+        pass
 
     def _on_discover(self):
         self._ilog.log("button_click", "btn_discover", value="clicked")
@@ -1702,9 +1692,10 @@ class TabSetup(QWidget):
                     row = {col: "" for col in header}
                     row[id_col] = id_str
                     # Apply batch location if specified
-                    batch_location = self.cmb_location_batch.currentText().strip()
-                    if batch_location:
-                        row['location'] = batch_location
+                    loc_vals = self.batch_location_group.get_values()
+                    for k in ('location', 'latitude', 'longitude'):
+                        if loc_vals.get(k):
+                            row[k] = loc_vals[k]
                     append_row(csv_path, header, row)
                     
                     # Record metadata history for new Gallery IDs
@@ -1944,9 +1935,10 @@ class TabSetup(QWidget):
         """Create a CSV row and metadata history entry for a new ID during batch import."""
         row = {col: "" for col in header}
         row[id_col] = id_str
-        batch_location = self.cmb_location_batch.currentText().strip()
-        if batch_location:
-            row['location'] = batch_location
+        loc_vals = self.batch_location_group.get_values()
+        for k in ('location', 'latitude', 'longitude'):
+            if loc_vals.get(k):
+                row[k] = loc_vals[k]
         append_row(csv_path, header, row)
         if target == "Gallery":
             from src.data.metadata_history import record_bulk_update, SOURCE_BATCH_UPLOAD
