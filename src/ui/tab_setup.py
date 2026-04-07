@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QCheckBox, QPlainTextEdit, QScrollArea, QSizePolicy,
     QTabWidget, QCompleter, QDialog, QDialogButtonBox,
     QRadioButton, QButtonGroup, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QSpinBox, QTreeWidget, QTreeWidgetItem,
+    QAbstractItemView, QSpinBox,
 )
 
 from src.ui.collapsible import CollapsibleSection  # existing utility for collapsible panels
@@ -22,7 +22,7 @@ from src.data.csv_io import (
     append_row, read_rows_multi, last_row_per_id, normalize_id_value
 )
 from src.data.id_registry import list_ids, id_exists, invalidate_id_cache
-from src.data.ingest import ensure_encounter_name, place_images, discover_ids_and_images, discover_star_dataset
+from src.data.ingest import ensure_encounter_name, place_images, discover_ids_and_images
 from src.data.batch_undo import (
     generate_batch_id, record_batch_upload, list_batches,
     undo_batch, redo_batch, check_redo_sources, BatchInfo,
@@ -776,7 +776,6 @@ class TabSetup(QWidget):
         gb_edit   = self._build_editing_group()         # title-less
         gb_merge  = self._build_archive_merge_group()   # title-less
         gb_batch_location = self._build_batch_edit_location_group()  # title-less
-        gb_star_import = self._build_star_dataset_import_group()  # title-less
 
         # Wrap each group with an expandable panel (collapsed by default)
         sec_single = CollapsibleSection("Single Upload", start_collapsed=True)
@@ -785,8 +784,6 @@ class TabSetup(QWidget):
         sec_fv.setContent(gb_fv)
         sec_batch = CollapsibleSection("Batch Upload IDs", start_collapsed=True)
         sec_batch.setContent(gb_batch)
-        sec_star_import = CollapsibleSection("Import from Star Dataset", start_collapsed=True)
-        sec_star_import.setContent(gb_star_import)
         sec_id_manage = CollapsibleSection("ID Management", start_collapsed=True)
         sec_id_manage.setContent(gb_id_manage)
         sec_edit = CollapsibleSection("Metadata Editing Mode", start_collapsed=True)
@@ -808,7 +805,6 @@ class TabSetup(QWidget):
             (sec_fv,       'setup_field_visit_log'),
             (sec_single,   'setup_single_upload'),
             (sec_batch,    'setup_batch_upload'),
-            (sec_star_import, 'setup_star_dataset_import'),
             (sec_id_manage,'setup_id_management'),
         ]
         for sec, key in compact_sections:
@@ -1460,239 +1456,6 @@ class TabSetup(QWidget):
         QTimer.singleShot(150, self._populate_batch_locations)
         
         return gb
-
-    # -------------------- Star Dataset Import --------------------
-    def _build_star_dataset_import_group(self) -> QGroupBox:
-        gb = QGroupBox("")  # title provided by CollapsibleSection
-        lay = QVBoxLayout(gb)
-
-        # Browse row
-        row = QHBoxLayout()
-        row.addWidget(QLabel("star_dataset_raw root:"))
-        self.edit_star_dataset_path = QLineEdit(
-            "/home/weertman/Documents/star_identification/star_dataset_raw/"
-        )
-        self.edit_star_dataset_path.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        row.addWidget(self.edit_star_dataset_path)
-        self.btn_star_browse = QPushButton("Browse…")
-        self.btn_star_browse.clicked.connect(self._on_star_dataset_browse)
-        row.addWidget(self.btn_star_browse)
-        self.btn_star_scan = QPushButton("Scan")
-        self.btn_star_scan.clicked.connect(self._on_star_dataset_scan)
-        row.addWidget(self.btn_star_scan)
-        lay.addLayout(row)
-
-        # Target row
-        target_row = QHBoxLayout()
-        target_row.addWidget(QLabel("Import into:"))
-        self.cmb_star_target = QComboBox()
-        self.cmb_star_target.addItems(["Gallery", "Queries"])
-        target_row.addWidget(self.cmb_star_target)
-        target_row.addStretch(1)
-        self.btn_star_import = QPushButton("Import Selected")
-        self.btn_star_import.clicked.connect(self._on_star_dataset_import)
-        self.btn_star_import.setEnabled(False)
-        target_row.addWidget(self.btn_star_import)
-        lay.addLayout(target_row)
-
-        # Tree widget
-        self.tree_star_dataset = QTreeWidget()
-        self.tree_star_dataset.setHeaderLabels(["Name", "Encounters", "Images"])
-        self.tree_star_dataset.setMinimumHeight(200)
-        self.tree_star_dataset.setColumnWidth(0, 300)
-        self.tree_star_dataset.setColumnWidth(1, 80)
-        self.tree_star_dataset.setColumnWidth(2, 80)
-        self.tree_star_dataset.itemChanged.connect(self._on_star_tree_item_changed)
-        lay.addWidget(self.tree_star_dataset)
-
-        # Log
-        self.log_star_import = QPlainTextEdit()
-        self.log_star_import.setReadOnly(True)
-        self.log_star_import.setMaximumHeight(120)
-        lay.addWidget(self.log_star_import)
-
-        return gb
-
-    def _log_star(self, msg: str):
-        logger.info(msg)
-        self.log_star_import.appendPlainText(msg)
-
-    def _on_star_dataset_browse(self):
-        path = QFileDialog.getExistingDirectory(
-            self, "Select star_dataset_raw root",
-            self.edit_star_dataset_path.text()
-        )
-        if path:
-            self.edit_star_dataset_path.setText(path)
-
-    def _on_star_dataset_scan(self):
-        root = self.edit_star_dataset_path.text().strip()
-        if not root:
-            warn("Please specify the star_dataset_raw root path.", self)
-            return
-
-        self.tree_star_dataset.blockSignals(True)
-        self.tree_star_dataset.clear()
-        self.tree_star_dataset.blockSignals(False)
-
-        self._log_star(f"Scanning {root} …")
-        results = discover_star_dataset(root)
-        if not results:
-            self._log_star("No data found.")
-            self.btn_star_import.setEnabled(False)
-            return
-
-        self.tree_star_dataset.blockSignals(True)
-        total_ids = 0
-        total_images = 0
-        for data_group, individual_id, encounters in results:
-            # Find or create data_group top-level item
-            group_item = None
-            for i in range(self.tree_star_dataset.topLevelItemCount()):
-                if self.tree_star_dataset.topLevelItem(i).text(0) == data_group:
-                    group_item = self.tree_star_dataset.topLevelItem(i)
-                    break
-            if group_item is None:
-                group_item = QTreeWidgetItem(self.tree_star_dataset, [data_group, "", ""])
-                group_item.setFlags(group_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
-                group_item.setCheckState(0, Qt.Checked)
-
-            # Individual ID child
-            n_enc = len(encounters)
-            n_img = sum(len(imgs) for _, _, imgs in encounters)
-            total_ids += 1
-            total_images += n_img
-
-            id_item = QTreeWidgetItem(group_item, [individual_id, str(n_enc), str(n_img)])
-            id_item.setFlags(id_item.flags() | Qt.ItemIsUserCheckable)
-            id_item.setCheckState(0, Qt.Checked)
-            # Store encounter data for import
-            id_item.setData(0, Qt.UserRole, encounters)
-
-            # Encounter grandchildren (info only, no checkbox)
-            for folder_name, parsed_date, images in encounters:
-                enc_label = f"{parsed_date.strftime('%m/%d/%Y')} — {folder_name}"
-                enc_item = QTreeWidgetItem(id_item, [enc_label, "", str(len(images))])
-                enc_item.setFlags(enc_item.flags() & ~Qt.ItemIsUserCheckable)
-
-        self.tree_star_dataset.blockSignals(False)
-        self.tree_star_dataset.expandAll()
-        self.btn_star_import.setEnabled(True)
-        self._log_star(f"Found {total_ids} individuals, {total_images} images across {self.tree_star_dataset.topLevelItemCount()} data groups.")
-
-    def _on_star_tree_item_changed(self, item, column):
-        """Propagate check state changes through the tree."""
-        if column != 0:
-            return
-        # If a group-level item changed, propagate to children
-        if item.parent() is None:
-            self.tree_star_dataset.blockSignals(True)
-            state = item.checkState(0)
-            for i in range(item.childCount()):
-                item.child(i).setCheckState(0, state)
-            self.tree_star_dataset.blockSignals(False)
-
-    def _on_star_dataset_import(self):
-        """Import selected individuals from star_dataset_raw into the archive."""
-        import re as _re
-        target = self.cmb_star_target.currentText()
-        root = ap.root_for(target)
-        csv_path, header = ap.metadata_csv_for(target)
-        id_col = ap.id_column_name(target)
-
-        # Collect checked ID items
-        checked = []
-        for gi in range(self.tree_star_dataset.topLevelItemCount()):
-            group_item = self.tree_star_dataset.topLevelItem(gi)
-            for ci in range(group_item.childCount()):
-                id_item = group_item.child(ci)
-                if id_item.checkState(0) == Qt.Checked:
-                    id_str = id_item.text(0)
-                    encounters = id_item.data(0, Qt.UserRole)
-                    if encounters:
-                        checked.append((id_str, encounters))
-
-        if not checked:
-            warn("No individuals selected for import.", self)
-            return
-
-        total_imgs = sum(len(imgs) for _, encs in checked for _, _, imgs in encs)
-        reply = QMessageBox.question(
-            self, "Confirm Import",
-            f"Import {len(checked)} individuals ({total_imgs} images) into {target}?",
-            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if reply != QMessageBox.StandardButton.Ok:
-            self._log_star("Import cancelled.")
-            return
-
-        date_re = _re.compile(r"^(\d{1,2})_(\d{1,2})_(\d{4})(.*)")
-        batch_id = generate_batch_id()
-        all_file_ops: List[Tuple[Path, Path]] = []
-        new_ids: set = set()
-
-        self._log_star(f"Starting import batch: {batch_id[:20]}…")
-
-        for id_str, encounters in checked:
-            exists = id_exists(target, id_str)
-            id_img_count = 0
-
-            for folder_name, parsed_date, images in encounters:
-                # Parse encounter folder to get suffix
-                m = date_re.match(folder_name)
-                if not m:
-                    self._log_star(f"  Skipping unrecognised folder: {folder_name}")
-                    continue
-                month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
-                raw_suffix = m.group(4)
-                # raw_suffix starts with _ if present, strip leading _
-                suffix = raw_suffix.lstrip("_") if raw_suffix else ""
-
-                enc_name = ensure_encounter_name(year, month, day, suffix)
-                obs_date = _date(year, month, day)
-
-                rep = place_images(root, id_str, enc_name, images, move=False, observation_date=obs_date)
-                for op in rep.ops:
-                    all_file_ops.append((op.src, op.dest))
-                id_img_count += len(rep.ops)
-
-                if rep.errors:
-                    self._log_star(f"  Errors for {id_str}/{enc_name}: " + "; ".join(rep.errors))
-
-            # Create CSV row for new IDs
-            if not exists and id_img_count > 0:
-                new_ids.add(id_str)
-                row = {col: "" for col in header}
-                row[id_col] = id_str
-                append_row(csv_path, header, row)
-
-                if target == "Gallery":
-                    from src.data.metadata_history import SOURCE_BATCH_UPLOAD
-                    record_bulk_update(
-                        gallery_id=id_str,
-                        old_values={},
-                        new_values=row,
-                        source=SOURCE_BATCH_UPLOAD,
-                        source_ref=f"batch_{batch_id}",
-                    )
-                self._log_star(f"  Created '{id_str}': {id_img_count} images.")
-            elif id_img_count > 0:
-                self._log_star(f"  Appended to existing '{id_str}': {id_img_count} images.")
-
-        # Record batch for undo
-        if all_file_ops:
-            record_batch_upload(target, batch_id, all_file_ops, new_ids, "star_dataset_import")
-            self._log_star(f"Batch recorded (ID: {batch_id[:20]}…)")
-
-        total_placed = len(all_file_ops)
-        self._log_star(f"Import complete: {total_placed} images placed for {len(checked)} individuals.")
-        info(f"Import complete: {total_placed} images for {len(checked)} individuals.", self)
-
-        # Refresh UI
-        self._notify_first_order_refresh()
-        self.archiveDataChanged.emit()
-        self._refresh_batch_history()
 
     def _on_batch_date_changed(self):
         """Show/hide warning when today's date is selected."""
