@@ -13,7 +13,14 @@ class MegaStarLookupBackend:
     def capability_status(self) -> MegaStarCapabilityStatus:
         raise NotImplementedError
 
-    def lookup_upload(self, *, filename: str, content: bytes, content_type: str | None = None) -> MegaStarLookupResponse:
+    def lookup_upload(
+        self,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str | None = None,
+        max_candidates: int = 5,
+    ) -> MegaStarLookupResponse:
         raise NotImplementedError
 
 
@@ -32,9 +39,21 @@ class LocalMegaStarLookupBackend(MegaStarLookupBackend):
             artifact_dir=availability.artifact_dir,
         )
 
-    def lookup_upload(self, *, filename: str, content: bytes, content_type: str | None = None) -> MegaStarLookupResponse:
+    def lookup_upload(
+        self,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str | None = None,
+        max_candidates: int = 5,
+    ) -> MegaStarLookupResponse:
         service = get_local_megastar_lookup_service(self.settings)
-        return service.lookup_upload(filename=filename, content=content, content_type=content_type)
+        return service.lookup_upload(
+            filename=filename,
+            content=content,
+            content_type=content_type,
+            max_candidates=max_candidates,
+        )
 
 
 @dataclass(frozen=True)
@@ -44,8 +63,20 @@ class WorkerMegaStarLookupBackend(MegaStarLookupBackend):
     def capability_status(self) -> MegaStarCapabilityStatus:
         return self.client.capability_status()
 
-    def lookup_upload(self, *, filename: str, content: bytes, content_type: str | None = None) -> MegaStarLookupResponse:
-        return self.client.lookup_upload(filename=filename, content=content, content_type=content_type)
+    def lookup_upload(
+        self,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str | None = None,
+        max_candidates: int = 5,
+    ) -> MegaStarLookupResponse:
+        return self.client.lookup_upload(
+            filename=filename,
+            content=content,
+            content_type=content_type,
+            max_candidates=max_candidates,
+        )
 
 
 def get_local_megastar_lookup_service(settings: Settings) -> MegaStarLookupService:

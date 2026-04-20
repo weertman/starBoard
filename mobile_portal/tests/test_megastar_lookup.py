@@ -315,7 +315,7 @@ def test_megastar_artifact_loader_reports_enabled_with_portable_checkpoint_resol
     assert availability.embedding_dim == 4
 
 
-def test_megastar_artifact_loader_fails_closed_when_registry_stale(tmp_path, monkeypatch):
+def test_megastar_artifact_loader_warns_but_stays_enabled_when_registry_stale(tmp_path, monkeypatch):
     monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
     monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
     build_test_app(tmp_path, monkeypatch)
@@ -324,8 +324,8 @@ def test_megastar_artifact_loader_fails_closed_when_registry_stale(tmp_path, mon
 
     availability = load_megastar_artifact_availability(get_settings())
 
-    assert availability.enabled is False
-    assert availability.reason == 'stale_artifacts'
+    assert availability.enabled is True
+    assert availability.reason is None
 
 
 def test_query_preprocessor_matches_cache_then_tensor_contract():
@@ -417,7 +417,7 @@ def test_megastar_lookup_service_returns_ranked_gallery_ids_from_image_hits(tmp_
     candidates = service.aggregate_id_candidates(hits)
 
     assert [hit.entity_id for hit in hits[:3]] == ['alpha', 'alpha', 'beta']
-    assert [candidate.entity_id for candidate in candidates] == ['alpha', 'beta']
+    assert [candidate.entity_id for candidate in candidates] == ['alpha', 'beta', 'delta', 'gamma']
     assert candidates[0].best_hit.local_idx == 0
     assert candidates[0].encounter == 'enc-2026-04-03'
     assert candidates[0].encounter_date == '2026-04-03'
@@ -436,8 +436,9 @@ def test_megastar_lookup_service_reports_empty_when_no_candidates_clear_threshol
     hits = service.search_image_hits(np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32), availability=availability)
     candidates = service.aggregate_id_candidates(hits)
 
-    assert candidates == []
-    assert service._result_status(candidates) == 'empty'
+    assert [candidate.entity_id for candidate in candidates] == ['alpha', 'beta', 'delta', 'gamma']
+    assert all(candidate.retrieval_score == 0.0 for candidate in candidates)
+    assert service._result_status(candidates) == 'weak'
 
 
 def test_megastar_lookup_service_reports_weak_when_top_result_is_low_confidence(tmp_path, monkeypatch):
@@ -475,10 +476,15 @@ def test_megastar_lookup_route_returns_real_results_without_archive_writes(tmp_p
             'LocalBackend',
             (),
             {
-                'lookup_upload': lambda self, *, filename, content, content_type=None: MegaStarLookupService(
+                'lookup_upload': lambda self, *, filename, content, content_type=None, max_candidates=5: MegaStarLookupService(
                     settings=get_settings(),
                     backend_factory=_ConstantEmbeddingBackend,
-                ).lookup_upload(filename=filename, content=content, content_type=content_type)
+                ).lookup_upload(
+                    filename=filename,
+                    content=content,
+                    content_type=content_type,
+                    max_candidates=max_candidates,
+                )
             },
         )(),
     )
@@ -491,7 +497,7 @@ def test_megastar_lookup_route_returns_real_results_without_archive_writes(tmp_p
     assert r.status_code == 200
     body = r.json()
     assert body['status'] == 'ok'
-    assert [item['entity_id'] for item in body['candidates']] == ['alpha', 'beta']
+    assert [item['entity_id'] for item in body['candidates']] == ['alpha', 'beta', 'delta', 'gamma']
     assert body['candidates'][0]['best_match_image']['image_id'] == 'gallery:alpha:0'
     assert body['candidates'][0]['encounter_date'] == '2026-04-03'
     assert body['processing_ms'] >= 0
@@ -507,7 +513,7 @@ def test_megastar_lookup_route_can_return_empty_state(tmp_path, monkeypatch):
     import mobile_portal.app.routes.megastar_lookup as route_mod
 
     class _StubService:
-        def lookup_upload(self, *, filename, content, content_type=None):
+        def lookup_upload(self, *, filename, content, content_type=None, max_candidates=5):
             return MegaStarLookupResponse(
                 query_image_name=filename,
                 status='empty',
@@ -535,7 +541,7 @@ def test_megastar_lookup_route_can_return_weak_state(tmp_path, monkeypatch):
     import mobile_portal.app.routes.megastar_lookup as route_mod
 
     class _StubService:
-        def lookup_upload(self, *, filename, content, content_type=None):
+        def lookup_upload(self, *, filename, content, content_type=None, max_candidates=5):
             return MegaStarLookupResponse(
                 query_image_name=filename,
                 status='weak',
@@ -579,6 +585,7 @@ def test_megastar_lookup_route_dispatches_to_worker_backend_when_selected(tmp_pa
     monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_WORKER_URL', 'http://megastar-worker.test')
     app, _archive = build_test_app(tmp_path, monkeypatch)
     client = TestClient(app)
+    seen_lookup_urls = []
 
     def _fake_urlopen(req, timeout=0):
         if req.full_url.endswith('/status'):
@@ -590,7 +597,8 @@ def test_megastar_lookup_route_dispatches_to_worker_backend_when_selected(tmp_pa
                     'model_key': 'worker-model-v1',
                 }
             )
-        if req.full_url.endswith('/lookup'):
+        if '/lookup?' in req.full_url:
+            seen_lookup_urls.append(req.full_url)
             return _FakeUrlopenResponse(
                 {
                     'query_image_name': 'selected.jpg',
@@ -624,13 +632,14 @@ def test_megastar_lookup_route_dispatches_to_worker_backend_when_selected(tmp_pa
 
     monkeypatch.setattr('mobile_portal.app.services.megastar_worker_client.request.urlopen', _fake_urlopen)
 
-    r = client.post('/api/megastar/lookup', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
+    r = client.post('/api/megastar/lookup?max_candidates=7', headers=AUTH, files=_upload_file_tuple(_make_image_bytes()))
 
     assert r.status_code == 200
     body = r.json()
     assert body['status'] == 'ok'
     assert body['candidates'][0]['entity_id'] == 'anchovy'
     assert body['capability_state'] == 'enabled'
+    assert seen_lookup_urls == ['http://megastar-worker.test/lookup?max_candidates=7']
 
 
 
