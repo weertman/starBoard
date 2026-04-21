@@ -9,7 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from .routes.batch_upload import router as batch_upload_router
 from .routes.first_order import router as first_order_router
 from .routes.gallery import router as gallery_router
+from .routes.schema import router as schema_router
 from .routes.session import router as session_router
+from .routes.submissions import router as submissions_router
 
 
 def create_app() -> FastAPI:
@@ -23,6 +25,8 @@ def create_app() -> FastAPI:
     app.include_router(gallery_router, prefix='/api')
     app.include_router(batch_upload_router, prefix='/api')
     app.include_router(first_order_router, prefix='/api')
+    app.include_router(schema_router, prefix='/api')
+    app.include_router(submissions_router, prefix='/api')
 
     built_assets_dir = Path(__file__).resolve().parents[1] / 'frontend' / 'dist' / 'assets'
     built_index = Path(__file__).resolve().parents[1] / 'frontend' / 'dist' / 'index.html'

@@ -1,3 +1,48 @@
+export type SchemaFieldOption = {
+  label: string
+  value: string | number
+}
+
+export type SchemaField = {
+  name: string
+  display_name: string
+  field_type: string
+  group: string
+  group_display_name: string
+  required: boolean
+  tooltip: string
+  min_value?: number | null
+  max_value?: number | null
+  options: SchemaFieldOption[]
+  vocabulary: string[]
+  mobile_widget: string
+}
+
+export type MetadataSchemaResponse = {
+  fields: SchemaField[]
+}
+
+export type SubmissionRequest = {
+  target_type: 'gallery' | 'query'
+  target_mode: 'create' | 'append'
+  target_id: string
+  encounter_date: string
+  encounter_suffix?: string
+  metadata: Record<string, string>
+  files: File[]
+}
+
+export type SubmissionResponse = {
+  status: string
+  entity_type: 'gallery' | 'query'
+  entity_id: string
+  encounter_folder: string
+  accepted_images: number
+  skipped_images: number
+  archive_paths_written: string[]
+  message: string
+}
+
 export type ImageDescriptor = {
   image_id: string
   label: string
@@ -147,6 +192,31 @@ async function parseJsonOrThrow<T>(res: Response): Promise<T> {
     throw new Error(text)
   }
   return payload
+}
+
+export async function getMetadataSchema(): Promise<MetadataSchemaResponse> {
+  const res = await fetch('/api/schema/metadata')
+  return parseJsonOrThrow<MetadataSchemaResponse>(res)
+}
+
+export async function submitEntry(req: SubmissionRequest): Promise<SubmissionResponse> {
+  const form = new FormData()
+  form.append('payload', JSON.stringify({
+    target_type: req.target_type,
+    target_mode: req.target_mode,
+    target_id: req.target_id,
+    encounter_date: req.encounter_date,
+    encounter_suffix: req.encounter_suffix ?? '',
+    metadata: req.metadata,
+  }))
+  for (const file of req.files) {
+    form.append('files', file)
+  }
+  const res = await fetch('/api/submissions', {
+    method: 'POST',
+    body: form,
+  })
+  return parseJsonOrThrow<SubmissionResponse>(res)
 }
 
 export async function uploadBatchZip(file: File): Promise<BatchUploadUploadResponse> {
