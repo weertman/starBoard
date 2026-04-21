@@ -1,0 +1,4 @@
+ingress:
+  - hostname: star.fhl-star-board.com
+    service: http://127.0.0.1:8094
+  - service: http_status:404

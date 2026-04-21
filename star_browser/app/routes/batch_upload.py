@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from ..auth import require_authenticated_email
+from ..models.batch_upload_api import (
+    BatchUploadDiscoverRequest,
+    BatchUploadDiscoverResponse,
+    BatchUploadExecuteRequest,
+    BatchUploadExecuteResponse,
+)
+from ..services.batch_upload_discover_service import build_discover_preview
+from ..services.batch_upload_execute_service import BatchUploadPlanNotFoundError, execute_batch_upload
+
+router = APIRouter()
+
+
+@router.post('/batch-upload/discover', response_model=BatchUploadDiscoverResponse)
+def batch_upload_discover(
+    request: BatchUploadDiscoverRequest,
+    _user_email: str = Depends(require_authenticated_email),
+):
+    return build_discover_preview(request)
+
+
+@router.post('/batch-upload/execute', response_model=BatchUploadExecuteResponse)
+def batch_upload_execute(
+    request: BatchUploadExecuteRequest,
+    _user_email: str = Depends(require_authenticated_email),
+):
+    try:
+        return execute_batch_upload(request)
+    except BatchUploadPlanNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='batch_plan_not_found')

@@ -1,0 +1,16 @@
+[Unit]
+Description=star_browser FastAPI service
+After=network.target
+
+[Service]
+User=weertman
+WorkingDirectory=/home/weertman/Documents/starBoard
+Environment=STARBOARD_ARCHIVE_DIR=/home/weertman/Documents/starBoard/archive
+Environment=STAR_BROWSER_HOST=127.0.0.1
+Environment=STAR_BROWSER_PORT=8094
+ExecStart=/home/weertman/Documents/starBoard/scripts/python -m uvicorn star_browser.app.main:app --host 127.0.0.1 --port 8094
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
