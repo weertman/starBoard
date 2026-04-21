@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .routes.batch_upload import router as batch_upload_router
 from .routes.first_order import router as first_order_router
@@ -19,6 +23,18 @@ def create_app() -> FastAPI:
     app.include_router(gallery_router, prefix='/api')
     app.include_router(batch_upload_router, prefix='/api')
     app.include_router(first_order_router, prefix='/api')
+
+    built_assets_dir = Path(__file__).resolve().parents[1] / 'frontend' / 'dist' / 'assets'
+    built_index = Path(__file__).resolve().parents[1] / 'frontend' / 'dist' / 'index.html'
+
+    if built_assets_dir.exists():
+        app.mount('/assets', StaticFiles(directory=built_assets_dir), name='assets')
+
+    @app.get('/')
+    def root():
+        if built_index.exists():
+            return FileResponse(built_index)
+        return {'status': 'ok', 'service': 'star-browser'}
 
     return app
 
