@@ -1,3 +1,39 @@
+export type ImageDescriptor = {
+  image_id: string
+  label: string
+  encounter?: string | null
+  preview_url: string
+  fullres_url: string
+}
+
+export type EncounterOption = {
+  encounter: string
+  date: string
+  label: string
+}
+
+export type GalleryEntityResponse = {
+  entity_id: string
+  metadata_summary: Record<string, string>
+  encounters: EncounterOption[]
+  images: ImageDescriptor[]
+}
+
+export type FirstOrderSearchRequest = {
+  query_id: string
+  top_k?: number
+}
+
+export type FirstOrderSearchResponse = {
+  query_id: string
+  candidates: Array<{
+    entity_id: string
+    score: number
+    k_contrib: number
+    field_breakdown: Record<string, number>
+  }>
+}
+
 export type BatchUploadImportSource =
   | { type: 'server_path'; path: string }
   | { type: 'uploaded_bundle'; upload_token: string }
@@ -134,4 +170,18 @@ export async function executeBatchUpload(req: BatchUploadExecuteRequest): Promis
     body: JSON.stringify(req),
   })
   return parseJsonOrThrow<BatchUploadExecuteResponse>(res)
+}
+
+export async function getGalleryEntity(entityId: string): Promise<GalleryEntityResponse> {
+  const res = await fetch(`/api/gallery/entities/${encodeURIComponent(entityId)}`)
+  return parseJsonOrThrow<GalleryEntityResponse>(res)
+}
+
+export async function runFirstOrderSearch(req: FirstOrderSearchRequest): Promise<FirstOrderSearchResponse> {
+  const res = await fetch('/api/first-order/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  return parseJsonOrThrow<FirstOrderSearchResponse>(res)
 }
