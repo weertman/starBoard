@@ -17,10 +17,11 @@ def test_first_order_search_route_returns_ranked_candidate(tmp_path, monkeypatch
     r = client.post(
         '/api/first-order/search',
         headers={'cf-access-authenticated-user-email': 'field@example.org'},
-        json={'query_id': 'query_001', 'top_k': 5},
+        json={'query_id': 'query_001', 'top_k': 5, 'preset': 'text'},
     )
     assert r.status_code == 200
     body = r.json()
     assert body['query_id'] == 'query_001'
+    assert body['preset'] == 'text'
     assert len(body['candidates']) >= 1
     assert body['candidates'][0]['entity_id'] == 'anchovy'

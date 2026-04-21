@@ -21,6 +21,7 @@ const input: React.CSSProperties = {
 export function FirstOrderPage() {
   const [queryId, setQueryId] = useState('')
   const [topK, setTopK] = useState(10)
+  const [preset, setPreset] = useState<'all' | 'colors' | 'text' | 'arms_patterns'>('all')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<FirstOrderSearchResponse | null>(null)
@@ -30,7 +31,7 @@ export function FirstOrderPage() {
     setBusy(true)
     setError(null)
     try {
-      const next = await runFirstOrderSearch({ query_id: queryId.trim(), top_k: topK })
+      const next = await runFirstOrderSearch({ query_id: queryId.trim(), top_k: topK, preset })
       setResult(next)
     } catch (err) {
       setError(String(err))
@@ -45,10 +46,16 @@ export function FirstOrderPage() {
       <div style={{ display: 'grid', gap: 16 }}>
         <section style={card}>
           <h1 style={{ marginTop: 0 }}>First-order Search</h1>
-          <p style={{ marginTop: 0, color: '#516070' }}>Run a minimal first-order search using the current backend ranking defaults.</p>
-          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(220px, 1fr) 120px auto' }}>
+          <p style={{ marginTop: 0, color: '#516070' }}>Run first-order ranking with a small preset control surface instead of full desktop parity.</p>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(220px, 1fr) 140px 180px auto' }}>
             <input value={queryId} onChange={(e) => setQueryId(e.target.value)} placeholder="Enter query ID" style={input} />
             <input type="number" min={1} max={50} value={topK} onChange={(e) => setTopK(Number(e.target.value) || 10)} style={input} />
+            <select value={preset} onChange={(e) => setPreset(e.target.value as typeof preset)} style={input}>
+              <option value="all">All fields</option>
+              <option value="colors">Colors</option>
+              <option value="text">Text</option>
+              <option value="arms_patterns">Arms + patterns</option>
+            </select>
             <button onClick={() => void handleSearch()} disabled={busy || !queryId.trim()} style={{ padding: '8px 12px' }}>
               {busy ? 'Searching…' : 'Search'}
             </button>
@@ -59,11 +66,14 @@ export function FirstOrderPage() {
 
         {result && (
           <section style={card}>
-            <h2 style={{ marginTop: 0 }}>Results for {result.query_id}</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <h2 style={{ marginTop: 0, marginBottom: 0 }}>Results for {result.query_id}</h2>
+              <div style={{ color: '#516070' }}>Preset: <b>{result.preset}</b></div>
+            </div>
             {result.candidates.length === 0 ? (
-              <div style={{ color: '#516070' }}>No ranked candidates returned.</div>
+              <div style={{ color: '#516070', marginTop: 12 }}>No ranked candidates returned.</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto', marginTop: 12 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead>
                     <tr style={{ background: '#eef3fb' }}>

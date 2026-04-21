@@ -14,4 +14,4 @@ def first_order_search(
     request: FirstOrderSearchRequest,
     _user_email: str = Depends(require_authenticated_email),
 ):
-    return run_first_order_search(request.query_id, top_k=request.top_k)
+    return run_first_order_search(request.query_id, top_k=request.top_k, preset=request.preset)

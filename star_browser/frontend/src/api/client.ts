@@ -22,10 +22,12 @@ export type GalleryEntityResponse = {
 export type FirstOrderSearchRequest = {
   query_id: string
   top_k?: number
+  preset?: 'all' | 'colors' | 'text' | 'arms_patterns'
 }
 
 export type FirstOrderSearchResponse = {
   query_id: string
+  preset: 'all' | 'colors' | 'text' | 'arms_patterns'
   candidates: Array<{
     entity_id: string
     score: number
