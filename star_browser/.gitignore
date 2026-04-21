@@ -3,3 +3,4 @@ frontend/dist/
 frontend/*.tsbuildinfo
 __pycache__/
 .pytest_cache/
+.staging/

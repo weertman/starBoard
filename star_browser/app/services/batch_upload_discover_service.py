@@ -11,6 +11,7 @@ from ..models.batch_upload_api import (
     BatchUploadDiscoverSummary,
 )
 from ..models.batch_upload_plan import PlannedBatch, put_plan
+from .batch_upload_upload_service import resolve_uploaded_bundle_path
 
 
 def _resolved_mode(source_path: Path, requested_mode: str) -> str:
@@ -27,7 +28,11 @@ def _resolved_mode(source_path: Path, requested_mode: str) -> str:
 
 
 def build_discover_preview(req: BatchUploadDiscoverRequest) -> BatchUploadDiscoverResponse:
-    source_path = Path(req.import_source.path)
+    if req.import_source.type == 'server_path':
+        source_path = Path(req.import_source.path)
+    else:
+        resolved = resolve_uploaded_bundle_path(req.import_source.upload_token)
+        source_path = resolved or Path('__missing_uploaded_bundle__')
     resolved = _resolved_mode(source_path, req.discovery_mode)
     plan_id = generate_plan_id()
     planned_rows = discover_batch_source(

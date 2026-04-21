@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from ..auth import require_authenticated_email
 from ..models.batch_upload_api import (
@@ -8,11 +8,21 @@ from ..models.batch_upload_api import (
     BatchUploadDiscoverResponse,
     BatchUploadExecuteRequest,
     BatchUploadExecuteResponse,
+    BatchUploadUploadResponse,
 )
 from ..services.batch_upload_discover_service import build_discover_preview
 from ..services.batch_upload_execute_service import BatchUploadPlanNotFoundError, execute_batch_upload
+from ..services.batch_upload_upload_service import stage_uploaded_bundle
 
 router = APIRouter()
+
+
+@router.post('/batch-upload/uploads', response_model=BatchUploadUploadResponse)
+def batch_upload_uploads(
+    file: UploadFile = File(...),
+    _user_email: str = Depends(require_authenticated_email),
+):
+    return stage_uploaded_bundle(file)
 
 
 @router.post('/batch-upload/discover', response_model=BatchUploadDiscoverResponse)

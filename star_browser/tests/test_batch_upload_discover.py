@@ -1,4 +1,6 @@
 from pathlib import Path
+import io
+import zipfile
 
 from fastapi.testclient import TestClient
 
@@ -132,3 +134,39 @@ def test_batch_upload_execute_rejects_unknown_plan(tmp_path, monkeypatch):
         json={'plan_id': 'missing_plan', 'accepted_row_ids': ['row_001']},
     )
     assert execute.status_code == 404
+
+
+def test_batch_upload_uploads_route_returns_token_and_discover_accepts_uploaded_bundle(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    (archive / 'gallery').mkdir(parents=True)
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, 'w') as zf:
+        zf.writestr('anchovy/a.jpg', b'x')
+    payload.seek(0)
+
+    client = TestClient(create_app())
+    upload = client.post(
+        '/api/batch-upload/uploads',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        files={'file': ('bundle.zip', payload.getvalue(), 'application/zip')},
+    )
+    assert upload.status_code == 200
+    token = upload.json()['upload_token']
+
+    discover = client.post(
+        '/api/batch-upload/discover',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={
+            'target_archive': 'gallery',
+            'discovery_mode': 'flat',
+            'id_prefix': '',
+            'id_suffix': '',
+            'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
+        },
+    )
+    assert discover.status_code == 200
+    body = discover.json()
+    assert body['summary']['detected_ids'] == 1
+    assert body['rows'][0]['original_detected_id'] == 'anchovy'
