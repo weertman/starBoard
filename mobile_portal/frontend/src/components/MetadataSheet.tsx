@@ -348,8 +348,6 @@ export function MetadataSheet({
     setValues(initialDraft.values)
   }, [initialDraft])
 
-  useEffect(() => { if (targetType === 'gallery') setTargetMode('append') }, [targetType])
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return q ? fields.filter(f => f.display_name.toLowerCase().includes(q) || f.name.toLowerCase().includes(q) || f.group_display_name.toLowerCase().includes(q)) : fields
@@ -393,11 +391,16 @@ export function MetadataSheet({
             </select>
           </label>
           <label style={{ display: 'grid', gap: 4 }}>Target mode
-            <select value={targetMode} onChange={e => setTargetMode(e.target.value as 'create' | 'append')} disabled={targetType === 'gallery'} style={inputStyle}>
+            <select value={targetMode} onChange={e => setTargetMode(e.target.value as 'create' | 'append')} style={inputStyle}>
               <option value="create">Create</option>
               <option value="append">Append</option>
             </select>
           </label>
+          {targetType === 'gallery' && (
+            <div style={{ border: '1px solid #f2c94c', background: '#fff9e6', borderRadius: 10, padding: 10, color: '#6b4e00', fontSize: 13, lineHeight: 1.35 }}>
+              Gallery animals are known individual stars. Use Create only when this is a new known individual and enter a stable ID code; matching existing gallery IDs will appear below as you type so you can avoid duplicates.
+            </div>
+          )}
           <label style={{ display: 'grid', gap: 4 }}>Target ID</label>
           {targetMode === 'create' && targetType === 'query' ? (
             <input value={targetId} onChange={e => setTargetId(e.target.value)} placeholder="new query ID" style={inputStyle} />

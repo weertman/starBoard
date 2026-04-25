@@ -22,13 +22,16 @@ def test_empty_submission_rejected(tmp_path, monkeypatch):
     assert r.status_code in (400, 422)
 
 
-def test_gallery_create_rejected(tmp_path, monkeypatch):
-    app, _archive = build_test_app(tmp_path, monkeypatch)
+def test_valid_gallery_create_submission(tmp_path, monkeypatch):
+    app, archive = build_test_app(tmp_path, monkeypatch)
     client = TestClient(app)
-    payload = {'target_type': 'gallery', 'target_mode': 'create', 'target_id': 'anchovy', 'encounter_date': '2026-04-01', 'metadata': {}}
+    payload = {'target_type': 'gallery', 'target_mode': 'create', 'target_id': 'new_gallery_star', 'encounter_date': '2026-04-01', 'metadata': {'location': 'dock'}}
     files = [('files', ('capture.jpg', _image_bytes(), 'image/jpeg'))]
     r = client.post('/api/submissions', headers=AUTH, data={'payload': json.dumps(payload)}, files=files)
-    assert r.status_code == 400
+    assert r.status_code == 200
+    body = r.json()
+    assert body['entity_type'] == 'gallery'
+    assert (archive / 'gallery' / 'new_gallery_star' / '04_01_26').exists()
 
 
 def test_valid_query_create_submission(tmp_path, monkeypatch):

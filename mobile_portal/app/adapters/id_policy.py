@@ -8,6 +8,7 @@ from .archive_paths import entity_exists
 ALLOWED_MODES = {
     ('query', 'create'),
     ('query', 'append'),
+    ('gallery', 'create'),
     ('gallery', 'append'),
 }
 
@@ -20,5 +21,8 @@ def validate_target_mode(target_type: str, target_mode: str, target_id: str | No
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='target_id is required for append mode')
         if not entity_exists(target_type, target_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'{target_type} ID not found: {target_id}')
-    if target_mode == 'create' and not target_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='target_id is required for create mode in v1')
+    if target_mode == 'create':
+        if not target_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='target_id is required for create mode in v1')
+        if entity_exists(target_type, target_id):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f'{target_type} ID already exists: {target_id}')

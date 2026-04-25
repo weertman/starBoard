@@ -3,6 +3,7 @@ import { useSession } from './state/session'
 import { useLocalImages } from './state/localImages'
 import type { ImageDescriptor, MegaStarCapabilityInfo, MegaStarLookupCandidate, MegaStarLookupResponse } from './api/client'
 import { lookupMegaStar, submitObservation } from './api/client'
+import { initialDraftForMetadataSheet } from './metadataDraftDefaults'
 import { HomeScreen } from './screens/HomeScreen'
 import { ObservationWorkspace } from './screens/ObservationWorkspace'
 import { LookupWorkspace } from './screens/LookupWorkspace'
@@ -238,11 +239,7 @@ export function App() {
 
       <MetadataSheet
         open={metadataOpen}
-        initialDraft={{
-          ...metadataDraft,
-          targetType: metadataDraft.targetType || inferredTargetType,
-          targetId: metadataDraft.targetId || inferredTargetId,
-        }}
+        initialDraft={initialDraftForMetadataSheet(metadataDraft, inferredTargetType, inferredTargetId)}
         onReady={handleReady}
         onClose={() => setMetadataOpen(false)}
       />
