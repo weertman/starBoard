@@ -66,6 +66,11 @@ def _load_tab_setup_module():
             QAbstractItemView=_stub_class("QAbstractItemView"),
             QSpinBox=_stub_class("QSpinBox"),
         ),
+        "src.ui.help_button": _stub_module(
+            "src.ui.help_button",
+            HelpButton=type("HelpButton", (), {}),
+            HELP_TEXTS={},
+        ),
         "src.ui.collapsible": _stub_module(
             "src.ui.collapsible",
             CollapsibleSection=_stub_class("CollapsibleSection"),
@@ -92,6 +97,11 @@ def _load_tab_setup_module():
             ensure_encounter_name=lambda *_args, **_kwargs: "",
             place_images=lambda *_args, **_kwargs: None,
             discover_ids_and_images=lambda *_args, **_kwargs: [],
+            discover_ids_with_encounters=lambda *_args, **_kwargs: [],
+            discover_grouped_ids_with_encounters=lambda *_args, **_kwargs: [],
+            detect_folder_depth=lambda *_args, **_kwargs: "flat",
+            _encounter_suffix=lambda *_args, **_kwargs: "",
+            _parse_encounter_date=lambda *_args, **_kwargs: None,
         ),
         "src.data.batch_undo": _stub_module(
             "src.data.batch_undo",
@@ -178,6 +188,7 @@ def _load_tab_setup_module():
     data_pkg.encounter_info = stubbed_modules["src.data.encounter_info"]
     data_pkg.field_visits = stubbed_modules["src.data.field_visits"]
     data_pkg.archive_merge = stubbed_modules["src.data.archive_merge"]
+    ui_pkg.help_button = stubbed_modules["src.ui.help_button"]
     ui_pkg.collapsible = stubbed_modules["src.ui.collapsible"]
     ui_pkg.metadata_form_v2 = stubbed_modules["src.ui.metadata_form_v2"]
     utils_pkg.interaction_logger = stubbed_modules["src.utils.interaction_logger"]

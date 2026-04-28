@@ -62,6 +62,11 @@ def _load_gallery_review_module():
             last_row_per_id=lambda *args, **kwargs: {},
             normalize_id_value=lambda s: "" if s is None else str(s).replace("\ufeff", "").strip(),
         ),
+        "src.ui.help_button": _stub_module(
+            "src.ui.help_button",
+            HelpButton=type("HelpButton", (), {}),
+            HELP_TEXTS={},
+        ),
         "src.ui.annotator_view_second": _stub_module(
             "src.ui.annotator_view_second",
             AnnotatorViewSecond=type("AnnotatorViewSecond", (), {}),
@@ -118,6 +123,7 @@ def _load_gallery_review_module():
     data_pkg.rename_id = stubbed_modules["src.data.rename_id"]
     data_pkg.encounter_info = stubbed_modules["src.data.encounter_info"]
 
+    ui_pkg.help_button = stubbed_modules["src.ui.help_button"]
     ui_pkg.annotator_view_second = stubbed_modules["src.ui.annotator_view_second"]
     ui_pkg.image_quality_panel = stubbed_modules["src.ui.image_quality_panel"]
     ui_pkg.query_state_delegate = stubbed_modules["src.ui.query_state_delegate"]
