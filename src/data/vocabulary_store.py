@@ -180,6 +180,8 @@ class VocabularyStore:
 
     def reload(self) -> None:
         """Reload all vocabularies from disk."""
+        self._vocabularies_dir = archive_root() / "vocabularies"
+        self._ensure_dir()
         self._colors.clear()
         self._color_sets.clear()
         self._locations.clear()

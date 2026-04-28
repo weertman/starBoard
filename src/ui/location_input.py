@@ -4,8 +4,6 @@ Compound widget for location input: name + latitude + longitude + map picker.
 
 Designed to replace the individual location/latitude/longitude fields in the
 metadata form when the "location" group is rendered.
-
-Implements the AnnotationWidget interface so it can be managed by MetadataFormV2.
 """
 from __future__ import annotations
 
@@ -13,14 +11,13 @@ import logging
 from typing import Dict, Optional, Tuple
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QLineEdit, QPushButton, QCompleter, QSizePolicy,
-)
 from PySide6.QtGui import QDoubleValidator
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QComboBox, QCompleter,
+)
 
-from src.data.annotation_schema import FieldDefinition, AnnotationType, FIELD_BY_NAME
-from src.data.vocabulary_store import get_vocabulary_store
+from src.data.location_registry import add_or_update_location, get_location, list_known_locations
 
 log = logging.getLogger(__name__)
 
@@ -30,26 +27,27 @@ class LocationInputGroup(QWidget):
     Compound widget for location input.
 
     Contains:
-    - Location name (text with autocomplete from vocabulary)
-    - Latitude (text field with numeric validation, accepts negatives)
-    - Longitude (text field with numeric validation, accepts negatives)
-    - "Pick on Map" button (opens MapPickerDialog if available)
+    - Editable location-name combo box populated from known archive locations
+    - Latitude and longitude text fields with numeric validation
+    - "Pick on Map" button that can select existing locations or coordinates
 
     Emits value_changed when any sub-field changes.
     """
+
     value_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._suppress_location_lookup = False
         self._build_ui()
         self._connect_signals()
+        self.refresh_locations()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        # Row 1: Location name with autocomplete
         name_row = QHBoxLayout()
         name_row.setSpacing(6)
         lbl_name = QLabel("Name:")
@@ -57,26 +55,15 @@ class LocationInputGroup(QWidget):
         lbl_name.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         name_row.addWidget(lbl_name)
 
-        self._name_edit = QLineEdit()
-        self._name_edit.setPlaceholderText("Location name (e.g. Eagle Point)")
-        self._name_edit.setToolTip("Written description of the star's location")
-
-        # Set up autocomplete from vocabulary
-        try:
-            store = get_vocabulary_store()
-            locations = store.get_vocabulary("locations")
-            if locations:
-                completer = QCompleter(sorted(locations))
-                completer.setCaseSensitivity(Qt.CaseInsensitive)
-                completer.setFilterMode(Qt.MatchContains)
-                self._name_edit.setCompleter(completer)
-        except Exception:
-            pass  # vocabulary not available — no autocomplete
-
-        name_row.addWidget(self._name_edit, 1)
+        self._name_combo = QComboBox()
+        self._name_combo.setEditable(True)
+        self._name_combo.setInsertPolicy(QComboBox.NoInsert)
+        self._name_combo.setToolTip("Written description of the star's location")
+        if self._name_combo.lineEdit() is not None:
+            self._name_combo.lineEdit().setPlaceholderText("Location name (e.g. Eagle Point)")
+        name_row.addWidget(self._name_combo, 1)
         layout.addLayout(name_row)
 
-        # Row 2: Latitude + Longitude + Map button
         coord_row = QHBoxLayout()
         coord_row.setSpacing(6)
 
@@ -107,12 +94,9 @@ class LocationInputGroup(QWidget):
         self._lon_edit.setValidator(lon_validator)
         coord_row.addWidget(self._lon_edit)
 
-        # Map picker button
         self._btn_map = QPushButton("🗺 Pick on Map")
-        self._btn_map.setToolTip("Open an interactive map to pick coordinates")
+        self._btn_map.setToolTip("Open an interactive map to pick coordinates or an existing location")
         self._btn_map.setMaximumWidth(130)
-
-        # Hide the button if map picker is not available
         try:
             from src.ui.map_picker import is_map_picker_available
             if not is_map_picker_available():
@@ -122,59 +106,92 @@ class LocationInputGroup(QWidget):
 
         coord_row.addWidget(self._btn_map)
         coord_row.addStretch()
-
         layout.addLayout(coord_row)
 
     def _connect_signals(self) -> None:
-        self._name_edit.textChanged.connect(self._on_any_changed)
+        self._name_combo.currentTextChanged.connect(self._on_location_text_changed)
         self._lat_edit.textChanged.connect(self._on_any_changed)
         self._lon_edit.textChanged.connect(self._on_any_changed)
         self._btn_map.clicked.connect(self._open_map_picker)
 
+    def refresh_locations(self) -> None:
+        """Reload location choices from the canonical location registry."""
+        current = self.location_name()
+        try:
+            records = list_known_locations()
+        except Exception:
+            records = []
+        names = [record.name for record in records]
+
+        self._suppress_location_lookup = True
+        self._name_combo.blockSignals(True)
+        try:
+            self._name_combo.clear()
+            self._name_combo.addItem("")
+            self._name_combo.addItems(names)
+            completer = self._name_combo.completer()
+            if completer is not None:
+                completer.setCaseSensitivity(Qt.CaseInsensitive)
+                completer.setFilterMode(Qt.MatchContains)
+                completer.setCompletionMode(QCompleter.PopupCompletion)
+            self._name_combo.setCurrentText(current)
+        finally:
+            self._name_combo.blockSignals(False)
+            self._suppress_location_lookup = False
+
     def _on_any_changed(self) -> None:
         self.value_changed.emit()
 
+    def _on_location_text_changed(self, text: str) -> None:
+        if self._suppress_location_lookup:
+            self.value_changed.emit()
+            return
+        record = get_location(text.strip())
+        if record is not None and record.latitude is not None and record.longitude is not None:
+            self._lat_edit.blockSignals(True)
+            self._lon_edit.blockSignals(True)
+            try:
+                self.set_latitude(record.latitude)
+                self.set_longitude(record.longitude)
+            finally:
+                self._lat_edit.blockSignals(False)
+                self._lon_edit.blockSignals(False)
+        self.value_changed.emit()
+
     def _open_map_picker(self) -> None:
-        """Open the MapPickerDialog and populate lat/lon from the result."""
+        """Open the MapPickerDialog and populate name/lat/lon from the result."""
         try:
             from src.ui.map_picker import MapPickerDialog
         except ImportError:
             return
 
-        current_lat = self.latitude()
-        current_lon = self.longitude()
-
         dialog = MapPickerDialog(
             self,
-            latitude=current_lat,
-            longitude=current_lon,
+            location_name=self.location_name(),
+            latitude=self.latitude(),
+            longitude=self.longitude(),
+            locations=list_known_locations(),
         )
         from PySide6.QtWidgets import QDialog
         if dialog.exec() == QDialog.Accepted:
-            lat, lon = dialog.get_coordinates()
-            if lat is not None:
-                self._lat_edit.setText(f"{lat:.6f}")
+            if hasattr(dialog, "get_location"):
+                name, lat, lon = dialog.get_location()
+                self.set_location(name, lat, lon)
             else:
-                self._lat_edit.clear()
-            if lon is not None:
-                self._lon_edit.setText(f"{lon:.6f}")
-            else:
-                self._lon_edit.clear()
-
-    # -------------------------------------------------------------------------
-    # Public API: individual field access
-    # -------------------------------------------------------------------------
+                lat, lon = dialog.get_coordinates()
+                self.set_location(self.location_name(), lat, lon)
+            self.persist_current_location()
 
     def location_name(self) -> str:
         """Get the location name string."""
-        return self._name_edit.text().strip()
+        return self._name_combo.currentText().strip()
 
     def set_location_name(self, name: str) -> None:
-        """Set the location name string."""
-        self._name_edit.setText(name)
+        """Set the location name string and populate known coordinates when available."""
+        self._name_combo.setCurrentText((name or "").strip())
+        self._on_location_text_changed((name or "").strip())
 
     def latitude(self) -> Optional[float]:
-        """Get latitude as a float, or None if empty/invalid."""
         text = self._lat_edit.text().strip()
         if not text:
             return None
@@ -187,14 +204,12 @@ class LocationInputGroup(QWidget):
         return None
 
     def set_latitude(self, lat: Optional[float]) -> None:
-        """Set latitude from a float or None."""
         if lat is not None:
             self._lat_edit.setText(f"{lat:.6f}")
         else:
             self._lat_edit.clear()
 
     def longitude(self) -> Optional[float]:
-        """Get longitude as a float, or None if empty/invalid."""
         text = self._lon_edit.text().strip()
         if not text:
             return None
@@ -207,23 +222,20 @@ class LocationInputGroup(QWidget):
         return None
 
     def set_longitude(self, lon: Optional[float]) -> None:
-        """Set longitude from a float or None."""
         if lon is not None:
             self._lon_edit.setText(f"{lon:.6f}")
         else:
             self._lon_edit.clear()
 
-    # -------------------------------------------------------------------------
-    # Public API: bulk access (for MetadataFormV2 integration)
-    # -------------------------------------------------------------------------
+    def persist_current_location(self) -> None:
+        """Persist the current non-empty location name and optional coordinates."""
+        name = self.location_name()
+        if not name:
+            return
+        add_or_update_location(name, self.latitude(), self.longitude())
+        self.refresh_locations()
 
     def get_values(self) -> Dict[str, str]:
-        """
-        Get all three field values as a dict suitable for CSV row merging.
-
-        Returns:
-            {"location": "...", "latitude": "...", "longitude": "..."}
-        """
         lat = self.latitude()
         lon = self.longitude()
         return {
@@ -233,33 +245,23 @@ class LocationInputGroup(QWidget):
         }
 
     def set_values(self, values: Dict[str, str]) -> None:
-        """
-        Set all three fields from a dict (e.g., from a CSV row).
-
-        Expected keys: "location", "latitude", "longitude"
-        Missing keys are ignored (not cleared).
-        """
-        if "location" in values:
-            self._name_edit.setText((values["location"] or "").strip())
-        if "latitude" in values:
-            text = (values["latitude"] or "").strip()
-            self._lat_edit.setText(text)
-        if "longitude" in values:
-            text = (values["longitude"] or "").strip()
-            self._lon_edit.setText(text)
+        self._suppress_location_lookup = True
+        try:
+            if "location" in values:
+                self._name_combo.setCurrentText((values["location"] or "").strip())
+            if "latitude" in values:
+                self._lat_edit.setText((values["latitude"] or "").strip())
+            if "longitude" in values:
+                self._lon_edit.setText((values["longitude"] or "").strip())
+        finally:
+            self._suppress_location_lookup = False
 
     def clear_all(self) -> None:
-        """Clear all three fields."""
-        self._name_edit.clear()
+        self._name_combo.setCurrentText("")
         self._lat_edit.clear()
         self._lon_edit.clear()
 
-    # -------------------------------------------------------------------------
-    # Public API: convenience tuple access
-    # -------------------------------------------------------------------------
-
     def get_location(self) -> Tuple[str, Optional[float], Optional[float]]:
-        """Return (name, latitude, longitude)."""
         return self.location_name(), self.latitude(), self.longitude()
 
     def set_location(
@@ -268,7 +270,11 @@ class LocationInputGroup(QWidget):
         lat: Optional[float] = None,
         lon: Optional[float] = None,
     ) -> None:
-        """Set all three values at once."""
-        self.set_location_name(name)
-        self.set_latitude(lat)
-        self.set_longitude(lon)
+        self._suppress_location_lookup = True
+        try:
+            self._name_combo.setCurrentText((name or "").strip())
+            self.set_latitude(lat)
+            self.set_longitude(lon)
+        finally:
+            self._suppress_location_lookup = False
+        self.value_changed.emit()

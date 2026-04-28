@@ -1046,6 +1046,8 @@ class TabSetup(QWidget):
         row = self.meta_form.collect_row()
         row[ap.id_column_name(target)] = id_val
         append_row(csv_path, header, row)
+        if hasattr(self.meta_form, "persist_location"):
+            self.meta_form.persist_location()
 
         # Record metadata history for Gallery
         if target == "Gallery":
@@ -1101,46 +1103,19 @@ class TabSetup(QWidget):
         self.date_fv.setDate(QDate.currentDate())
         row1.addWidget(self.date_fv)
 
-        row1.addWidget(QLabel("Location:"))
-        self.cmb_location_fv = QComboBox()
-        self.cmb_location_fv.setEditable(True)
-        self.cmb_location_fv.lineEdit().setPlaceholderText("optional but recommended")
-        row1.addWidget(self.cmb_location_fv, 1)
-
         row1.addWidget(QLabel("Effort (min):"))
         self.spin_fv_duration = QSpinBox()
         self.spin_fv_duration.setRange(0, 1440)
         self.spin_fv_duration.setSpecialValueText("optional")
         self.spin_fv_duration.setValue(0)
         row1.addWidget(self.spin_fv_duration)
+        row1.addStretch(1)
         lay.addLayout(row1)
 
-        # Coordinates row
-        fv_coord_row = QHBoxLayout()
-        fv_coord_row.addWidget(QLabel("Lat:"))
-        self._fv_lat = QLineEdit()
-        self._fv_lat.setPlaceholderText("e.g. 48.546")
-        self._fv_lat.setMaximumWidth(110)
-        fv_coord_row.addWidget(self._fv_lat)
-        fv_coord_row.addWidget(QLabel("Lon:"))
-        self._fv_lon = QLineEdit()
-        self._fv_lon.setPlaceholderText("e.g. -123.013")
-        self._fv_lon.setMaximumWidth(110)
-        fv_coord_row.addWidget(self._fv_lon)
-
-        self._fv_btn_map = QPushButton("🗺 Map")
-        self._fv_btn_map.setMaximumWidth(70)
-        self._fv_btn_map.setToolTip("Pick coordinates on a map")
-        self._fv_btn_map.clicked.connect(self._on_fv_pick_map)
-        try:
-            from src.ui.map_picker import is_map_picker_available
-            if not is_map_picker_available():
-                self._fv_btn_map.setVisible(False)
-        except ImportError:
-            self._fv_btn_map.setVisible(False)
-        fv_coord_row.addWidget(self._fv_btn_map)
-        fv_coord_row.addStretch()
-        lay.addLayout(fv_coord_row)
+        # Shared location widget (name + lat/lon + map picker)
+        from src.ui.location_input import LocationInputGroup
+        self.location_fv_group = LocationInputGroup()
+        lay.addWidget(self.location_fv_group)
 
         # Observer row + action button
         row2 = QHBoxLayout()
@@ -1213,12 +1188,8 @@ class TabSetup(QWidget):
         return sorted(locations)
 
     def _populate_fv_locations(self) -> None:
-        current_text = self.cmb_location_fv.currentText()
-        self.cmb_location_fv.blockSignals(True)
-        self.cmb_location_fv.clear()
-        self.cmb_location_fv.addItems(self._collect_known_locations())
-        self.cmb_location_fv.setCurrentText(current_text)
-        self.cmb_location_fv.blockSignals(False)
+        if hasattr(self, "location_fv_group"):
+            self.location_fv_group.refresh_locations()
 
     def _refresh_fv_table(self) -> None:
         visits = read_field_visits(limit=50)
@@ -1227,7 +1198,7 @@ class TabSetup(QWidget):
             lat_text = f"{visit.latitude:.6f}" if getattr(visit, 'latitude', None) is not None else ""
             lon_text = f"{visit.longitude:.6f}" if getattr(visit, 'longitude', None) is not None else ""
             values = [
-                visit.outing_date.isoformat() if visit.outing_date else "",
+                visit.visit_date.isoformat() if visit.visit_date else "",
                 visit.location,
                 lat_text,
                 lon_text,
@@ -1242,49 +1213,28 @@ class TabSetup(QWidget):
 
     def _on_fv_pick_map(self) -> None:
         """Open map picker for field visit coordinates."""
-        try:
-            from src.ui.map_picker import MapPickerDialog
-        except ImportError:
-            return
-        lat_text = self._fv_lat.text().strip()
-        lon_text = self._fv_lon.text().strip()
-        try:
-            init_lat = float(lat_text) if lat_text else None
-        except ValueError:
-            init_lat = None
-        try:
-            init_lon = float(lon_text) if lon_text else None
-        except ValueError:
-            init_lon = None
-        dialog = MapPickerDialog(self, latitude=init_lat, longitude=init_lon)
-        from PySide6.QtWidgets import QDialog
-        if dialog.exec() == QDialog.Accepted:
-            lat, lon = dialog.get_coordinates()
-            self._fv_lat.setText(f"{lat:.6f}" if lat is not None else "")
-            self._fv_lon.setText(f"{lon:.6f}" if lon is not None else "")
+        if hasattr(self, "location_fv_group"):
+            self.location_fv_group._open_map_picker()
 
     def _on_log_field_visit(self) -> None:
         qd = self.date_fv.date()
         outing_date = _date(qd.year(), qd.month(), qd.day())
-        location = self.cmb_location_fv.currentText().strip()
+        loc_vals = self.location_fv_group.get_values() if hasattr(self, "location_fv_group") else {}
+        location = (loc_vals.get("location") or "").strip()
         observers = self.edit_fv_observers.text().strip()
         notes = self.txt_fv_notes.toPlainText().strip()
         duration_val = self.spin_fv_duration.value()
         duration_minutes = duration_val if duration_val > 0 else None
-
-        # Parse optional coordinates
         latitude = None
         longitude = None
-        lat_text = self._fv_lat.text().strip()
-        lon_text = self._fv_lon.text().strip()
-        if lat_text:
+        if loc_vals.get("latitude"):
             try:
-                latitude = float(lat_text)
+                latitude = float(loc_vals["latitude"])
             except ValueError:
                 pass
-        if lon_text:
+        if loc_vals.get("longitude"):
             try:
-                longitude = float(lon_text)
+                longitude = float(loc_vals["longitude"])
             except ValueError:
                 pass
 
@@ -1296,7 +1246,7 @@ class TabSetup(QWidget):
             return
 
         append_field_visit(
-            outing_date=outing_date,
+            visit_date=outing_date,
             location=location,
             observers=observers,
             duration_minutes=duration_minutes,
@@ -1321,8 +1271,9 @@ class TabSetup(QWidget):
         self.edit_fv_observers.clear()
         self.txt_fv_notes.clear()
         self.spin_fv_duration.setValue(0)
-        self._fv_lat.clear()
-        self._fv_lon.clear()
+        if hasattr(self, "location_fv_group"):
+            self.location_fv_group.persist_current_location()
+            self.location_fv_group.clear_all()
         self._refresh_fv_table()
         self._populate_fv_locations()
         self._populate_batch_locations()
@@ -1704,6 +1655,8 @@ class TabSetup(QWidget):
                         if loc_vals.get(k):
                             row[k] = loc_vals[k]
                     append_row(csv_path, header, row)
+                    if hasattr(self, "batch_location_group"):
+                        self.batch_location_group.persist_current_location()
                     
                     # Record metadata history for new Gallery IDs
                     if target == "Gallery":
@@ -1960,6 +1913,8 @@ class TabSetup(QWidget):
             if loc_vals.get(k):
                 row[k] = loc_vals[k]
         append_row(csv_path, header, row)
+        if hasattr(self, "batch_location_group"):
+            self.batch_location_group.persist_current_location()
         if target == "Gallery":
             from src.data.metadata_history import record_bulk_update, SOURCE_BATCH_UPLOAD
             record_bulk_update(
@@ -2845,6 +2800,8 @@ class TabSetup(QWidget):
         row = self.meta_form_edit.collect_row()
         row[ap.id_column_name(target)] = id_val
         append_row(csv_path, header, row)
+        if hasattr(self.meta_form_edit, "persist_location"):
+            self.meta_form_edit.persist_location()
 
         # Record metadata history for Gallery
         if target == "Gallery":
@@ -2886,6 +2843,8 @@ class TabSetup(QWidget):
         row = self.meta_form_edit.collect_row()
         row[ap.id_column_name(target)] = id_val
         append_row(csv_path, header, row)
+        if hasattr(self.meta_form_edit, "persist_location"):
+            self.meta_form_edit.persist_location()
 
         # Record metadata history for Gallery
         if target == "Gallery":
@@ -3098,49 +3057,18 @@ class TabSetup(QWidget):
         )
         lay.addWidget(self.tbl_batch_edit_location)
 
-        # New location + apply row
+        # New location + apply row using the shared location widget
+        from src.ui.location_input import LocationInputGroup
+        self.batch_edit_location_group = LocationInputGroup()
+        lay.addWidget(self.batch_edit_location_group)
+
         apply_row = QHBoxLayout()
-        apply_row.addWidget(QLabel("New location:"))
-        self.cmb_location_batch_edit = QComboBox()
-        self.cmb_location_batch_edit.setEditable(True)
-        self.cmb_location_batch_edit.lineEdit().setPlaceholderText(
-            "applies to all selected IDs"
-        )
-        self.cmb_location_batch_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        apply_row.addWidget(self.cmb_location_batch_edit, 1)
-        lay.addLayout(apply_row)
-
-        # Coordinates row for batch edit
-        batch_coord_row = QHBoxLayout()
-        batch_coord_row.addWidget(QLabel("Lat:"))
-        self._batch_lat = QLineEdit()
-        self._batch_lat.setPlaceholderText("e.g. 48.546")
-        self._batch_lat.setMaximumWidth(110)
-        batch_coord_row.addWidget(self._batch_lat)
-        batch_coord_row.addWidget(QLabel("Lon:"))
-        self._batch_lon = QLineEdit()
-        self._batch_lon.setPlaceholderText("e.g. -123.013")
-        self._batch_lon.setMaximumWidth(110)
-        batch_coord_row.addWidget(self._batch_lon)
-
-        self._batch_btn_map = QPushButton("🗺 Map")
-        self._batch_btn_map.setMaximumWidth(70)
-        self._batch_btn_map.setToolTip("Pick coordinates on a map")
-        self._batch_btn_map.clicked.connect(self._on_batch_pick_map)
-        try:
-            from src.ui.map_picker import is_map_picker_available
-            if not is_map_picker_available():
-                self._batch_btn_map.setVisible(False)
-        except ImportError:
-            self._batch_btn_map.setVisible(False)
-        batch_coord_row.addWidget(self._batch_btn_map)
-
         self.btn_apply_batch_edit_location = QPushButton("Apply to Selected")
         self.btn_apply_batch_edit_location.setEnabled(False)
         self.btn_apply_batch_edit_location.clicked.connect(self._on_apply_batch_edit_location)
-        batch_coord_row.addWidget(self.btn_apply_batch_edit_location)
-        batch_coord_row.addStretch()
-        lay.addLayout(batch_coord_row)
+        apply_row.addWidget(self.btn_apply_batch_edit_location)
+        apply_row.addStretch()
+        lay.addLayout(apply_row)
 
         # Log pane
         self.log_batch_edit_location = QPlainTextEdit()
@@ -3154,34 +3082,12 @@ class TabSetup(QWidget):
 
     def _on_batch_pick_map(self) -> None:
         """Open map picker for batch edit coordinates."""
-        try:
-            from src.ui.map_picker import MapPickerDialog
-        except ImportError:
-            return
-        lat_text = self._batch_lat.text().strip()
-        lon_text = self._batch_lon.text().strip()
-        try:
-            init_lat = float(lat_text) if lat_text else None
-        except ValueError:
-            init_lat = None
-        try:
-            init_lon = float(lon_text) if lon_text else None
-        except ValueError:
-            init_lon = None
-        dialog = MapPickerDialog(self, latitude=init_lat, longitude=init_lon)
-        from PySide6.QtWidgets import QDialog
-        if dialog.exec() == QDialog.Accepted:
-            lat, lon = dialog.get_coordinates()
-            self._batch_lat.setText(f"{lat:.6f}" if lat is not None else "")
-            self._batch_lon.setText(f"{lon:.6f}" if lon is not None else "")
+        if hasattr(self, "batch_edit_location_group"):
+            self.batch_edit_location_group._open_map_picker()
 
     def _populate_batch_edit_location_choices(self) -> None:
-        current_text = self.cmb_location_batch_edit.currentText()
-        self.cmb_location_batch_edit.blockSignals(True)
-        self.cmb_location_batch_edit.clear()
-        self.cmb_location_batch_edit.addItems(self._collect_known_locations())
-        self.cmb_location_batch_edit.setCurrentText(current_text)
-        self.cmb_location_batch_edit.blockSignals(False)
+        if hasattr(self, "batch_edit_location_group"):
+            self.batch_edit_location_group.refresh_locations()
 
     def _selected_batch_edit_location_ids(self) -> List[str]:
         selected_rows = sorted({idx.row() for idx in self.tbl_batch_edit_location.selectedIndexes()})
@@ -3249,7 +3155,8 @@ class TabSetup(QWidget):
 
     def _on_apply_batch_edit_location(self) -> None:
         target = self.cmb_target_batch_edit_location.currentText()
-        new_location = self.cmb_location_batch_edit.currentText().strip()
+        loc_vals = self.batch_edit_location_group.get_values() if hasattr(self, "batch_edit_location_group") else {}
+        new_location = (loc_vals.get("location") or "").strip()
         selected_ids = self._selected_batch_edit_location_ids()
 
         if not selected_ids:
@@ -3260,8 +3167,8 @@ class TabSetup(QWidget):
             return
 
         # Parse optional coordinates
-        new_lat = self._batch_lat.text().strip()
-        new_lon = self._batch_lon.text().strip()
+        new_lat = (loc_vals.get("latitude") or "").strip()
+        new_lon = (loc_vals.get("longitude") or "").strip()
 
         confirm_msg = f"Apply location '{new_location}'"
         if new_lat or new_lon:
@@ -3361,6 +3268,8 @@ class TabSetup(QWidget):
                 self,
             )
         elif changed_count:
+            if hasattr(self, "batch_edit_location_group"):
+                self.batch_edit_location_group.persist_current_location()
             info(f"Updated location for {changed_count} {target.lower()} ID(s).", self)
         else:
             info("No changes were needed (locations already matched).", self)

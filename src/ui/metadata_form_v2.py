@@ -233,6 +233,11 @@ class MetadataFormV2(QWidget):
         """Alias for collect_row_dict() for API compatibility."""
         return self.collect_row_dict()
 
+    def persist_location(self) -> None:
+        """Persist the current non-empty location choice to the shared registry."""
+        if self._location_group is not None:
+            self._location_group.persist_current_location()
+
     def is_dirty(self) -> bool:
         """Check if any values have changed since last populate()."""
         return self.collect_row_dict() != self._loaded_snapshot

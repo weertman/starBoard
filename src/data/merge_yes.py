@@ -393,7 +393,17 @@ def merge_yeses_for_gallery(gallery_id: str, *, dry_run: bool = False) -> MergeR
                 location = (q_meta.get("location") or "").strip()
                 if location:
                     obs_date = last_observation_date("Queries", qid)
-                    add_location_sighting(gallery_id, location, obs_date, qid)
+                    latitude = None
+                    longitude = None
+                    try:
+                        latitude = float(q_meta.get("latitude") or "")
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        longitude = float(q_meta.get("longitude") or "")
+                    except (TypeError, ValueError):
+                        pass
+                    add_location_sighting(gallery_id, location, obs_date, qid, latitude, longitude)
         except Exception as e:
             # Location history is non-critical; log but don't fail the merge
             log.warning("Failed to record location history for %s: %s", gallery_id, e)
