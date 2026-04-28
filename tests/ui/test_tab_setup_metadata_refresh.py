@@ -1,24 +1,11 @@
 import importlib.util
 import sys
-import types
 from pathlib import Path
+
+from ui_stub_helpers import install_src_stubs, restore_modules, stub_class, stub_module
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "src/ui/tab_setup.py"
-_MISSING = object()
-
-
-def _stub_class(name, **attrs):
-    return type(name, (), attrs)
-
-
-def _stub_module(name, **attrs):
-    module = types.ModuleType(name)
-    for attr, value in attrs.items():
-        setattr(module, attr, value)
-    return module
-
-
 def _load_tab_setup_module():
     module_name = "src.ui._tab_setup_under_test"
     cached = sys.modules.get(module_name)
@@ -27,72 +14,72 @@ def _load_tab_setup_module():
 
     signal_factory = lambda *args, **kwargs: object()
     stubbed_modules = {
-        "PySide6": types.ModuleType("PySide6"),
-        "PySide6.QtCore": _stub_module(
+        "PySide6": stub_module("PySide6"),
+        "PySide6.QtCore": stub_module(
             "PySide6.QtCore",
-            Qt=_stub_class("Qt"),
-            QDate=_stub_class("QDate"),
-            QTimer=_stub_class("QTimer"),
+            Qt=stub_class("Qt"),
+            QDate=stub_class("QDate"),
+            QTimer=stub_class("QTimer"),
             Signal=signal_factory,
         ),
-        "PySide6.QtWidgets": _stub_module(
+        "PySide6.QtWidgets": stub_module(
             "PySide6.QtWidgets",
-            QWidget=_stub_class("QWidget"),
-            QVBoxLayout=_stub_class("QVBoxLayout"),
-            QHBoxLayout=_stub_class("QHBoxLayout"),
-            QGroupBox=_stub_class("QGroupBox"),
-            QPushButton=_stub_class("QPushButton"),
-            QComboBox=_stub_class("QComboBox", NoInsert=0),
-            QLabel=_stub_class("QLabel"),
-            QFileDialog=_stub_class("QFileDialog"),
-            QListWidget=_stub_class("QListWidget"),
-            QListWidgetItem=_stub_class("QListWidgetItem"),
-            QLineEdit=_stub_class("QLineEdit"),
-            QDateEdit=_stub_class("QDateEdit"),
-            QMessageBox=_stub_class("QMessageBox"),
-            QCheckBox=_stub_class("QCheckBox"),
-            QPlainTextEdit=_stub_class("QPlainTextEdit"),
-            QScrollArea=_stub_class("QScrollArea"),
-            QSizePolicy=_stub_class("QSizePolicy"),
-            QTabWidget=_stub_class("QTabWidget"),
-            QCompleter=_stub_class("QCompleter"),
-            QDialog=_stub_class("QDialog"),
-            QDialogButtonBox=_stub_class("QDialogButtonBox"),
-            QRadioButton=_stub_class("QRadioButton"),
-            QButtonGroup=_stub_class("QButtonGroup"),
-            QTableWidget=_stub_class("QTableWidget"),
-            QTableWidgetItem=_stub_class("QTableWidgetItem"),
-            QHeaderView=_stub_class("QHeaderView"),
-            QAbstractItemView=_stub_class("QAbstractItemView"),
-            QSpinBox=_stub_class("QSpinBox"),
+            QWidget=stub_class("QWidget"),
+            QVBoxLayout=stub_class("QVBoxLayout"),
+            QHBoxLayout=stub_class("QHBoxLayout"),
+            QGroupBox=stub_class("QGroupBox"),
+            QPushButton=stub_class("QPushButton"),
+            QComboBox=stub_class("QComboBox", NoInsert=0),
+            QLabel=stub_class("QLabel"),
+            QFileDialog=stub_class("QFileDialog"),
+            QListWidget=stub_class("QListWidget"),
+            QListWidgetItem=stub_class("QListWidgetItem"),
+            QLineEdit=stub_class("QLineEdit"),
+            QDateEdit=stub_class("QDateEdit"),
+            QMessageBox=stub_class("QMessageBox"),
+            QCheckBox=stub_class("QCheckBox"),
+            QPlainTextEdit=stub_class("QPlainTextEdit"),
+            QScrollArea=stub_class("QScrollArea"),
+            QSizePolicy=stub_class("QSizePolicy"),
+            QTabWidget=stub_class("QTabWidget"),
+            QCompleter=stub_class("QCompleter"),
+            QDialog=stub_class("QDialog"),
+            QDialogButtonBox=stub_class("QDialogButtonBox"),
+            QRadioButton=stub_class("QRadioButton"),
+            QButtonGroup=stub_class("QButtonGroup"),
+            QTableWidget=stub_class("QTableWidget"),
+            QTableWidgetItem=stub_class("QTableWidgetItem"),
+            QHeaderView=stub_class("QHeaderView"),
+            QAbstractItemView=stub_class("QAbstractItemView"),
+            QSpinBox=stub_class("QSpinBox"),
         ),
-        "src.ui.help_button": _stub_module(
+        "src.ui.help_button": stub_module(
             "src.ui.help_button",
             HelpButton=type("HelpButton", (), {}),
             HELP_TEXTS={},
         ),
-        "src.ui.collapsible": _stub_module(
+        "src.ui.collapsible": stub_module(
             "src.ui.collapsible",
-            CollapsibleSection=_stub_class("CollapsibleSection"),
+            CollapsibleSection=stub_class("CollapsibleSection"),
         ),
-        "src.data.archive_paths": _stub_module(
+        "src.data.archive_paths": stub_module(
             "src.data.archive_paths",
             last_observation_for_all=lambda *_args, **_kwargs: {},
         ),
-        "src.data.csv_io": _stub_module(
+        "src.data.csv_io": stub_module(
             "src.data.csv_io",
             append_row=lambda *_args, **_kwargs: None,
             read_rows_multi=lambda *_args, **_kwargs: [],
             last_row_per_id=lambda *_args, **_kwargs: {},
             normalize_id_value=lambda value: value,
         ),
-        "src.data.id_registry": _stub_module(
+        "src.data.id_registry": stub_module(
             "src.data.id_registry",
             list_ids=lambda *_args, **_kwargs: [],
             id_exists=lambda *_args, **_kwargs: False,
             invalidate_id_cache=lambda: None,
         ),
-        "src.data.ingest": _stub_module(
+        "src.data.ingest": stub_module(
             "src.data.ingest",
             ensure_encounter_name=lambda *_args, **_kwargs: "",
             place_images=lambda *_args, **_kwargs: None,
@@ -103,7 +90,7 @@ def _load_tab_setup_module():
             _encounter_suffix=lambda *_args, **_kwargs: "",
             _parse_encounter_date=lambda *_args, **_kwargs: None,
         ),
-        "src.data.batch_undo": _stub_module(
+        "src.data.batch_undo": stub_module(
             "src.data.batch_undo",
             generate_batch_id=lambda *_args, **_kwargs: "",
             record_batch_upload=lambda *_args, **_kwargs: None,
@@ -111,98 +98,71 @@ def _load_tab_setup_module():
             undo_batch=lambda *_args, **_kwargs: None,
             redo_batch=lambda *_args, **_kwargs: None,
             check_redo_sources=lambda *_args, **_kwargs: [],
-            BatchInfo=_stub_class("BatchInfo"),
+            BatchInfo=stub_class("BatchInfo"),
         ),
-        "src.data.metadata_history": _stub_module(
+        "src.data.metadata_history": stub_module(
             "src.data.metadata_history",
             record_bulk_update=lambda *_args, **_kwargs: None,
             get_current_metadata_for_gallery=lambda *_args, **_kwargs: {},
             SOURCE_UI="ui",
         ),
-        "src.data.validators": _stub_module(
+        "src.data.validators": stub_module(
             "src.data.validators",
             validate_id=lambda *_args, **_kwargs: (True, ""),
         ),
-        "src.data.best_photo": _stub_module(
+        "src.data.best_photo": stub_module(
             "src.data.best_photo",
             reorder_files_with_best=lambda *_args, **_kwargs: [],
             save_best_for_id=lambda *_args, **_kwargs: None,
         ),
-        "src.data.image_index": _stub_module(
+        "src.data.image_index": stub_module(
             "src.data.image_index",
             list_image_files=lambda *_args, **_kwargs: [],
         ),
-        "src.data.encounter_info": _stub_module(
+        "src.data.encounter_info": stub_module(
             "src.data.encounter_info",
             list_encounters_for_id=lambda *_args, **_kwargs: [],
             get_encounter_date=lambda *_args, **_kwargs: None,
             set_encounter_date=lambda *_args, **_kwargs: None,
         ),
-        "src.data.field_visits": _stub_module(
+        "src.data.field_visits": stub_module(
             "src.data.field_visits",
             append_field_visit=lambda *_args, **_kwargs: None,
             get_field_visit_locations=lambda *_args, **_kwargs: [],
             read_field_visits=lambda *_args, **_kwargs: [],
             delete_field_visit=lambda *_args, **_kwargs: False,
         ),
-        "src.data.archive_merge": _stub_module(
+        "src.data.archive_merge": stub_module(
             "src.data.archive_merge",
             scan_external_archive=lambda *_args, **_kwargs: [],
             build_merge_plan=lambda *_args, **_kwargs: None,
             execute_merge=lambda *_args, **_kwargs: None,
-            MergeItem=_stub_class("MergeItem"),
-            MergePlan=_stub_class("MergePlan"),
-            MergeReport=_stub_class("MergeReport"),
+            MergeItem=stub_class("MergeItem"),
+            MergePlan=stub_class("MergePlan"),
+            MergeReport=stub_class("MergeReport"),
         ),
-        "src.ui.metadata_form_v2": _stub_module(
+        "src.ui.metadata_form_v2": stub_module(
             "src.ui.metadata_form_v2",
-            MetadataForm=_stub_class("MetadataForm"),
+            MetadataForm=stub_class("MetadataForm"),
         ),
-        "src.utils.interaction_logger": _stub_module(
+        "src.utils.interaction_logger": stub_module(
             "src.utils.interaction_logger",
             get_interaction_logger=lambda: None,
         ),
     }
 
-    src_pkg = types.ModuleType("src")
-    src_pkg.__path__ = []
-    data_pkg = types.ModuleType("src.data")
-    data_pkg.__path__ = []
-    ui_pkg = types.ModuleType("src.ui")
-    ui_pkg.__path__ = []
-    utils_pkg = types.ModuleType("src.utils")
-    utils_pkg.__path__ = []
-
-    src_pkg.data = data_pkg
-    src_pkg.ui = ui_pkg
-    src_pkg.utils = utils_pkg
-    data_pkg.archive_paths = stubbed_modules["src.data.archive_paths"]
-    data_pkg.csv_io = stubbed_modules["src.data.csv_io"]
-    data_pkg.id_registry = stubbed_modules["src.data.id_registry"]
-    data_pkg.ingest = stubbed_modules["src.data.ingest"]
-    data_pkg.batch_undo = stubbed_modules["src.data.batch_undo"]
-    data_pkg.metadata_history = stubbed_modules["src.data.metadata_history"]
-    data_pkg.validators = stubbed_modules["src.data.validators"]
-    data_pkg.best_photo = stubbed_modules["src.data.best_photo"]
-    data_pkg.image_index = stubbed_modules["src.data.image_index"]
-    data_pkg.encounter_info = stubbed_modules["src.data.encounter_info"]
-    data_pkg.field_visits = stubbed_modules["src.data.field_visits"]
-    data_pkg.archive_merge = stubbed_modules["src.data.archive_merge"]
-    ui_pkg.help_button = stubbed_modules["src.ui.help_button"]
-    ui_pkg.collapsible = stubbed_modules["src.ui.collapsible"]
-    ui_pkg.metadata_form_v2 = stubbed_modules["src.ui.metadata_form_v2"]
-    utils_pkg.interaction_logger = stubbed_modules["src.utils.interaction_logger"]
-
-    stubbed_modules.update({
-        "src": src_pkg,
-        "src.data": data_pkg,
-        "src.ui": ui_pkg,
-        "src.utils": utils_pkg,
-    })
-    previous_modules = {name: sys.modules.get(name, _MISSING) for name in stubbed_modules}
+    previous_modules = install_src_stubs(
+        stubbed_modules,
+        data_modules=(
+            "archive_paths", "csv_io", "id_registry", "ingest", "batch_undo",
+            "metadata_history", "validators", "best_photo", "image_index",
+            "encounter_info", "field_visits", "archive_merge",
+        ),
+        ui_modules=("help_button", "collapsible", "metadata_form_v2"),
+        utils_modules=("interaction_logger",),
+    )
 
     try:
-        sys.modules.update(stubbed_modules)
         spec = importlib.util.spec_from_file_location(module_name, MODULE_PATH)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
@@ -210,11 +170,7 @@ def _load_tab_setup_module():
         spec.loader.exec_module(module)
         return module
     finally:
-        for name, previous in previous_modules.items():
-            if previous is _MISSING:
-                sys.modules.pop(name, None)
-            else:
-                sys.modules[name] = previous
+        restore_modules(previous_modules)
 
 
 tab_setup = _load_tab_setup_module()
