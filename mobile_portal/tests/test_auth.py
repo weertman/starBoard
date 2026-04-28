@@ -104,7 +104,10 @@ def test_session_reports_megastar_capability_disabled_when_registry_is_stale(tmp
     r = client.get('/api/session', headers=AUTH)
 
     assert r.status_code == 200
-    assert r.json()['capabilities']['megastar_lookup'] is False
+    body = r.json()
+    assert body['capabilities']['megastar_lookup'] is False
+    assert body['megastar_lookup']['state'] == 'unavailable'
+    assert body['megastar_lookup']['reason'] == 'stale_artifacts'
 
 
 

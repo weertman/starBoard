@@ -12,7 +12,7 @@ from ..adapters.id_policy import validate_target_mode
 from ..adapters.ingest_adapter import UploadImage, ingest_images
 from ..adapters.csv_adapter import write_metadata_row
 
-IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'}
+IMAGE_EXTS = {'.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.tif', '.tiff', '.bmp', '.dib', '.gif', '.webp', '.heic', '.heif', '.avif'}
 
 
 @dataclass

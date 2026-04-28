@@ -60,7 +60,7 @@ def get_settings() -> Settings:
         preview_cache_dir=cache_dir,
         megastar_enabled=os.getenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '0') == '1',
         megastar_backend='worker' if os.getenv('STARBOARD_MOBILE_MEGASTAR_BACKEND', 'local').strip().lower() == 'worker' else 'local',
-        megastar_worker_url=os.getenv('STARBOARD_MOBILE_MEGASTAR_WORKER_URL', 'http://127.0.0.1:8092').rstrip('/'),
+        megastar_worker_url=os.getenv('STARBOARD_MOBILE_MEGASTAR_WORKER_URL', 'http://127.0.0.1:8093').rstrip('/'),
         megastar_worker_timeout_seconds=float(os.getenv('STARBOARD_MOBILE_MEGASTAR_WORKER_TIMEOUT_SECONDS', '5')),
         megastar_model_key_override=megastar_model_key_override,
         megastar_artifact_root=megastar_artifact_root,

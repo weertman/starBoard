@@ -315,7 +315,7 @@ def test_megastar_artifact_loader_reports_enabled_with_portable_checkpoint_resol
     assert availability.embedding_dim == 4
 
 
-def test_megastar_artifact_loader_warns_but_stays_enabled_when_registry_stale(tmp_path, monkeypatch):
+def test_megastar_artifact_loader_fails_closed_when_registry_stale(tmp_path, monkeypatch):
     monkeypatch.setenv('STARBOARD_MOBILE_MEGASTAR_ENABLED', '1')
     monkeypatch.setattr('mobile_portal.app.adapters.megastar_artifact_loader.DL_AVAILABLE', True)
     build_test_app(tmp_path, monkeypatch)
@@ -324,8 +324,9 @@ def test_megastar_artifact_loader_warns_but_stays_enabled_when_registry_stale(tm
 
     availability = load_megastar_artifact_availability(get_settings())
 
-    assert availability.enabled is True
-    assert availability.reason is None
+    assert availability.enabled is False
+    assert availability.state == 'unavailable'
+    assert availability.reason == 'stale_artifacts'
 
 
 def test_query_preprocessor_matches_cache_then_tensor_contract():

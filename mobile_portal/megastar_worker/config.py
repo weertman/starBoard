@@ -31,7 +31,7 @@ def get_settings() -> WorkerSettings:
         repo_root=repo_root,
         archive_dir=archive_dir,
         host=os.getenv('STARBOARD_MEGASTAR_WORKER_HOST', '127.0.0.1'),
-        port=int(os.getenv('STARBOARD_MEGASTAR_WORKER_PORT', '8092')),
+        port=int(os.getenv('STARBOARD_MEGASTAR_WORKER_PORT', '8093')),
         enabled=os.getenv('STARBOARD_MEGASTAR_WORKER_ENABLED', '0') == '1',
         model_key_override=os.getenv('STARBOARD_MEGASTAR_MODEL_KEY') or None,
         artifact_root=artifact_root,

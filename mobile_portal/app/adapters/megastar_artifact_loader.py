@@ -29,7 +29,7 @@ class MegaStarArtifactAvailability:
     raw_metadata: dict[str, Any] | None = None
 
 
-def _resolve_repo_path(repo_root: Path, raw_path: str | None) -> Path | None:
+def _resolve_repo_path(repo_root: Path, raw_path: str | None, *, archive_dir: Path | None = None) -> Path | None:
     if not raw_path:
         return None
     candidate = Path(raw_path).expanduser()
@@ -40,10 +40,13 @@ def _resolve_repo_path(repo_root: Path, raw_path: str | None) -> Path | None:
         return portable.resolve()
     if portable.is_absolute():
         return portable
-    rebased = (repo_root / portable).resolve()
-    if rebased.exists():
-        return rebased
-    return rebased
+    for base in (repo_root, archive_dir.parent if archive_dir is not None else None):
+        if base is None:
+            continue
+        rebased = (base / portable).resolve()
+        if rebased.exists():
+            return rebased
+    return (repo_root / portable).resolve()
 
 
 def load_megastar_artifact_availability(settings) -> MegaStarArtifactAvailability:
@@ -120,7 +123,7 @@ def load_megastar_artifact_availability(settings) -> MegaStarArtifactAvailabilit
             raw_model_entry=model_entry,
         )
 
-    checkpoint_path = _resolve_repo_path(settings.repo_root, model_entry.get('checkpoint_path'))
+    checkpoint_path = _resolve_repo_path(settings.repo_root, model_entry.get('checkpoint_path'), archive_dir=settings.archive_dir)
     if checkpoint_path is None or not checkpoint_path.exists():
         return MegaStarArtifactAvailability(
             enabled=False,
@@ -241,8 +244,19 @@ def load_megastar_artifact_availability(settings) -> MegaStarArtifactAvailabilit
     pending_ids = registry.get('pending_ids', {}) if isinstance(registry.get('pending_ids', {}), dict) else {}
     pending_gallery = pending_ids.get('gallery', []) or []
     pending_queries = pending_ids.get('queries', []) or []
-    # Pending IDs are logged but no longer block lookups — the existing
-    # gallery embeddings are still valid for the IDs that have been computed.
+    if (pending_gallery or pending_queries) and settings.megastar_require_fresh_assets:
+        return MegaStarArtifactAvailability(
+            enabled=False,
+            state='unavailable',
+            reason='stale_artifacts',
+            model_key=model_key,
+            artifact_dir=artifact_dir,
+            registry_path=registry_path,
+            checkpoint_path=checkpoint_path,
+            raw_registry=registry,
+            raw_model_entry=model_entry,
+            raw_metadata=metadata,
+        )
     if pending_gallery or pending_queries:
         import logging
         _log = logging.getLogger('starBoard.megastar.artifacts')

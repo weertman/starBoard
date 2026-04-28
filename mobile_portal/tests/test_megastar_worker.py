@@ -47,8 +47,11 @@ def test_megastar_worker_lookup_uses_real_service_contract(monkeypatch):
         reason = None
         model_key = 'default_megastarid_v1'
 
+    seen_max_candidates = []
+
     class StubService:
-        def lookup_upload(self, *, filename, content, content_type=None):
+        def lookup_upload(self, *, filename, content, content_type=None, max_candidates=5):
+            seen_max_candidates.append(max_candidates)
             return MegaStarLookupResponse(
                 query_image_name=filename,
                 status='ok',
@@ -77,8 +80,9 @@ def test_megastar_worker_lookup_uses_real_service_contract(monkeypatch):
     monkeypatch.setattr(routes_lookup, 'capability_status', lambda: EnabledCapability())
     monkeypatch.setattr(routes_lookup, 'get_megastar_worker_lookup_service', lambda: StubService())
     client = TestClient(create_app())
-    r = client.post('/lookup', files=_upload_file_tuple())
+    r = client.post('/lookup?max_candidates=7', files=_upload_file_tuple())
     assert r.status_code == 200
     body = r.json()
     assert body['status'] == 'ok'
     assert body['candidates'][0]['entity_id'] == 'anchovy'
+    assert seen_max_candidates == [7]
