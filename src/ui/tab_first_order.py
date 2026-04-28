@@ -605,6 +605,7 @@ class TabFirstOrder(QWidget):
         self._pinned: List[str] = []
         self._current_query: str = ""
         self._cards: List[LineupCard] = []
+        self._gallery_jump_ids: List[str] = []
         self._meta_popup: _MetadataPopup | None = None
         self._meta_edit_popup: _MetadataEditPopup | None = None
 
@@ -1627,6 +1628,7 @@ class TabFirstOrder(QWidget):
         if not qid:
             self._set_post_fusion_hint(None, set())
             self._set_cards([])
+            self._gallery_jump_ids = []
             self.lbl_suggested_match.setText("")
             return
 
@@ -1651,14 +1653,21 @@ class TabFirstOrder(QWidget):
         if not equalize:
             weights = {f: config.get_weight(f) for f in fields}
 
-        # Get metadata-based ranking results
+        # Get metadata-based ranking results.  Compute the full ranked list so
+        # the Jump-to selector can see every gallery ID; rendering is still
+        # limited to Top-K below.
+        desired_top_k = int(self.spin_topk.value())
+        self.engine.rebuild_if_needed()
+        all_gallery_count = max(len(getattr(self.engine, "_gallery_rows_by_id", {})), desired_top_k)
+        if hasattr(self, 'spin_topk') and all_gallery_count > self.spin_topk.maximum():
+            self.spin_topk.setMaximum(all_gallery_count)
         if fields:
             results = self.engine.rank(
                 qid,
                 include_fields=fields,
                 equalize_weights=equalize,
                 weights=weights,
-                top_k=int(self.spin_topk.value()) * 2 if use_visual else int(self.spin_topk.value()),
+                top_k=all_gallery_count,
                 numeric_offsets=self._collect_numeric_offsets(),
             )
         else:
@@ -1729,9 +1738,9 @@ class TabFirstOrder(QWidget):
                 
                 fused_scores[gid] = final_score
             
-            # Sort by fused score and limit to top_k
+            # Sort by fused score.  Keep the full ordering for Jump-to; card
+            # rendering is limited after exclusions/demotions below.
             sorted_gids = sorted(fused_scores.keys(), key=lambda g: -fused_scores[g])
-            sorted_gids = sorted_gids[:int(self.spin_topk.value())]
             
             # Rebuild result items with updated scores
             fused_results = []
@@ -1831,6 +1840,8 @@ class TabFirstOrder(QWidget):
                 kept.append(it)
 
         ordered = promoted + kept + demoted  # promoted first, then normal, then demoted
+        self._gallery_jump_ids = [it.gallery_id for it in ordered]
+        visible_ordered = ordered[:desired_top_k]
 
         # ---- Build cards (with robust constructor call & rich tooltips) ----
         cards: List[LineupCard] = []
@@ -1845,7 +1856,7 @@ class TabFirstOrder(QWidget):
         # Only apply roll-to-closest for top N results (DL is noise after that)
         roll_limit = self.spin_roll_limit.value() if use_roll_to_closest else 0
         
-        for rank, it in enumerate(ordered):
+        for rank, it in enumerate(visible_ordered):
             g_row = self.engine._gallery_rows_by_id.get(it.gallery_id, {})
             tooltips = {
                 f: self._tooltip_for_field(
@@ -1943,19 +1954,48 @@ class TabFirstOrder(QWidget):
             return
         self.cmb_gallery_search.blockSignals(True)
         self.cmb_gallery_search.clear()
-        for card in self._cards:
-            self.cmb_gallery_search.addItem(card.gallery_id)
+        jump_ids = list(getattr(self, '_gallery_jump_ids', []) or [card.gallery_id for card in self._cards])
+        for gid in jump_ids:
+            self.cmb_gallery_search.addItem(gid)
         self.cmb_gallery_search.setCurrentIndex(-1)  # No selection initially
         self.cmb_gallery_search.blockSignals(False)
         self.cmb_gallery_search.setEnabled(len(self._cards) > 0)
 
     def _on_gallery_search_changed(self, index: int):
         """Handle gallery search combo selection - scroll to the selected card."""
-        if not hasattr(self, '_cards') or index < 0 or index >= len(self._cards):
+        if index < 0 or not hasattr(self, 'cmb_gallery_search'):
             return
-        gid = self._cards[index].gallery_id if index < len(self._cards) else ""
+        gid = self.cmb_gallery_search.itemText(index)
+        if not gid:
+            return
         self._ilog.log("combo_change", "cmb_gallery_search", value=gid)
-        self._scroll_to_gallery_card(index)
+
+        visible_idx = self._visible_gallery_card_index(gid)
+        if visible_idx >= 0:
+            self._scroll_to_gallery_card(visible_idx)
+            return
+
+        jump_ids = list(getattr(self, '_gallery_jump_ids', []))
+        if gid not in jump_ids:
+            return
+        target_rank = jump_ids.index(gid)
+        if hasattr(self, 'spin_topk') and target_rank >= int(self.spin_topk.value()):
+            if target_rank + 1 > self.spin_topk.maximum():
+                self.spin_topk.setMaximum(target_rank + 1)
+            self.spin_topk.setValue(target_rank + 1)
+            self._refresh_results()
+            QTimer.singleShot(0, lambda gid=gid: self._scroll_to_gallery_id(gid))
+
+    def _visible_gallery_card_index(self, gid: str) -> int:
+        for i, card in enumerate(getattr(self, '_cards', [])):
+            if getattr(card, 'gallery_id', None) == gid:
+                return i
+        return -1
+
+    def _scroll_to_gallery_id(self, gid: str) -> None:
+        idx = self._visible_gallery_card_index(gid)
+        if idx >= 0:
+            self._scroll_to_gallery_card(idx)
 
     def _toggle_pin(self, gid: str):
         was_pinned = gid in self._pinned

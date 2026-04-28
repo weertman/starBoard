@@ -89,6 +89,7 @@ def _load_tab_setup_module():
             detect_folder_depth=lambda *_args, **_kwargs: "flat",
             _encounter_suffix=lambda *_args, **_kwargs: "",
             _parse_encounter_date=lambda *_args, **_kwargs: None,
+            image_file_dialog_filter=lambda: "Images (*.jpg *.JPG);;All Files (*)",
         ),
         "src.data.batch_undo": stub_module(
             "src.data.batch_undo",

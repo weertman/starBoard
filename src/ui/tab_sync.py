@@ -544,7 +544,7 @@ class TabSync(QWidget):
                 mode = "empty"
 
         archive = archive_root()
-        image_exts = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+        image_exts = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
         encounters = []
         image_count = 0
         for entity_id in gallery_ids:
@@ -892,7 +892,7 @@ class TabSync(QWidget):
 
                 archive = archive_root()
                 lab = self._lab_input.text().strip() or get_lab_id()
-                image_exts = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+                image_exts = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 
                 total_new = 0
                 total_dupes = 0
@@ -1100,7 +1100,7 @@ class TabSync(QWidget):
                         raise
 
                 archive = archive_root()
-                IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+                IMAGE_EXTS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 
                 # Scan local images to exclude from pull
                 self._log_signal.emit("Scanning local images to skip duplicates...")

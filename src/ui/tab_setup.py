@@ -26,6 +26,7 @@ from src.data.ingest import (
     ensure_encounter_name, place_images, discover_ids_and_images,
     discover_ids_with_encounters, discover_grouped_ids_with_encounters,
     detect_folder_depth, _encounter_suffix, _parse_encounter_date,
+    image_file_dialog_filter,
 )
 from src.data.batch_undo import (
     generate_batch_id, record_batch_upload, list_batches,
@@ -947,7 +948,7 @@ class TabSetup(QWidget):
     def _on_choose_files(self):
         self._ilog.log("button_click", "btn_choose_files", value="clicked")
         files, _ = QFileDialog.getOpenFileNames(
-            self, "Select images", "", "Images (*.jpg *.jpeg *.png *.tif *.tiff *.bmp)"
+            self, "Select images", "", image_file_dialog_filter()
         )
 
         if files:
