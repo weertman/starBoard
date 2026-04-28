@@ -6,7 +6,7 @@ from typing import List, Tuple
 import logging
 from src.data.archive_paths import roots_for_read
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 log = logging.getLogger("starBoard.data.images")
 
 

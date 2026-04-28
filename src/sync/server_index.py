@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 log = logging.getLogger("starBoard.sync.index")
 
 # Image file extensions (case-insensitive matching)
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 
 # Encounter folder pattern: MM_DD_YY with optional suffix
 _MMDDYY_RE = re.compile(r"^(\d{2})_(\d{2})_(\d{2})(?:_.*)?$")

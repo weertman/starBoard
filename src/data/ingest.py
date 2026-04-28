@@ -11,8 +11,25 @@ from .validators import validate_mmddyy_string
 from .id_registry import invalidate_id_cache
 from .image_index import invalidate_image_cache
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+IMAGE_EXTS = {
+    ".jpg", ".jpeg", ".jpe", ".jfif",
+    ".png",
+    ".tif", ".tiff",
+    ".bmp", ".dib",
+    ".gif",
+    ".webp",
+    ".heic", ".heif",
+    ".avif",
+}
 log = logging.getLogger("starBoard.data.ingest")
+
+
+def image_file_dialog_filter() -> str:
+    patterns = []
+    for ext in sorted(IMAGE_EXTS):
+        patterns.append(f"*{ext}")
+        patterns.append(f"*{ext.upper()}")
+    return f"Images ({' '.join(patterns)});;All Files (*)"
 
 @dataclass
 class FileOp:

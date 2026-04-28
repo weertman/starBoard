@@ -33,7 +33,7 @@ from typing import Dict, List, Optional, Set, Tuple
 # Configuration
 # ---------------------------------------------------------------------------
 
-IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 MMDDYY_PATTERN = re.compile(r"^(\d{2})_(\d{2})_(\d{2})(?:_(.+))?$")
 
 # ---------------------------------------------------------------------------

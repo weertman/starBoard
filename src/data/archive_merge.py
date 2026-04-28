@@ -28,7 +28,7 @@ from .validators import validate_mmddyy_string
 
 log = logging.getLogger("starBoard.data.archive_merge")
 
-IMAGE_EXTS: Set[str] = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".gif"}
+IMAGE_EXTS: Set[str] = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 
 
 @dataclass

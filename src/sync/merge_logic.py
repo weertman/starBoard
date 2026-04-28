@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 log = logging.getLogger("starBoard.sync.merge")
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 
 
 # ─── Result types ───────────────────────────────────────────────────────────
