@@ -1,3 +1,13 @@
+export type LocationSite = {
+  name: string
+  latitude: number
+  longitude: number
+}
+
+export type LocationSitesResponse = {
+  sites: LocationSite[]
+}
+
 export type SchemaFieldOption = {
   label: string
   value: string | number
@@ -51,6 +61,16 @@ export type ImageDescriptor = {
   fullres_url: string
 }
 
+export type FirstOrderMediaImage = ImageDescriptor & {
+  is_best: boolean
+}
+
+export type FirstOrderMediaResponse = {
+  target_type: 'query' | 'gallery'
+  entity_id: string
+  images: FirstOrderMediaImage[]
+}
+
 export type EncounterOption = {
   encounter: string
   date: string
@@ -64,15 +84,30 @@ export type GalleryEntityResponse = {
   images: ImageDescriptor[]
 }
 
+export type FirstOrderQueryOption = {
+  query_id: string
+  state: 'not_attempted' | 'pinned' | 'attempted' | 'matched'
+  last_observation_date?: string | null
+  last_location?: string | null
+  easy_match_score: number
+  quality: Record<string, number | null>
+}
+
+export type FirstOrderQueryOptionsResponse = {
+  queries: FirstOrderQueryOption[]
+}
+
+export type FirstOrderPreset = 'all' | 'colors' | 'text' | 'arms_patterns' | 'megastar'
+
 export type FirstOrderSearchRequest = {
   query_id: string
   top_k?: number
-  preset?: 'all' | 'colors' | 'text' | 'arms_patterns'
+  preset?: FirstOrderPreset
 }
 
 export type FirstOrderSearchResponse = {
   query_id: string
-  preset: 'all' | 'colors' | 'text' | 'arms_patterns'
+  preset: FirstOrderPreset
   candidates: Array<{
     entity_id: string
     score: number
@@ -194,6 +229,11 @@ async function parseJsonOrThrow<T>(res: Response): Promise<T> {
   return payload
 }
 
+export async function getLocationSites(): Promise<LocationSitesResponse> {
+  const res = await fetch('/api/locations/sites')
+  return parseJsonOrThrow<LocationSitesResponse>(res)
+}
+
 export async function getMetadataSchema(): Promise<MetadataSchemaResponse> {
   const res = await fetch('/api/schema/metadata')
   return parseJsonOrThrow<MetadataSchemaResponse>(res)
@@ -247,6 +287,20 @@ export async function executeBatchUpload(req: BatchUploadExecuteRequest): Promis
 export async function getGalleryEntity(entityId: string): Promise<GalleryEntityResponse> {
   const res = await fetch(`/api/gallery/entities/${encodeURIComponent(entityId)}`)
   return parseJsonOrThrow<GalleryEntityResponse>(res)
+}
+
+export async function getFirstOrderQueries(): Promise<FirstOrderQueryOptionsResponse> {
+  const res = await fetch('/api/first-order/queries')
+  return parseJsonOrThrow<FirstOrderQueryOptionsResponse>(res)
+}
+
+export async function getFirstOrderMedia(targetType: 'query' | 'gallery', entityId: string): Promise<FirstOrderMediaResponse> {
+  const encoded = encodeURIComponent(entityId)
+  const path = targetType === 'query'
+    ? `/api/first-order/queries/${encoded}/media`
+    : `/api/first-order/candidates/${encoded}/media`
+  const res = await fetch(path)
+  return parseJsonOrThrow<FirstOrderMediaResponse>(res)
 }
 
 export async function runFirstOrderSearch(req: FirstOrderSearchRequest): Promise<FirstOrderSearchResponse> {

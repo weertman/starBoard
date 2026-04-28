@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 
 import {
+  getLocationSites,
   getMetadataSchema,
   submitEntry,
+  type LocationSite,
   type SchemaField,
   type SubmissionResponse,
 } from '../api/client'
+import { LocationSiteMap } from '../components/LocationSiteMap'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -33,12 +36,20 @@ function groupFields(fields: SchemaField[]) {
     }
     groups.get(field.group)!.fields.push(field)
   }
+  order.sort((a, b) => {
+    if (a === 'location') return -1
+    if (b === 'location') return 1
+    return 0
+  })
   return order.map((key) => ({ key, ...groups.get(key)! }))
 }
 
 export function SingleEntryPage() {
   const [schema, setSchema] = useState<SchemaField[]>([])
+  const [knownSites, setKnownSites] = useState<LocationSite[]>([])
   const [metadata, setMetadata] = useState<Record<string, string>>({})
+  const [showNewLocationInput, setShowNewLocationInput] = useState(false)
+  const [pickingCoordinates, setPickingCoordinates] = useState(false)
   const [targetType, setTargetType] = useState<'gallery' | 'query'>('query')
   const [targetMode, setTargetMode] = useState<'create' | 'append'>('create')
   const [targetId, setTargetId] = useState('')
@@ -52,8 +63,12 @@ export function SingleEntryPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await getMetadataSchema()
-        setSchema(response.fields)
+        const [schemaResponse, locationSitesResponse] = await Promise.all([
+          getMetadataSchema(),
+          getLocationSites(),
+        ])
+        setSchema(schemaResponse.fields)
+        setKnownSites(locationSitesResponse.sites)
       } catch (err) {
         setError(String(err))
       }
@@ -70,6 +85,16 @@ export function SingleEntryPage() {
 
   function updateMetadata(name: string, value: string) {
     setMetadata((current) => ({ ...current, [name]: value }))
+  }
+
+  function updateSavedLocation(value: string) {
+    if (value === '__new__') {
+      setShowNewLocationInput(true)
+      setMetadata((current) => ({ ...current, location: '' }))
+      return
+    }
+    setShowNewLocationInput(false)
+    setMetadata((current) => ({ ...current, location: value }))
   }
 
   async function handleSubmit() {
@@ -109,17 +134,20 @@ export function SingleEntryPage() {
     if (field.mobile_widget === 'textarea') {
       return <textarea {...commonProps} rows={3} />
     }
-    if (field.mobile_widget === 'select' && field.options.length > 0) {
+    if ((field.mobile_widget === 'select' || field.mobile_widget === 'color_select') && (field.options.length > 0 || field.vocabulary.length > 0)) {
+      const options = field.options.length > 0
+        ? field.options.map((option) => ({ label: option.label, value: String(option.value) }))
+        : field.vocabulary.map((item) => ({ label: item, value: item }))
       return (
         <select {...commonProps}>
           <option value="">—</option>
-          {field.options.map((option) => (
-            <option key={`${field.name}-${option.value}`} value={String(option.value)}>{option.label}</option>
+          {options.map((option) => (
+            <option key={`${field.name}-${option.value}`} value={option.value}>{option.label}</option>
           ))}
         </select>
       )
     }
-    if ((field.mobile_widget === 'color_select' || field.mobile_widget === 'location') && field.vocabulary.length > 0) {
+    if (field.mobile_widget === 'location' && field.vocabulary.length > 0) {
       const listId = `${field.name}-options`
       return (
         <>
@@ -134,6 +162,32 @@ export function SingleEntryPage() {
       return <input {...commonProps} type="number" min={field.min_value ?? undefined} max={field.max_value ?? undefined} />
     }
     return <input {...commonProps} />
+  }
+
+  function locationMapUrl() {
+    const latitude = metadata.latitude?.trim() ?? ''
+    const longitude = metadata.longitude?.trim() ?? ''
+    const location = metadata.location?.trim() ?? ''
+    if (latitude && longitude) {
+      const lat = encodeURIComponent(latitude)
+      const lon = encodeURIComponent(longitude)
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${lon}%2C${lat}%2C${lon}%2C${lat}&layer=mapnik&marker=${lat}%2C${lon}`
+    }
+    if (location) {
+      return `https://www.openstreetmap.org/export/embed.html?query=${encodeURIComponent(location)}`
+    }
+    const salishLat = '48.8'
+    const salishLon = '-123.0'
+    return `https://www.openstreetmap.org/export/embed.html?bbox=-125.5%2C47.0%2C-121.0%2C50.0&layer=mapnik&marker=${salishLat}%2C${salishLon}`
+  }
+
+  function handleMapPick(latitude: number, longitude: number) {
+    setMetadata((current) => ({
+      ...current,
+      latitude: latitude.toFixed(6),
+      longitude: longitude.toFixed(6),
+    }))
+    setPickingCoordinates(false)
   }
 
   return (
@@ -179,14 +233,80 @@ export function SingleEntryPage() {
         {grouped.map((group) => (
           <section key={group.key} style={card}>
             <h2 style={{ marginTop: 0 }}>{group.title}</h2>
-            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
-              {group.fields.map((field) => (
-                <label key={field.name}>
-                  <div>{field.display_name}</div>
-                  {renderField(field)}
-                </label>
-              ))}
-            </div>
+            {group.key === 'location' ? (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                  {group.fields.map((field) => {
+                    if (field.name === 'location') {
+                      return (
+                        <Fragment key="location-controls">
+                          <label key="saved-locations">
+                            <div>Saved locations</div>
+                            <select
+                              aria-label="Saved locations"
+                              style={input}
+                              value={showNewLocationInput ? '__new__' : (metadata.location ?? '')}
+                              onChange={(e) => updateSavedLocation(e.target.value)}
+                            >
+                              <option value="__new__">Add new…</option>
+                              <option value="">— choose —</option>
+                              {field.vocabulary.map((item) => (
+                                <option key={`saved-location-${item}`} value={item}>{item}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <div key="location-action" style={{ display: 'flex', alignItems: 'end' }}>
+                            <button type="button" onClick={() => setShowNewLocationInput(true)} style={{ padding: '8px 12px' }}>Add new location</button>
+                          </div>
+                          {showNewLocationInput && (
+                            <label key="new-location-input" style={{ gridColumn: '1 / -1' }}>
+                              <div>Location</div>
+                              {renderField(field)}
+                            </label>
+                          )}
+                        </Fragment>
+                      )
+                    }
+                    return (
+                      <label key={field.name}>
+                        <div>{field.display_name}</div>
+                        {renderField(field)}
+                      </label>
+                    )
+                  })}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ color: '#516070', fontSize: 13 }}>
+                      {pickingCoordinates ? 'Click the map to set coordinates.' : 'Pan/zoom freely. Known sites are shown on the map.'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPickingCoordinates((current) => !current)}
+                      style={{ padding: '8px 12px' }}
+                    >
+                      {pickingCoordinates ? 'Cancel coordinate pick' : 'Pick coordinates on map'}
+                    </button>
+                  </div>
+                  <LocationSiteMap
+                    sites={knownSites}
+                    selectedLatitude={metadata.latitude ? Number(metadata.latitude) : undefined}
+                    selectedLongitude={metadata.longitude ? Number(metadata.longitude) : undefined}
+                    picking={pickingCoordinates}
+                    onPick={handleMapPick}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+                {group.fields.map((field) => (
+                  <label key={field.name}>
+                    <div>{field.display_name}</div>
+                    {renderField(field)}
+                  </label>
+                ))}
+              </div>
+            )}
           </section>
         ))}
 

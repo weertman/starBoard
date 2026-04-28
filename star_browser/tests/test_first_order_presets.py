@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import numpy as np
+
 from src.search.field_sets import ALL_FIELDS, COLOR_FIELDS, ORDINAL_FIELDS, TEXT_FIELDS
 from star_browser.app.services import first_order_service
 
@@ -69,3 +71,27 @@ def test_first_order_search_arms_patterns_preset_uses_expected_fields(monkeypatc
         'short_arm_code',
         *ORDINAL_FIELDS,
     }
+
+
+def test_first_order_search_megastar_preset_uses_precomputed_numeric_scores(monkeypatch):
+    engine = _DummyEngine()
+    monkeypatch.setattr(first_order_service, '_get_engine', lambda: engine)
+    monkeypatch.setattr(
+        first_order_service,
+        '_load_megastar_score_store',
+        lambda: first_order_service._MegaStarScoreStore(
+            query_ids=('query_001',),
+            gallery_ids=('gallery_low', 'gallery_high'),
+            scores=np.asarray([[0.25, 0.91]], dtype=np.float32),
+        ),
+    )
+
+    response = first_order_service.run_first_order_search('query_001', top_k=1, preset='megastar')
+
+    assert response.preset == 'megastar'
+    assert engine.calls == []
+    assert len(response.candidates) == 1
+    assert response.candidates[0].entity_id == 'gallery_high'
+    assert response.candidates[0].score == 0.91
+    assert response.candidates[0].k_contrib == 1
+    assert response.candidates[0].field_breakdown == {'megastar': 0.91}

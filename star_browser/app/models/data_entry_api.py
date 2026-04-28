@@ -38,3 +38,13 @@ class SubmissionResponse(BaseModel):
     skipped_images: int
     archive_paths_written: list[str]
     message: str
+
+
+class LocationSite(BaseModel):
+    name: str
+    latitude: float
+    longitude: float
+
+
+class LocationSitesResponse(BaseModel):
+    sites: list[LocationSite] = Field(default_factory=list)

@@ -1,0 +1,20 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+
+import App from './App'
+
+vi.mock('./pages/SingleEntryPage', () => ({ SingleEntryPage: () => <div>Single Entry Page</div> }))
+vi.mock('./pages/BatchUploadPage', () => ({ BatchUploadPage: () => <div>Batch Upload Page</div> }))
+vi.mock('./pages/GalleryPage', () => ({ GalleryPage: () => <div>Gallery Review Page</div> }))
+vi.mock('./pages/FirstOrderPage', () => ({ FirstOrderPage: () => <div>First-order Search Page</div> }))
+
+describe('App navigation', () => {
+  afterEach(() => cleanup())
+
+  it('does not expose MegaStar as a separate top-level tab', () => {
+    render(<App />)
+
+    expect(screen.queryByRole('button', { name: 'MegaStar Search' })).not.toBeInTheDocument()
+    expect(screen.queryByText('MegaStar Standalone Page')).not.toBeInTheDocument()
+  })
+})

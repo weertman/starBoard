@@ -12,10 +12,9 @@ from fastapi import HTTPException, UploadFile, status
 from src.data.archive_paths import archive_root, metadata_csv_for, root_for
 from src.data.csv_io import append_row
 from src.data.id_registry import id_exists
-from src.data.ingest import ensure_encounter_name, place_images
+from src.data.ingest import IMAGE_EXTS, ensure_encounter_name, place_images
 from src.data.validators import validate_id
 
-IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'}
 ALLOWED_MODES = {
     ('query', 'create'),
     ('query', 'append'),
