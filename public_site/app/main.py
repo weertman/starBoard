@@ -20,7 +20,7 @@ def create_app() -> FastAPI:
 
     app.mount('/static', StaticFiles(directory=SITE_ROOT), name='static')
 
-    @app.get('/')
+    @app.api_route('/', methods=['GET', 'HEAD'])
     def root():
         return FileResponse(INDEX_HTML)
 

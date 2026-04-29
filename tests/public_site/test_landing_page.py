@@ -16,6 +16,15 @@ def test_root_serves_public_landing_page_without_auth_header():
     assert 'Cloudflare Access' not in response.text
 
 
+def test_root_supports_head_for_public_edge_probes():
+    client = TestClient(create_app())
+
+    response = client.head('/')
+
+    assert response.status_code == 200
+    assert 'text/html' in response.headers['content-type']
+
+
 def test_health_reports_public_site_service():
     client = TestClient(create_app())
 
