@@ -20,9 +20,20 @@ def create_app() -> FastAPI:
 
     app.mount('/static', StaticFiles(directory=SITE_ROOT), name='static')
 
+    def static_page(name: str) -> FileResponse:
+        return FileResponse(SITE_ROOT / name)
+
     @app.api_route('/', methods=['GET', 'HEAD'])
     def root():
-        return FileResponse(INDEX_HTML)
+        return static_page('index.html')
+
+    @app.api_route('/contact', methods=['GET', 'HEAD'])
+    def contact():
+        return static_page('contact.html')
+
+    @app.api_route('/lab', methods=['GET', 'HEAD'])
+    def lab():
+        return static_page('lab.html')
 
     return app
 

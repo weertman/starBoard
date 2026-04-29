@@ -111,6 +111,11 @@ h1 {
   background: linear-gradient(135deg, var(--kelp), var(--blue));
 }
 
+.donate {
+  color: #1a1000;
+  background: linear-gradient(135deg, var(--sun), #ff9f6e);
+}
+
 .secondary,
 .ghost {
   background: rgba(255, 255, 255, 0.075);
@@ -169,6 +174,68 @@ h1 {
 .note {
   margin-top: 18px;
   padding: 20px 24px;
+}
+
+.narrow {
+  max-width: 920px;
+}
+
+.top-nav {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  margin-bottom: 18px;
+}
+
+.top-nav a {
+  color: var(--muted);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.top-nav a:hover,
+.top-nav a:focus-visible {
+  color: var(--text);
+}
+
+.page-hero h1 {
+  max-width: 760px;
+  font-size: clamp(2.8rem, 8vw, 5.8rem);
+  line-height: 0.94;
+}
+
+.info-grid {
+  grid-template-columns: 1fr;
+}
+
+.wide-card p {
+  font-size: 1.02rem;
+}
+
+.contact-card {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 30px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.contact-name {
+  margin: 0;
+  font-weight: 900;
+}
+
+.contact-link {
+  color: var(--kelp);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.compact-actions {
+  margin-top: 18px;
 }
 
 @media (max-width: 760px) {
