@@ -13,6 +13,8 @@ def test_root_serves_public_landing_page_without_auth_header():
     assert 'starBoard' in response.text
     assert 'mobile.fhl-star-board.com' in response.text
     assert 'browser.fhl-star-board.com' in response.text
+    assert 'github.com/weertman/starBoard' in response.text
+    assert 'currently in active development' in response.text
     assert 'Cloudflare Access' not in response.text
 
 

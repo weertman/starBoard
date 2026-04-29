@@ -111,8 +111,27 @@ h1 {
   background: linear-gradient(135deg, var(--kelp), var(--blue));
 }
 
-.secondary {
+.secondary,
+.ghost {
   background: rgba(255, 255, 255, 0.075);
+}
+
+.ghost {
+  color: var(--muted);
+}
+
+.status-pill {
+  display: inline-flex;
+  margin: 22px 0 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 209, 102, 0.32);
+  border-radius: 999px;
+  color: var(--sun);
+  background: rgba(255, 209, 102, 0.08);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .cards {
