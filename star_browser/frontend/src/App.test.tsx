@@ -9,7 +9,18 @@ vi.mock('./pages/GalleryPage', () => ({ GalleryPage: () => <div>Gallery Review P
 vi.mock('./pages/FirstOrderPage', () => ({ FirstOrderPage: () => <div>First-order Search Page</div> }))
 
 describe('App navigation', () => {
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    window.history.pushState({}, '', '/')
+  })
+
+  it('opens Batch Upload directly for the /batch-upload URL', () => {
+    window.history.pushState({}, '', '/batch-upload')
+
+    render(<App />)
+
+    expect(screen.getByText('Batch Upload Page')).toBeInTheDocument()
+  })
 
   it('does not expose MegaStar as a separate top-level tab', () => {
     render(<App />)

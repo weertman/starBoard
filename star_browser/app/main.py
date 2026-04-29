@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .routes.batch_upload import router as batch_upload_router
@@ -41,8 +41,28 @@ def create_app() -> FastAPI:
     @app.get('/')
     def root():
         if built_index.exists():
-            return FileResponse(built_index)
+            return FileResponse(
+                built_index,
+                headers={
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                },
+            )
         return {'status': 'ok', 'service': 'star-browser'}
+
+    @app.get('/batch-upload')
+    def batch_upload_app_entry():
+        if built_index.exists():
+            return FileResponse(
+                built_index,
+                headers={
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                },
+            )
+        return Response(status_code=404)
 
     return app
 

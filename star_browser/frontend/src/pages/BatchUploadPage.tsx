@@ -150,6 +150,9 @@ export function BatchUploadPage() {
       <div style={{ display: 'grid', gap: 16 }}>
         <section style={card}>
           <h1 style={{ marginTop: 0 }}>Batch Upload</h1>
+          <div style={{ margin: '8px 0 14px', padding: '10px 12px', borderRadius: 8, background: '#eaf4ff', border: '1px solid #b6d8ff', color: '#163c63' }}>
+            New in production: safer preview/execute flow, zip folder unwrapping, append confirmation, stale-plan protection, and row-level results.
+          </div>
           <p style={{ marginTop: 0, color: '#516070' }}>
             Browser workflow for desktop-style multi-ID batch upload into Gallery or Queries.
           </p>

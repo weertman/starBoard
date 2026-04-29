@@ -16,8 +16,13 @@ const tabButton = (active: boolean): React.CSSProperties => ({
   fontWeight: 600,
 })
 
+function initialTabFromPath(): Tab {
+  if (window.location.pathname === '/batch-upload') return 'batch'
+  return 'single-entry'
+}
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>('single-entry')
+  const [tab, setTab] = useState<Tab>(initialTabFromPath)
 
   return (
     <div style={{ background: '#f7f9fc', minHeight: '100vh' }}>
