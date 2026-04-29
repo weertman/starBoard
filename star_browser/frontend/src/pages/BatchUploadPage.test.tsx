@@ -1,0 +1,192 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+
+vi.mock('../api/client', () => ({
+  uploadBatchZip: vi.fn(),
+  discoverBatchUpload: vi.fn(),
+  executeBatchUpload: vi.fn(),
+}))
+
+import { BatchUploadPage } from './BatchUploadPage'
+import { discoverBatchUpload, executeBatchUpload, uploadBatchZip } from '../api/client'
+
+const mockedUploadBatchZip = vi.mocked(uploadBatchZip)
+const mockedDiscoverBatchUpload = vi.mocked(discoverBatchUpload)
+const mockedExecuteBatchUpload = vi.mocked(executeBatchUpload)
+
+const baseDiscoverResponse = {
+  plan_id: 'plan_123',
+  target_archive: 'gallery' as const,
+  requested_discovery_mode: 'flat' as const,
+  resolved_discovery_mode: 'flat' as const,
+  summary: {
+    detected_rows: 1,
+    detected_ids: 1,
+    total_images: 2,
+    new_ids: 1,
+    existing_ids: 0,
+    warnings: 0,
+    errors: 0,
+  },
+  rows: [
+    {
+      row_id: 'row_001',
+      original_detected_id: 'anchovy',
+      transformed_target_id: 'anchovy',
+      action: 'create_new' as const,
+      target_exists: false,
+      group_name: null,
+      encounter_folder_name: null,
+      encounter_date: null,
+      encounter_suffix: null,
+      image_count: 2,
+      sample_labels: ['a.jpg', 'b.jpg'],
+      source_ref: 'anchovy',
+      warnings: [],
+    },
+  ],
+  warnings: [],
+  errors: [],
+}
+
+describe('BatchUploadPage', () => {
+  beforeEach(() => {
+    mockedUploadBatchZip.mockReset()
+    mockedDiscoverBatchUpload.mockReset()
+    mockedExecuteBatchUpload.mockReset()
+    mockedUploadBatchZip.mockResolvedValue({
+      upload_token: 'upload_123',
+      file_count: 2,
+      root_entries: ['anchovy'],
+    })
+    mockedDiscoverBatchUpload.mockResolvedValue(baseDiscoverResponse)
+    mockedExecuteBatchUpload.mockResolvedValue({
+      status: 'ok',
+      plan_id: 'plan_123',
+      batch_id: 'batch_123',
+      target_archive: 'gallery',
+      summary: {
+        executed_rows: 1,
+        created_ids: 1,
+        appended_ids: 0,
+        accepted_images: 2,
+        skipped_images: 0,
+        rows_with_errors: 0,
+      },
+      rows: [
+        {
+          row_id: 'row_001',
+          target_id: 'anchovy',
+          action: 'create_new',
+          accepted_images: 2,
+          skipped_images: 0,
+          encounter_folder: '04_21_26',
+          archive_paths_written: ['anchovy/04_21_26/a.jpg'],
+          warnings: [],
+          errors: [],
+        },
+      ],
+      message: 'Batch upload completed.',
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  async function stageAndDiscover(user: ReturnType<typeof userEvent.setup>) {
+    const zip = new File(['zip-bytes'], 'bundle.zip', { type: 'application/zip' })
+    await user.upload(screen.getByLabelText('Source zip bundle'), zip)
+    await user.click(screen.getByRole('button', { name: 'Upload zip' }))
+    await screen.findByText(/Files staged:/)
+    await user.click(screen.getByRole('button', { name: 'Discover IDs' }))
+    await screen.findByRole('heading', { name: '3. Preview plan' })
+  }
+
+  it('hides flat-only encounter controls outside flat mode and shows the today warning in flat mode', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    expect(screen.getByLabelText('Flat encounter date')).toBeInTheDocument()
+    expect(screen.getByText("Today's date selected")).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Discovery mode'), 'encounters')
+
+    expect(screen.queryByLabelText('Flat encounter date')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Flat encounter suffix')).not.toBeInTheDocument()
+  })
+
+  it('sends batch location values in the discover request', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    await user.type(screen.getByLabelText('Batch location'), 'Dock')
+    await user.type(screen.getByLabelText('Latitude'), '48.5')
+    await user.type(screen.getByLabelText('Longitude'), '-123.1')
+    await stageAndDiscover(user)
+
+    expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
+      batch_location: { location: 'Dock', latitude: '48.5', longitude: '-123.1' },
+    }))
+  })
+
+  it('requires confirmation before appending to existing IDs', async () => {
+    const user = userEvent.setup()
+    mockedDiscoverBatchUpload.mockResolvedValue({
+      ...baseDiscoverResponse,
+      summary: { ...baseDiscoverResponse.summary, new_ids: 0, existing_ids: 1 },
+      rows: [
+        {
+          ...baseDiscoverResponse.rows[0],
+          action: 'append_existing',
+          target_exists: true,
+        },
+      ],
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<BatchUploadPage />)
+
+    await stageAndDiscover(user)
+    await user.click(screen.getByRole('button', { name: 'Start batch upload' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('already exist'))
+    expect(mockedExecuteBatchUpload).not.toHaveBeenCalled()
+  })
+
+  it('invalidates a discovered plan when discovery settings change', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    await stageAndDiscover(user)
+    expect(screen.getByRole('button', { name: 'Start batch upload' })).toBeEnabled()
+
+    await user.type(screen.getByLabelText('ID prefix'), 'new_')
+
+    expect(screen.queryByRole('button', { name: 'Start batch upload' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Settings changed. Rediscover IDs before executing/)).toBeInTheDocument()
+  })
+
+  it('renders discover warnings and row-level execute results', async () => {
+    const user = userEvent.setup()
+    mockedDiscoverBatchUpload.mockResolvedValue({
+      ...baseDiscoverResponse,
+      summary: { ...baseDiscoverResponse.summary, warnings: 1 },
+      warnings: [{ code: 'source_warning', message: 'Some files were ignored', row_id: null }],
+    })
+    render(<BatchUploadPage />)
+
+    await stageAndDiscover(user)
+    expect(screen.getByText('Some files were ignored')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Start batch upload' }))
+
+    await screen.findByText('Row results')
+    const results = screen.getByRole('table', { name: 'Batch upload row results' })
+    expect(within(results).getByText('anchovy')).toBeInTheDocument()
+    expect(within(results).getByText('04_21_26')).toBeInTheDocument()
+    expect(within(results).getByText('2')).toBeInTheDocument()
+  })
+})

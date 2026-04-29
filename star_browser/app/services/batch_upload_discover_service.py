@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fastapi import HTTPException, status
+
 from src.data.ingest import detect_folder_depth
 
 from ..adapters.batch_upload_adapter import discover_batch_source, generate_plan_id
@@ -15,24 +17,33 @@ from .batch_upload_upload_service import resolve_uploaded_bundle_path
 
 
 def _resolved_mode(source_path: Path, requested_mode: str) -> str:
-    if requested_mode == 'auto':
-        detected = detect_folder_depth(source_path)
-        if detected == 'single_id':
-            return 'encounters'
-        if detected in {'flat', 'encounters', 'grouped', 'empty'}:
-            return detected
-        return 'empty'
-    if requested_mode in {'flat', 'encounters', 'grouped'}:
+    if requested_mode == 'flat':
+        return 'flat'
+    detected = detect_folder_depth(source_path)
+    if detected == 'ids':
+        return 'encounters'
+    if detected in {'single_id', 'flat', 'grouped', 'empty'}:
+        return detected
+    if requested_mode in {'encounters', 'grouped'}:
         return requested_mode
     return 'empty'
 
 
-def build_discover_preview(req: BatchUploadDiscoverRequest) -> BatchUploadDiscoverResponse:
+def _source_path_for_request(req: BatchUploadDiscoverRequest) -> Path:
     if req.import_source.type == 'server_path':
         source_path = Path(req.import_source.path)
-    else:
-        resolved = resolve_uploaded_bundle_path(req.import_source.upload_token)
-        source_path = resolved or Path('__missing_uploaded_bundle__')
+        if not source_path.is_dir():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_source_path')
+        return source_path
+
+    resolved = resolve_uploaded_bundle_path(req.import_source.upload_token)
+    if resolved is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='upload_token_not_found')
+    return resolved
+
+
+def build_discover_preview(req: BatchUploadDiscoverRequest) -> BatchUploadDiscoverResponse:
+    source_path = _source_path_for_request(req)
     resolved = _resolved_mode(source_path, req.discovery_mode)
     plan_id = generate_plan_id()
     planned_rows = discover_batch_source(
@@ -57,9 +68,9 @@ def build_discover_preview(req: BatchUploadDiscoverRequest) -> BatchUploadDiscov
         )
     )
     rows = [row.to_api_row() for row in planned_rows]
-    detected_ids = {row.transformed_target_id for row in rows}
-    existing_ids = sum(1 for row in rows if row.target_exists)
-    new_ids = sum(1 for row in rows if not row.target_exists)
+    new_id_values = {row.transformed_target_id for row in rows if not row.target_exists}
+    existing_id_values = {row.transformed_target_id for row in rows if row.target_exists}
+    detected_ids = new_id_values | existing_id_values
     warnings_count = sum(len(row.warnings) for row in rows)
     return BatchUploadDiscoverResponse(
         plan_id=plan_id,
@@ -70,8 +81,8 @@ def build_discover_preview(req: BatchUploadDiscoverRequest) -> BatchUploadDiscov
             detected_rows=len(rows),
             detected_ids=len(detected_ids),
             total_images=sum(row.image_count for row in rows),
-            new_ids=new_ids,
-            existing_ids=existing_ids,
+            new_ids=len(new_id_values),
+            existing_ids=len(existing_id_values),
             warnings=warnings_count,
             errors=0,
         ),

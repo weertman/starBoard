@@ -7,6 +7,8 @@ import zipfile
 
 from fastapi import HTTPException, UploadFile, status
 
+from src.data.image_formats import is_importable_image
+
 from ..config import get_settings
 from ..models.batch_upload_api import BatchUploadUploadResponse
 
@@ -15,10 +17,22 @@ def _bundle_root(token: str) -> Path:
     return get_settings().staging_dir / token
 
 
+def _scan_root(contents_dir: Path) -> Path:
+    entries = list(contents_dir.iterdir()) if contents_dir.exists() else []
+    dirs = [p for p in entries if p.is_dir()]
+    top_level_images = [p for p in entries if p.is_file() and is_importable_image(p)]
+    if len(dirs) == 1 and not top_level_images:
+        child_entries = list(dirs[0].iterdir())
+        child_top_level_images = [p for p in child_entries if p.is_file() and is_importable_image(p)]
+        if not child_top_level_images:
+            return dirs[0]
+    return contents_dir
+
+
 def resolve_uploaded_bundle_path(upload_token: str) -> Path | None:
     root = _bundle_root(upload_token) / 'contents'
     if root.exists() and root.is_dir():
-        return root
+        return _scan_root(root)
     return None
 
 

@@ -8,6 +8,7 @@ from src.data.batch_undo import generate_batch_id, record_batch_upload
 from src.data.csv_io import append_row
 from src.data.id_registry import id_exists
 from src.data.ingest import ensure_encounter_name, place_images
+from src.data.metadata_history import SOURCE_BATCH_UPLOAD, record_bulk_update
 
 from ..models.batch_upload_api import (
     BatchUploadExecuteRequest,
@@ -38,7 +39,7 @@ def _encounter_name_for_row(plan: PlannedBatch, row: PlannedBatchRow) -> tuple[s
     return ensure_encounter_name(today.year, today.month, today.day, plan.flat_encounter_suffix), today
 
 
-def _create_new_id_row(target_archive: str, id_str: str, plan: PlannedBatch) -> None:
+def _create_new_id_row(target_archive: str, id_str: str, plan: PlannedBatch, batch_id: str) -> None:
     target = _target_name(target_archive)
     csv_path, header = ap.metadata_csv_for(target)
     id_col = ap.id_column_name(target)
@@ -52,6 +53,14 @@ def _create_new_id_row(target_archive: str, id_str: str, plan: PlannedBatch) -> 
     if loc.longitude:
         row['longitude'] = loc.longitude
     append_row(csv_path, header, row)
+    if target == 'Gallery':
+        record_bulk_update(
+            gallery_id=id_str,
+            old_values={},
+            new_values=row,
+            source=SOURCE_BATCH_UPLOAD,
+            source_ref=f'batch_{batch_id}',
+        )
 
 
 def execute_batch_upload(req: BatchUploadExecuteRequest) -> BatchUploadExecuteResponse:
@@ -76,7 +85,7 @@ def execute_batch_upload(req: BatchUploadExecuteRequest) -> BatchUploadExecuteRe
             file_ops.append((op.src, op.dest))
 
         if not existed_before and report.ops:
-            _create_new_id_row(plan.target_archive, row.transformed_target_id, plan)
+            _create_new_id_row(plan.target_archive, row.transformed_target_id, plan, batch_id)
             created_ids.add(row.transformed_target_id)
         elif report.ops:
             appended_ids.add(row.transformed_target_id)

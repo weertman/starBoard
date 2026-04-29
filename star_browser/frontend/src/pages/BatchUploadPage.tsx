@@ -51,9 +51,21 @@ export function BatchUploadPage() {
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([])
   const [busy, setBusy] = useState<'upload' | 'discover' | 'execute' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [planStale, setPlanStale] = useState(false)
 
   const rows = discoverResponse?.rows ?? []
   const selectedRows = useMemo(() => rows.filter((row) => selectedRowIds.includes(row.row_id)), [rows, selectedRowIds])
+  const showFlatEncounterControls = discoveryMode === 'auto' || discoveryMode === 'flat'
+  const todayIso = new Date().toISOString().slice(0, 10)
+
+  function invalidateDiscoveredPlan() {
+    if (discoverResponse) {
+      setDiscoverResponse(null)
+      setExecuteResponse(null)
+      setSelectedRowIds([])
+      setPlanStale(true)
+    }
+  }
 
   async function handleUpload() {
     if (!zipFile) return
@@ -91,6 +103,7 @@ export function BatchUploadPage() {
       const result = await discoverBatchUpload(request)
       setDiscoverResponse(result)
       setSelectedRowIds(result.rows.map((row) => row.row_id))
+      setPlanStale(false)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -100,6 +113,15 @@ export function BatchUploadPage() {
 
   async function handleExecute() {
     if (!discoverResponse || selectedRowIds.length === 0) return
+    const existingTargets = selectedRows.filter((row) => row.target_exists || row.action === 'append_existing')
+    if (existingTargets.length > 0) {
+      const preview = existingTargets.slice(0, 10).map((row) => `• ${row.transformed_target_id}`).join('\n')
+      const more = existingTargets.length > 10 ? `\n... and ${existingTargets.length - 10} more` : ''
+      const ok = window.confirm(
+        `The following IDs already exist and selected rows will append images to them:\n\n${preview}${more}\n\nProceed with batch upload?`,
+      )
+      if (!ok) return
+    }
     setBusy('execute')
     setError(null)
     try {
@@ -134,14 +156,14 @@ export function BatchUploadPage() {
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
             <label>
               <div>Target archive</div>
-              <select value={targetArchive} onChange={(e) => setTargetArchive(e.target.value as TargetArchive)} style={input}>
+              <select aria-label="Target archive" value={targetArchive} onChange={(e) => { setTargetArchive(e.target.value as TargetArchive); invalidateDiscoveredPlan() }} style={input}>
                 <option value="gallery">Gallery</option>
                 <option value="query">Queries</option>
               </select>
             </label>
             <label>
               <div>Discovery mode</div>
-              <select value={discoveryMode} onChange={(e) => setDiscoveryMode(e.target.value as DiscoverMode)} style={input}>
+              <select aria-label="Discovery mode" value={discoveryMode} onChange={(e) => { setDiscoveryMode(e.target.value as DiscoverMode); invalidateDiscoveredPlan() }} style={input}>
                 <option value="auto">Auto</option>
                 <option value="flat">Flat (ID / images)</option>
                 <option value="encounters">With Encounters (ID / date / images)</option>
@@ -150,39 +172,49 @@ export function BatchUploadPage() {
             </label>
             <label>
               <div>ID prefix</div>
-              <input value={idPrefix} onChange={(e) => setIdPrefix(e.target.value)} style={input} />
+              <input aria-label="ID prefix" value={idPrefix} onChange={(e) => { setIdPrefix(e.target.value); invalidateDiscoveredPlan() }} style={input} />
             </label>
             <label>
               <div>ID suffix</div>
-              <input value={idSuffix} onChange={(e) => setIdSuffix(e.target.value)} style={input} />
+              <input aria-label="ID suffix" value={idSuffix} onChange={(e) => { setIdSuffix(e.target.value); invalidateDiscoveredPlan() }} style={input} />
             </label>
-            <label>
-              <div>Flat encounter date</div>
-              <input type="date" value={flatEncounterDate} onChange={(e) => setFlatEncounterDate(e.target.value)} style={input} />
-            </label>
-            <label>
-              <div>Flat encounter suffix</div>
-              <input value={flatEncounterSuffix} onChange={(e) => setFlatEncounterSuffix(e.target.value)} style={input} />
-            </label>
+            {showFlatEncounterControls && (
+              <>
+                <label>
+                  <div>Flat encounter date</div>
+                  <input aria-label="Flat encounter date" type="date" value={flatEncounterDate} onChange={(e) => { setFlatEncounterDate(e.target.value); invalidateDiscoveredPlan() }} style={input} />
+                </label>
+                <label>
+                  <div>Flat encounter suffix</div>
+                  <input aria-label="Flat encounter suffix" value={flatEncounterSuffix} onChange={(e) => { setFlatEncounterSuffix(e.target.value); invalidateDiscoveredPlan() }} style={input} />
+                </label>
+              </>
+            )}
             <label>
               <div>Batch location</div>
-              <input value={batchLocation.location} onChange={(e) => setBatchLocation((cur) => ({ ...cur, location: e.target.value }))} style={input} />
+              <input aria-label="Batch location" value={batchLocation.location} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, location: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
             </label>
             <label>
               <div>Latitude</div>
-              <input value={batchLocation.latitude} onChange={(e) => setBatchLocation((cur) => ({ ...cur, latitude: e.target.value }))} style={input} />
+              <input aria-label="Latitude" value={batchLocation.latitude} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, latitude: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
             </label>
             <label>
               <div>Longitude</div>
-              <input value={batchLocation.longitude} onChange={(e) => setBatchLocation((cur) => ({ ...cur, longitude: e.target.value }))} style={input} />
+              <input aria-label="Longitude" value={batchLocation.longitude} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, longitude: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
             </label>
           </div>
+          {showFlatEncounterControls && flatEncounterDate === todayIso && (
+            <div style={{ marginTop: 8, color: '#8a5a00', fontStyle: 'italic' }}>Today's date selected</div>
+          )}
         </section>
 
         <section style={card}>
           <h2 style={{ marginTop: 0 }}>1. Upload source bundle</h2>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input type="file" accept=".zip,application/zip" onChange={(e) => setZipFile(e.target.files?.[0] ?? null)} />
+            <label>
+              <span style={{ position: 'absolute', left: -10000 }}>Source zip bundle</span>
+              <input aria-label="Source zip bundle" type="file" accept=".zip,application/zip" onChange={(e) => setZipFile(e.target.files?.[0] ?? null)} />
+            </label>
             <button onClick={() => void handleUpload()} disabled={!zipFile || busy !== null} style={{ padding: '8px 12px' }}>
               {busy === 'upload' ? 'Uploading…' : 'Upload zip'}
             </button>
@@ -217,7 +249,20 @@ export function BatchUploadPage() {
               <span>Existing IDs: <b>{discoverResponse.summary.existing_ids}</b></span>
             </div>
           )}
+          {discoverResponse && (discoverResponse.warnings.length > 0 || discoverResponse.errors.length > 0 || rows.some((row) => row.warnings.length > 0)) && (
+            <div style={{ marginTop: 12, color: '#7a4f00' }}>
+              {[...discoverResponse.warnings, ...discoverResponse.errors, ...rows.flatMap((row) => row.warnings)].map((warning, idx) => (
+                <div key={`${warning.code}-${idx}`}>{warning.message}</div>
+              ))}
+            </div>
+          )}
         </section>
+
+        {planStale && (
+          <section style={{ ...card, borderColor: '#d7a84a', background: '#fff8e7', color: '#6b4b00' }}>
+            Settings changed. Rediscover IDs before executing this batch.
+          </section>
+        )}
 
         {error && (
           <section style={{ ...card, borderColor: '#e29a9a', background: '#fff5f5', color: '#7a1c1c' }}>
@@ -300,6 +345,35 @@ export function BatchUploadPage() {
               <span>Accepted images: <b>{executeResponse.summary.accepted_images}</b></span>
             </div>
             <div style={{ marginTop: 10 }}>{executeResponse.message}</div>
+            {executeResponse.rows.length > 0 && (
+              <div style={{ marginTop: 14, overflowX: 'auto' }}>
+                <h3 style={{ marginBottom: 8 }}>Row results</h3>
+                <table aria-label="Batch upload row results" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                  <thead>
+                    <tr style={{ background: '#eef3fb' }}>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Target ID</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Action</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Encounter</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Accepted</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Skipped</th>
+                      <th style={{ textAlign: 'left', padding: 8 }}>Errors</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {executeResponse.rows.map((row) => (
+                      <tr key={row.row_id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: 8 }}>{row.target_id}</td>
+                        <td style={{ padding: 8 }}>{row.action}</td>
+                        <td style={{ padding: 8 }}>{row.encounter_folder}</td>
+                        <td style={{ padding: 8 }}>{row.accepted_images}</td>
+                        <td style={{ padding: 8 }}>{row.skipped_images}</td>
+                        <td style={{ padding: 8 }}>{row.errors.map((err) => err.message).join('; ') || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
       </div>
