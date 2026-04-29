@@ -12,8 +12,11 @@ from fastapi import HTTPException, UploadFile, status
 from src.data.archive_paths import archive_root, metadata_csv_for, root_for
 from src.data.csv_io import append_row
 from src.data.id_registry import id_exists
-from src.data.ingest import IMAGE_EXTS, ensure_encounter_name, place_images
+from src.data.image_formats import IMPORT_IMAGE_EXTS, is_importable_image, normalized_suffix
+from src.data.ingest import ensure_encounter_name, place_images
 from src.data.validators import validate_id
+
+IMAGE_EXTS = IMPORT_IMAGE_EXTS
 
 ALLOWED_MODES = {
     ('query', 'create'),
@@ -103,13 +106,14 @@ async def submit(payload_text: str, files: list[UploadFile]) -> dict:
         upload_paths: list[Path] = []
         temp_root = Path(temp_dir)
         for i, upload in enumerate(files):
-            suffix = Path(upload.filename or '').suffix.lower()
-            if suffix not in IMAGE_EXTS:
+            suffix = normalized_suffix(upload.filename or '')
+            if not is_importable_image(upload.filename or ''):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Unsupported file type: {upload.filename}')
             content = await upload.read()
             if not content:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Empty file: {upload.filename}')
-            temp_path = temp_root / f'upload_{i}{suffix or ".jpg"}'
+            safe_name = Path(upload.filename or f'upload_{i}{suffix or ".jpg"}').name
+            temp_path = temp_root / safe_name
             temp_path.write_bytes(content)
             upload_paths.append(temp_path)
 

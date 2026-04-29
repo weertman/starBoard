@@ -225,7 +225,7 @@ export function SingleEntryPage() {
             </label>
             <label>
               <div>Images</div>
-              <input aria-label="Images" type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} style={input} />
+              <input aria-label="Images" type="file" accept="image/*,.orf,.ORF" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} style={input} />
             </label>
           </div>
         </section>

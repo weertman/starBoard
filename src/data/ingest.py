@@ -10,26 +10,11 @@ import logging
 from .validators import validate_mmddyy_string
 from .id_registry import invalidate_id_cache
 from .image_index import invalidate_image_cache
+from .image_formats import IMPORT_IMAGE_EXTS, is_importable_image, is_raw_image, image_file_dialog_filter
+from . import raw_conversion
 
-IMAGE_EXTS = {
-    ".jpg", ".jpeg", ".jpe", ".jfif",
-    ".png",
-    ".tif", ".tiff",
-    ".bmp", ".dib",
-    ".gif",
-    ".webp",
-    ".heic", ".heif",
-    ".avif",
-}
+IMAGE_EXTS = IMPORT_IMAGE_EXTS
 log = logging.getLogger("starBoard.data.ingest")
-
-
-def image_file_dialog_filter() -> str:
-    patterns = []
-    for ext in sorted(IMAGE_EXTS):
-        patterns.append(f"*{ext}")
-        patterns.append(f"*{ext.upper()}")
-    return f"Images ({' '.join(patterns)});;All Files (*)"
 
 @dataclass
 class FileOp:
@@ -37,6 +22,7 @@ class FileOp:
     dest: Path
     action: str  # "copied" | "moved"
     renamed: bool = False
+    converted: bool = False
 
 @dataclass
 class IngestReport:
@@ -108,21 +94,30 @@ def place_images(
         if not f.exists() or not f.is_file():
             report.errors.append(f"Missing file: {f}")
             continue
-        if f.suffix.lower() not in IMAGE_EXTS:
+        if not is_importable_image(f):
             continue
 
-        dest_path = dest_dir / f.name
+        dest_name = f"{f.stem}.jpg" if is_raw_image(f) else f.name
+        dest_path = dest_dir / dest_name
         final_dest = _ensure_unique_path(dest_path)
         renamed = (final_dest.name != dest_path.name)
 
         try:
-            if move:
+            if is_raw_image(f):
+                raw_conversion.convert_raw_to_jpeg(f, final_dest)
+                if move:
+                    f.unlink()
+                action = "converted"
+                converted = True
+            elif move:
                 shutil.move(str(f), str(final_dest))
                 action = "moved"
+                converted = False
             else:
                 shutil.copy2(str(f), str(final_dest))
                 action = "copied"
-            report.ops.append(FileOp(src=f, dest=final_dest, action=action, renamed=renamed))
+                converted = False
+            report.ops.append(FileOp(src=f, dest=final_dest, action=action, renamed=renamed, converted=converted))
         except Exception as e:
             report.errors.append(f"Failed to transfer {f.name}: {e}")
 
@@ -211,7 +206,7 @@ def discover_ids_and_images(parent_dir: Path) -> List[Tuple[str, List[Path]]]:
         id_str = child.name
         files: List[Path] = []
         for p in child.rglob("*"):
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+            if p.is_file() and is_importable_image(p):
                 files.append(p)
         out.append((id_str, files))
     log.info("Discovered %d IDs under %s", len(out), str(parent))
@@ -342,7 +337,7 @@ def discover_ids_with_encounters(
                 continue
             images = sorted(
                 p for p in enc_dir.rglob("*")
-                if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+                if p.is_file() and is_importable_image(p)
             )
             if images:
                 encounters.append((enc_dir.name, parsed, images))

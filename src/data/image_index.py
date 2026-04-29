@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import List, Tuple
 import logging
 from src.data.archive_paths import roots_for_read
+from src.data.image_formats import ARCHIVE_IMAGE_EXTS, is_archive_image
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
+IMAGE_EXTS = ARCHIVE_IMAGE_EXTS
 log = logging.getLogger("starBoard.data.images")
 
 
@@ -24,7 +25,7 @@ def list_image_files(target: str, id_str: str) -> Tuple[Path, ...]:
             continue
         # Collect images under encounters/* (sorted by path)
         for p in sorted(base.rglob("*")):
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+            if p.is_file() and is_archive_image(p):
                 files.append(p)
     log.info("image_list target=%s id=%s count=%d", target, id_str, len(files))
     return tuple(files)

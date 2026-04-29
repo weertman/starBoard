@@ -119,3 +119,31 @@ def test_submission_accepts_gallery_append(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert (archive / 'gallery' / 'anchovy' / '04_01_26').exists()
+
+
+def test_submission_converts_olympus_orf_to_jpeg(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    def fake_convert(src, dest):
+        dest.write_bytes(b'converted-jpeg')
+        return dest
+
+    monkeypatch.setattr('src.data.raw_conversion.convert_raw_to_jpeg', fake_convert)
+    client = TestClient(create_app())
+    payload = {
+        'target_type': 'query',
+        'target_mode': 'create',
+        'target_id': 'raw_query',
+        'encounter_date': '2026-04-01',
+        'metadata': {'location': 'dock'},
+    }
+    files = [('files', ('P1010001.ORF', b'raw-orf-bytes', 'application/octet-stream'))]
+
+    response = client.post('/api/submissions', headers=AUTH, data={'payload': json.dumps(payload)}, files=files)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['accepted_images'] == 1
+    assert body['archive_paths_written'][0].endswith('/P1010001.jpg')
+    assert (archive / 'queries' / 'raw_query' / '04_01_26' / 'P1010001.jpg').read_bytes() == b'converted-jpeg'

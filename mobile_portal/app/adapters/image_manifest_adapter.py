@@ -7,8 +7,9 @@ from PIL import Image
 
 from src.data.image_index import list_image_files
 from src.data.encounter_info import get_encounter_date
+from src.data.image_formats import ARCHIVE_IMAGE_EXTS
 
-IMAGE_EXTS = {'.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.tif', '.tiff', '.bmp', '.dib', '.gif', '.webp', '.heic', '.heif', '.avif'}
+IMAGE_EXTS = ARCHIVE_IMAGE_EXTS
 
 
 def list_entity_images(entity_type: str, entity_id: str) -> list[Path]:

@@ -34,6 +34,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from src.data import archive_paths as ap
 from src.data.csv_io import append_row, normalize_id_value, read_rows, last_row_per_id
+from src.data.image_formats import ARCHIVE_IMAGE_EXTS as SHARED_ARCHIVE_IMAGE_EXTS
 from src.data.image_index import list_image_files
 from src.data.ingest import ensure_encounter_name, place_images
 from src.data.metadata_history import record_morphometric_import
@@ -54,7 +55,7 @@ LEGACY_REQUIRED_FILENAMES: Tuple[str, ...] = (
     "morphometrics.json",
 )
 LEGACY_PROVENANCE_KEY = "legacy_source_mfolder"
-ARCHIVE_IMAGE_EXTS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
+ARCHIVE_IMAGE_EXTS = SHARED_ARCHIVE_IMAGE_EXTS
 
 _DATE_FOLDER_RE = re.compile(r"^\d{2}_\d{2}_\d{4}$")
 _MFOLDER_RE = re.compile(r"^mFolder_(\d+)$")

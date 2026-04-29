@@ -1511,14 +1511,14 @@ class TabSetup(QWidget):
         folder = Path(id_folder)
         id_str = folder.name
         encounters = []
-        from src.data.ingest import IMAGE_EXTS
+        from src.data.image_formats import is_importable_image
         for enc_dir in sorted(p for p in folder.iterdir() if p.is_dir()):
             parsed = _parse_encounter_date(enc_dir.name)
             if parsed is None:
                 continue
             images = sorted(
                 p for p in enc_dir.rglob("*")
-                if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+                if p.is_file() and is_importable_image(p)
             )
             if images:
                 encounters.append((enc_dir.name, parsed, images))

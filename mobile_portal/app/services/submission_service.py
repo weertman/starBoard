@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 
@@ -11,8 +10,9 @@ from ..config import get_settings
 from ..adapters.id_policy import validate_target_mode
 from ..adapters.ingest_adapter import UploadImage, ingest_images
 from ..adapters.csv_adapter import write_metadata_row
+from src.data.image_formats import IMPORT_IMAGE_EXTS, is_importable_image
 
-IMAGE_EXTS = {'.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.tif', '.tiff', '.bmp', '.dib', '.gif', '.webp', '.heic', '.heif', '.avif'}
+IMAGE_EXTS = IMPORT_IMAGE_EXTS
 
 
 @dataclass
@@ -54,8 +54,7 @@ async def submit(payload_text: str, files: list[UploadFile]) -> dict:
     settings = get_settings()
     uploads = []
     for upload in files:
-        suffix = Path(upload.filename or '').suffix.lower()
-        if suffix not in IMAGE_EXTS:
+        if not is_importable_image(upload.filename or ''):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Unsupported file type: {upload.filename}')
         content = await upload.read()
         if not content:

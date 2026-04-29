@@ -20,10 +20,12 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.data.image_formats import ARCHIVE_IMAGE_EXTS, is_archive_image
+
 log = logging.getLogger("starBoard.sync.index")
 
 # Image file extensions (case-insensitive matching)
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
+IMAGE_EXTENSIONS = ARCHIVE_IMAGE_EXTS
 
 # Encounter folder pattern: MM_DD_YY with optional suffix
 _MMDDYY_RE = re.compile(r"^(\d{2})_(\d{2})_(\d{2})(?:_.*)?$")
@@ -114,7 +116,7 @@ def _parse_encounter_date(folder_name: str) -> Optional[date]:
 
 
 def _is_image(path: Path) -> bool:
-    return path.suffix.lower() in IMAGE_EXTENSIONS
+    return is_archive_image(path)
 
 
 def _is_entity_dir(name: str) -> bool:

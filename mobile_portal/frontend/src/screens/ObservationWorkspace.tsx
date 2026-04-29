@@ -101,11 +101,11 @@ export function ObservationWorkspace({
       <div style={{ display: 'grid', gap: 8 }}>
         <label style={{ display: 'grid', gap: 4, background: 'white', border: '1px solid #d6dae1', borderRadius: 14, padding: 10 }}>
           <span style={{ fontSize: 13, color: '#667085' }}>Camera capture</span>
-          <input type="file" accept="image/*" capture="environment" multiple onChange={(e) => addFiles(e.target.files)} />
+          <input type="file" accept="image/*,.orf,.ORF" capture="environment" multiple onChange={(e) => addFiles(e.target.files)} />
         </label>
         <label style={{ display: 'grid', gap: 4, background: 'white', border: '1px solid #d6dae1', borderRadius: 14, padding: 10 }}>
           <span style={{ fontSize: 13, color: '#667085' }}>Photo library</span>
-          <input type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} />
+          <input type="file" accept="image/*,.orf,.ORF" multiple onChange={(e) => addFiles(e.target.files)} />
         </label>
       </div>
 

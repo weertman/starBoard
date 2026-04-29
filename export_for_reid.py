@@ -29,11 +29,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from src.data.image_formats import ARCHIVE_IMAGE_EXTS, is_archive_image
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
+IMAGE_EXTENSIONS: Set[str] = ARCHIVE_IMAGE_EXTS
 MMDDYY_PATTERN = re.compile(r"^(\d{2})_(\d{2})_(\d{2})(?:_(.+))?$")
 
 # ---------------------------------------------------------------------------
@@ -177,7 +179,7 @@ def list_images_in_folder(folder: Path) -> List[Path]:
     images = []
     
     for p in sorted(folder.iterdir()):
-        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS:
+        if p.is_file() and is_archive_image(p):
             images.append(p)
     
     return images

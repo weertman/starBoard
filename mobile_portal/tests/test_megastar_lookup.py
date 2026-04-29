@@ -18,7 +18,7 @@ from mobile_portal.app.adapters.megastar_query_preprocess import MegaStarQueryPr
 from mobile_portal.app.adapters.megastar_result_resolver import MegaStarArtifactMatch, MegaStarResultResolver
 from mobile_portal.app.config import get_settings
 from mobile_portal.app.models.megastar_api import MegaStarLookupCandidate, MegaStarLookupResponse
-from mobile_portal.app.services.megastar_lookup_service import MegaStarLookupService
+from mobile_portal.app.services.megastar_lookup_service import MegaStarLookupService, prepare_upload_content_for_lookup
 
 from .conftest import build_test_app, make_image
 
@@ -292,6 +292,25 @@ def test_megastar_lookup_rejects_non_image_upload(tmp_path, monkeypatch):
 
     assert r.status_code == 400
     assert r.json()['detail'] == 'unsupported_media_type'
+
+
+def test_megastar_lookup_prepares_olympus_orf_bytes_as_jpeg(monkeypatch):
+    calls = []
+
+    def fake_convert(payload, suffix='.orf'):
+        calls.append((payload, suffix))
+        return b'jpeg-bytes'
+
+    monkeypatch.setattr('mobile_portal.app.services.megastar_lookup_service.convert_raw_bytes_to_jpeg_bytes', fake_convert)
+
+    converted = prepare_upload_content_for_lookup(
+        filename='P1010001.ORF',
+        content=b'raw-orf-bytes',
+        content_type='application/octet-stream',
+    )
+
+    assert converted == b'jpeg-bytes'
+    assert calls == [(b'raw-orf-bytes', '.orf')]
 
 
 def test_megastar_artifact_loader_reports_enabled_with_portable_checkpoint_resolution(tmp_path, monkeypatch):

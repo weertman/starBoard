@@ -32,6 +32,9 @@ safetensors>=0.4.0
 # Evaluation/report visualization
 plotly>=5.0.0
 
+# RAW image import/conversion (Olympus .ORF; uses camera white balance)
+rawpy>=0.21.0
+
 # Optional: GPU acceleration
 # For CUDA support, install PyTorch with CUDA:
 # pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121

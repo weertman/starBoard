@@ -24,11 +24,12 @@ from .archive_paths import (
 from .csv_io import read_rows, append_row, normalize_id_value
 from .id_registry import id_exists, invalidate_id_cache
 from .image_index import invalidate_image_cache
+from .image_formats import ARCHIVE_IMAGE_EXTS, is_archive_image
 from .validators import validate_mmddyy_string
 
 log = logging.getLogger("starBoard.data.archive_merge")
 
-IMAGE_EXTS: Set[str] = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
+IMAGE_EXTS: Set[str] = ARCHIVE_IMAGE_EXTS
 
 
 @dataclass
@@ -128,7 +129,7 @@ def _count_images_in_folder(folder: Path) -> int:
     count = 0
     if folder.exists():
         for p in folder.rglob("*"):
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+            if p.is_file() and is_archive_image(p):
                 count += 1
     return count
 

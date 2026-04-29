@@ -41,7 +41,9 @@ _project_root = Path(__file__).resolve().parents[2]
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
+from src.data.image_formats import ARCHIVE_IMAGE_EXTS, is_archive_image
+
+IMAGE_EXTENSIONS = ARCHIVE_IMAGE_EXTS
 
 # ─── Cloudflare Access Auth ─────────────────────────────────────────────────
 
@@ -429,7 +431,7 @@ def _build_push_plan(args, lab: str, last_push: str) -> Dict[str, Any]:
         for enc_dir in sorted(entity_dir.iterdir()):
             if not enc_dir.is_dir() or enc_dir.name.startswith(("_", ".")):
                 continue
-            img_paths = [img for img in enc_dir.iterdir() if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS]
+            img_paths = [img for img in enc_dir.iterdir() if img.is_file() and is_archive_image(img)]
             if img_paths:
                 encounters.append(("gallery", "gallery", entity_id, enc_dir, sorted(img_paths)))
                 image_count += len(img_paths)
@@ -440,7 +442,7 @@ def _build_push_plan(args, lab: str, last_push: str) -> Dict[str, Any]:
         for enc_dir in sorted(entity_dir.iterdir()):
             if not enc_dir.is_dir() or enc_dir.name.startswith(("_", ".")):
                 continue
-            img_paths = [img for img in enc_dir.iterdir() if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS]
+            img_paths = [img for img in enc_dir.iterdir() if img.is_file() and is_archive_image(img)]
             if img_paths:
                 encounters.append(("queries", "query", entity_id, enc_dir, sorted(img_paths)))
                 image_count += len(img_paths)
@@ -661,7 +663,7 @@ def cmd_pull(args):
         if not target_path.exists():
             continue
         for img in target_path.rglob("*"):
-            if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS:
+            if img.is_file() and is_archive_image(img):
                 local_paths.add(str(img.relative_to(archive)))
     if local_paths:
         pull_filter["exclude_paths"] = list(local_paths)

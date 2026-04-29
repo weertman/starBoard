@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from src.ui.collapsible import CollapsibleSection
 from src.ui.help_button import HelpButton, HELP_TEXTS
 from src.utils.interaction_logger import get_interaction_logger
+from src.data.image_formats import is_archive_image
 
 log = logging.getLogger("starBoard.ui.tab_sync")
 
@@ -1100,7 +1101,6 @@ class TabSync(QWidget):
                         raise
 
                 archive = archive_root()
-                IMAGE_EXTS = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".tif", ".tiff", ".bmp", ".dib", ".gif", ".webp", ".heic", ".heif", ".avif"}
 
                 # Scan local images to exclude from pull
                 self._log_signal.emit("Scanning local images to skip duplicates...")
@@ -1110,7 +1110,7 @@ class TabSync(QWidget):
                     if not target_path.exists():
                         continue
                     for img in target_path.rglob("*"):
-                        if img.is_file() and img.suffix.lower() in IMAGE_EXTS:
+                        if img.is_file() and is_archive_image(img):
                             local_paths.add(str(img.relative_to(archive)))
                 if local_paths:
                     pull_filter["exclude_paths"] = list(local_paths)

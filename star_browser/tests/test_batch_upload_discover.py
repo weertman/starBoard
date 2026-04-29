@@ -122,6 +122,50 @@ def test_batch_upload_execute_route_writes_files_and_csv(tmp_path, monkeypatch):
     assert 'anchovy' in csv_path.read_text(encoding='utf-8-sig')
 
 
+def test_batch_upload_execute_converts_olympus_orf_to_jpeg(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    (archive / 'gallery').mkdir(parents=True)
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    def fake_convert(src, dest):
+        dest.write_bytes(b'converted-jpeg')
+        return dest
+
+    monkeypatch.setattr('src.data.raw_conversion.convert_raw_to_jpeg', fake_convert)
+    base = tmp_path / 'flat'
+    (base / 'anchovy').mkdir(parents=True)
+    (base / 'anchovy' / 'P1010001.ORF').write_bytes(b'raw')
+
+    client = TestClient(create_app())
+    discover = client.post(
+        '/api/batch-upload/discover',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={
+            'target_archive': 'gallery',
+            'discovery_mode': 'flat',
+            'id_prefix': '',
+            'id_suffix': '',
+            'flat_encounter_date': '2026-04-21',
+            'import_source': {'type': 'server_path', 'path': str(base)},
+        },
+    )
+    assert discover.status_code == 200
+    plan = discover.json()
+    assert plan['summary']['total_images'] == 1
+
+    execute = client.post(
+        '/api/batch-upload/execute',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={'plan_id': plan['plan_id'], 'accepted_row_ids': [plan['rows'][0]['row_id']]},
+    )
+
+    assert execute.status_code == 200
+    body = execute.json()
+    assert body['summary']['accepted_images'] == 1
+    assert body['rows'][0]['archive_paths_written'] == ['anchovy/04_21_26/P1010001.jpg']
+    assert (archive / 'gallery' / 'anchovy' / '04_21_26' / 'P1010001.jpg').read_bytes() == b'converted-jpeg'
+
+
 def test_batch_upload_execute_rejects_unknown_plan(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     (archive / 'gallery').mkdir(parents=True)

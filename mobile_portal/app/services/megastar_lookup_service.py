@@ -15,6 +15,8 @@ from ..adapters.megastar_result_resolver import MegaStarArtifactMatch, MegaStarR
 from ..config import Settings, get_settings
 from ..models.megastar_api import MegaStarLookupCandidate, MegaStarLookupResponse
 from src.data.encounter_info import get_encounter_date
+from src.data.image_formats import is_raw_image, normalized_suffix
+from src.data.raw_conversion import RawConversionError, convert_raw_bytes_to_jpeg_bytes
 
 ALLOWED_IMAGE_CONTENT_TYPES = {
     'image/jpeg',
@@ -84,7 +86,12 @@ class MegaStarLookupService:
                 image_size=availability.image_size or 384,
                 yolo_preprocessor=self.yolo_preprocessor,
             )
-            preprocessed = preprocessor.preprocess_upload_bytes(content)
+            lookup_content = prepare_upload_content_for_lookup(
+                filename=filename,
+                content=content,
+                content_type=content_type,
+            )
+            preprocessed = preprocessor.preprocess_upload_bytes(lookup_content)
             model = MegaStarModelAdapter(availability=availability, backend_factory=self.backend_factory)
             query_embedding = model.extract_embedding(preprocessed.image_tensor)
             hits = self.search_image_hits(query_embedding=query_embedding, availability=availability)
@@ -243,8 +250,17 @@ class MegaStarLookupService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='empty_upload')
         if len(content) > self.settings.max_upload_mb * 1024 * 1024:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='file_too_large')
-        if content_type and content_type.lower() not in ALLOWED_IMAGE_CONTENT_TYPES:
+        if content_type and content_type.lower() not in ALLOWED_IMAGE_CONTENT_TYPES and not is_raw_image(filename):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='unsupported_media_type')
+
+
+def prepare_upload_content_for_lookup(*, filename: str, content: bytes, content_type: str | None = None) -> bytes:
+    if is_raw_image(filename):
+        try:
+            return convert_raw_bytes_to_jpeg_bytes(content, suffix=normalized_suffix(filename) or '.orf')
+        except RawConversionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return content
 
 
 @lru_cache(maxsize=4)
