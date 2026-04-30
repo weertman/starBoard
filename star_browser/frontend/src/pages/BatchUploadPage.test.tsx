@@ -29,6 +29,70 @@ const mockedExecuteBatchUpload = vi.mocked(executeBatchUpload)
 const mockedPreviewBatchServerPath = vi.mocked(previewBatchServerPath)
 const mockedGetLocationSites = vi.mocked(getLocationSites)
 
+function makeZipFile(paths: string[], name = 'bundle.zip') {
+  const chunks: Uint8Array[] = []
+  const centralChunks: Uint8Array[] = []
+  let offset = 0
+  const encoder = new TextEncoder()
+  const pushChunk = (chunk: Uint8Array) => {
+    chunks.push(chunk)
+    offset += chunk.length
+  }
+  const writeU16 = (view: DataView, pos: number, value: number) => view.setUint16(pos, value, true)
+  const writeU32 = (view: DataView, pos: number, value: number) => view.setUint32(pos, value, true)
+
+  for (const path of paths) {
+    const nameBytes = encoder.encode(path)
+    const localOffset = offset
+    const local = new Uint8Array(30 + nameBytes.length)
+    const localView = new DataView(local.buffer)
+    writeU32(localView, 0, 0x04034b50)
+    writeU16(localView, 4, 20)
+    writeU16(localView, 26, nameBytes.length)
+    local.set(nameBytes, 30)
+    pushChunk(local)
+
+    const central = new Uint8Array(46 + nameBytes.length)
+    const centralView = new DataView(central.buffer)
+    writeU32(centralView, 0, 0x02014b50)
+    writeU16(centralView, 4, 20)
+    writeU16(centralView, 6, 20)
+    writeU16(centralView, 28, nameBytes.length)
+    writeU32(centralView, 42, localOffset)
+    central.set(nameBytes, 46)
+    centralChunks.push(central)
+  }
+
+  const centralOffset = offset
+  let centralSize = 0
+  for (const central of centralChunks) {
+    pushChunk(central)
+    centralSize += central.length
+  }
+  const eocd = new Uint8Array(22)
+  const eocdView = new DataView(eocd.buffer)
+  writeU32(eocdView, 0, 0x06054b50)
+  writeU16(eocdView, 8, paths.length)
+  writeU16(eocdView, 10, paths.length)
+  writeU32(eocdView, 12, centralSize)
+  writeU32(eocdView, 16, centralOffset)
+  chunks.push(eocd)
+
+  const file = new File(chunks, name, { type: 'application/zip' })
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: async () => {
+      const out = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0))
+      let pos = 0
+      for (const chunk of chunks) {
+        out.set(chunk, pos)
+        pos += chunk.length
+      }
+      return out.buffer
+    },
+  })
+  return file
+}
+
 const baseDiscoverResponse = {
   plan_id: 'plan_123',
   target_archive: 'gallery' as const,
@@ -124,12 +188,16 @@ describe('BatchUploadPage', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
   async function stageAndDiscover(user: ReturnType<typeof userEvent.setup>) {
-    const zip = new File(['zip-bytes'], 'bundle.zip', { type: 'application/zip' })
+    await user.click(screen.getByLabelText('Use zip upload'))
+    const zip = makeZipFile(['trip_upload/anchovy/04_21_26/a.jpg', 'trip_upload/anchovy/04_21_26/b.jpg'])
     await user.upload(screen.getByLabelText('Source zip bundle'), zip)
+    await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
+    await screen.findByText(/Zip structure looks valid/i)
     await user.click(screen.getByRole('button', { name: 'Upload zip' }))
     await screen.findByText(/Files staged:/)
     await user.click(screen.getByRole('button', { name: 'Discover IDs' }))
@@ -155,6 +223,58 @@ describe('BatchUploadPage', () => {
     expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
       import_source: { type: 'server_path', path: '/data/trip_upload' },
     }))
+  })
+
+  it('tests zip source structure locally before upload is allowed', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    await user.click(screen.getByLabelText('Use zip upload'))
+    const zip = makeZipFile(['trip_upload/anchovy/04_21_26/a.jpg', 'trip_upload/anchovy/04_21_26/b.jpg'])
+    await user.upload(screen.getByLabelText('Source zip bundle'), zip)
+
+    expect(screen.getByRole('button', { name: 'Upload zip' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
+
+    expect(await screen.findByText(/Zip structure looks valid/i)).toBeInTheDocument()
+    expect(screen.getByText(/Resolved mode:/i)).toBeInTheDocument()
+    expect(screen.getByText(/Importable images:/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload zip' })).toBeEnabled()
+    expect(mockedUploadBatchZip).not.toHaveBeenCalled()
+  })
+
+  it('accepts a single-ID zip root during local structure testing', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    await user.click(screen.getByLabelText('Use zip upload'))
+    const zip = makeZipFile(['anchovy/a.jpg', 'anchovy/b.jpg'])
+    await user.upload(screen.getByLabelText('Source zip bundle'), zip)
+    await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
+
+    expect(await screen.findByText(/Zip structure looks valid/i)).toBeInTheDocument()
+    expect(screen.getByText(/root entries: anchovy/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload zip' })).toBeEnabled()
+  })
+
+  it('shows elapsed time while an operation is running and success after upload', async () => {
+    const user = userEvent.setup()
+    let resolveUpload: (value: Awaited<ReturnType<typeof uploadBatchZip>>) => void = () => undefined
+    mockedUploadBatchZip.mockReturnValue(new Promise((resolve) => { resolveUpload = resolve }))
+    render(<BatchUploadPage />)
+
+    await user.click(screen.getByLabelText('Use zip upload'))
+    const zip = makeZipFile(['trip_upload/anchovy/a.jpg'])
+    await user.upload(screen.getByLabelText('Source zip bundle'), zip)
+    await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
+    await screen.findByText(/Zip structure looks valid/i)
+    await user.click(screen.getByRole('button', { name: 'Upload zip' }))
+    await screen.findByText(/Uploading zip/i)
+    await waitFor(() => expect(screen.getByText(/Elapsed: [1-9]\d*s/i)).toBeInTheDocument(), { timeout: 2500 })
+
+    resolveUpload({ upload_token: 'upload_123', file_count: 1, root_entries: ['anchovy'] })
+    await screen.findByText(/Upload complete/i)
+    expect(screen.getByText(/Files staged:/)).toBeInTheDocument()
   })
 
   it('hides flat-only encounter controls outside flat mode and shows the today warning in flat mode', async () => {

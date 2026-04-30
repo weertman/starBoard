@@ -17,6 +17,15 @@ import { LocationSiteMap } from '../components/LocationSiteMap'
 
 type DiscoverMode = 'auto' | 'flat' | 'encounters' | 'grouped'
 type TargetArchive = 'gallery' | 'query'
+type BusyState = 'preflight' | 'upload' | 'discover' | 'execute'
+
+type ZipStructurePreview = {
+  status: 'valid' | 'invalid'
+  resolvedMode: 'flat' | 'encounters' | 'grouped' | 'empty'
+  importableImages: number
+  rootEntries: string[]
+  message: string
+}
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -40,6 +49,108 @@ function badge(action: BatchUploadDiscoverRow['action']) {
   return { label: 'Skip', color: '#7a1c1c', bg: '#ffe3e3' }
 }
 
+const IMPORTABLE_IMAGE_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.tif', '.tiff', '.bmp', '.dib', '.gif', '.webp', '.heic', '.heif', '.avif', '.orf',
+])
+
+function isImportableImageName(name: string) {
+  const lower = name.toLowerCase()
+  return Array.from(IMPORTABLE_IMAGE_EXTENSIONS).some((ext) => lower.endsWith(ext))
+}
+
+function isDatedFolderName(name: string) {
+  return /^\d{1,2}_\d{1,2}_\d{2,4}(?:_|$)/.test(name)
+}
+
+function uniqueSorted(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b))
+}
+
+async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === 'function') return file.arrayBuffer()
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as ArrayBuffer)
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read selected file'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+function readZipEntryNames(buffer: ArrayBuffer) {
+  const view = new DataView(buffer)
+  const decoder = new TextDecoder()
+  let eocdOffset = -1
+  for (let i = view.byteLength - 22; i >= Math.max(0, view.byteLength - 65557); i -= 1) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocdOffset = i
+      break
+    }
+  }
+  if (eocdOffset < 0) throw new Error('Could not read zip directory')
+  const entryCount = view.getUint16(eocdOffset + 10, true)
+  let cursor = view.getUint32(eocdOffset + 16, true)
+  const names: string[] = []
+  for (let i = 0; i < entryCount; i += 1) {
+    if (cursor + 46 > view.byteLength || view.getUint32(cursor, true) !== 0x02014b50) {
+      throw new Error('Could not read zip entries')
+    }
+    const nameLen = view.getUint16(cursor + 28, true)
+    const extraLen = view.getUint16(cursor + 30, true)
+    const commentLen = view.getUint16(cursor + 32, true)
+    const nameStart = cursor + 46
+    const nameEnd = nameStart + nameLen
+    names.push(decoder.decode(new Uint8Array(buffer, nameStart, nameLen)))
+    cursor = nameEnd + extraLen + commentLen
+  }
+  return names
+}
+
+function analyzeZipEntries(names: string[], requestedMode: DiscoverMode): ZipStructurePreview {
+  const fileNames = names
+    .map((name) => name.replace(/^\/+/, ''))
+    .filter((name) => name && !name.endsWith('/') && !name.startsWith('__MACOSX/'))
+  const importable = fileNames.filter(isImportableImageName)
+  if (importable.length === 0) {
+    return { status: 'invalid', resolvedMode: 'empty', importableImages: 0, rootEntries: [], message: 'No importable images found in this zip.' }
+  }
+
+  let partsList = importable.map((name) => name.split('/').filter(Boolean))
+  const rootEntriesBeforeUnwrap = uniqueSorted(partsList.map((parts) => parts[0]))
+  const hasRootImages = partsList.some((parts) => parts.length === 1)
+  if (!hasRootImages && rootEntriesBeforeUnwrap.length === 1 && partsList.every((parts) => parts.length > 1)) {
+    const unwrapped = partsList.map((parts) => parts.slice(1))
+    if (!unwrapped.some((parts) => parts.length === 1)) {
+      partsList = unwrapped
+    }
+  }
+
+  const rootEntries = uniqueSorted(partsList.map((parts) => parts[0]))
+  const hasImagesAtRoot = partsList.some((parts) => parts.length === 1)
+  if (hasImagesAtRoot) {
+    return {
+      status: 'invalid',
+      resolvedMode: 'empty',
+      importableImages: importable.length,
+      rootEntries,
+      message: 'Images are at the zip root. Put images inside ID folders before upload.',
+    }
+  }
+
+  const hasDatedSecondLevel = partsList.some((parts) => parts.length >= 3 && isDatedFolderName(parts[1]))
+  const hasDatedThirdLevel = partsList.some((parts) => parts.length >= 4 && isDatedFolderName(parts[2]))
+  const resolvedMode = hasDatedThirdLevel ? 'grouped' : hasDatedSecondLevel ? 'encounters' : 'flat'
+  const modeMismatch = requestedMode !== 'auto' && requestedMode !== resolvedMode
+  return {
+    status: modeMismatch ? 'invalid' : 'valid',
+    resolvedMode,
+    importableImages: importable.length,
+    rootEntries,
+    message: modeMismatch
+      ? `Zip looks like ${resolvedMode} structure, but Discovery mode is ${requestedMode}. Switch to Auto or the matching mode.`
+      : 'Zip structure looks valid.',
+  }
+}
+
 export function BatchUploadPage() {
   const [targetArchive, setTargetArchive] = useState<TargetArchive>('gallery')
   const [discoveryMode, setDiscoveryMode] = useState<DiscoverMode>('auto')
@@ -51,16 +162,20 @@ export function BatchUploadPage() {
   const [knownSites, setKnownSites] = useState<LocationSite[]>([])
   const [showNewLocationInput, setShowNewLocationInput] = useState(false)
   const [pickingCoordinates, setPickingCoordinates] = useState(false)
-  const [sourceMode, setSourceMode] = useState<'zip' | 'server_path'>('zip')
+  const [sourceMode, setSourceMode] = useState<'zip' | 'server_path'>('server_path')
   const [serverPath, setServerPath] = useState('')
   const [serverPathPreview, setServerPathPreview] = useState<BatchUploadServerPathPreviewResponse | null>(null)
   const [zipFile, setZipFile] = useState<File | null>(null)
+  const [zipPreview, setZipPreview] = useState<ZipStructurePreview | null>(null)
   const [uploadToken, setUploadToken] = useState<string | null>(null)
   const [uploadInfo, setUploadInfo] = useState<{ file_count: number; root_entries: string[] } | null>(null)
   const [discoverResponse, setDiscoverResponse] = useState<BatchUploadDiscoverResponse | null>(null)
   const [executeResponse, setExecuteResponse] = useState<BatchUploadExecuteResponse | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([])
-  const [busy, setBusy] = useState<'upload' | 'discover' | 'execute' | null>(null)
+  const [busy, setBusy] = useState<BusyState | null>(null)
+  const [operation, setOperation] = useState<{ label: string; startedAt: number } | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [successReadout, setSuccessReadout] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [planStale, setPlanStale] = useState(false)
 
@@ -68,6 +183,7 @@ export function BatchUploadPage() {
   const selectedRows = useMemo(() => rows.filter((row) => selectedRowIds.includes(row.row_id)), [rows, selectedRowIds])
   const showFlatEncounterControls = discoveryMode === 'auto' || discoveryMode === 'flat'
   const todayIso = new Date().toISOString().slice(0, 10)
+  const canUploadZip = Boolean(zipFile && zipPreview?.status === 'valid')
   const canDiscover = sourceMode === 'server_path' ? serverPathPreview?.path === serverPath.trim() : Boolean(uploadToken)
 
   useEffect(() => {
@@ -80,6 +196,27 @@ export function BatchUploadPage() {
       }
     })()
   }, [])
+
+  useEffect(() => {
+    if (!operation) return undefined
+    setElapsedSeconds(0)
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - operation.startedAt) / 1000))
+    }, 500)
+    return () => window.clearInterval(timer)
+  }, [operation])
+
+  function beginOperation(kind: BusyState, label: string) {
+    setBusy(kind)
+    setOperation({ label, startedAt: Date.now() })
+    setElapsedSeconds(0)
+    setSuccessReadout(null)
+  }
+
+  function endOperation() {
+    setBusy(null)
+    setOperation(null)
+  }
 
   function invalidateDiscoveredPlan() {
     if (discoverResponse) {
@@ -112,9 +249,41 @@ export function BatchUploadPage() {
     invalidateDiscoveredPlan()
   }
 
+  function handleZipFileChange(file: File | null) {
+    setZipFile(file)
+    setZipPreview(null)
+    setUploadToken(null)
+    setUploadInfo(null)
+    setDiscoverResponse(null)
+    setExecuteResponse(null)
+    setSelectedRowIds([])
+  }
+
+  async function handleTestZipStructure() {
+    if (!zipFile) return
+    beginOperation('preflight', 'Testing zip structure')
+    setError(null)
+    try {
+      const names = readZipEntryNames(await readFileAsArrayBuffer(zipFile))
+      const result = analyzeZipEntries(names, discoveryMode)
+      setZipPreview(result)
+      setSuccessReadout(result.status === 'valid' ? 'Zip preflight complete.' : null)
+    } catch (err) {
+      setZipPreview({
+        status: 'invalid',
+        resolvedMode: 'empty',
+        importableImages: 0,
+        rootEntries: [],
+        message: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      endOperation()
+    }
+  }
+
   async function handleUpload() {
     if (!zipFile) return
-    setBusy('upload')
+    beginOperation('upload', 'Uploading zip')
     setError(null)
     setDiscoverResponse(null)
     setExecuteResponse(null)
@@ -122,17 +291,18 @@ export function BatchUploadPage() {
       const result = await uploadBatchZip(zipFile)
       setUploadToken(result.upload_token)
       setUploadInfo({ file_count: result.file_count, root_entries: result.root_entries })
+      setSuccessReadout(`Upload complete: ${result.file_count} file(s) staged.`)
     } catch (err) {
       setError(String(err))
     } finally {
-      setBusy(null)
+      endOperation()
     }
   }
 
   async function handlePreviewServerPath() {
     const trimmed = serverPath.trim()
     if (!trimmed) return
-    setBusy('discover')
+    beginOperation('discover', 'Previewing server path')
     setError(null)
     setDiscoverResponse(null)
     setExecuteResponse(null)
@@ -140,17 +310,18 @@ export function BatchUploadPage() {
       const result = await previewBatchServerPath({ path: trimmed, discovery_mode: discoveryMode })
       setServerPathPreview(result)
       setPlanStale(false)
+      setSuccessReadout(`Server path preview complete: ${result.importable_images} importable image(s).`)
     } catch (err) {
       setServerPathPreview(null)
       setError(String(err))
     } finally {
-      setBusy(null)
+      endOperation()
     }
   }
 
   async function handleDiscover() {
     if (!canDiscover) return
-    setBusy('discover')
+    beginOperation('discover', 'Discovering IDs')
     setError(null)
     setExecuteResponse(null)
     try {
@@ -170,10 +341,11 @@ export function BatchUploadPage() {
       setDiscoverResponse(result)
       setSelectedRowIds(result.rows.map((row) => row.row_id))
       setPlanStale(false)
+      setSuccessReadout(`Discovery complete: ${result.summary.detected_rows} row(s), ${result.summary.total_images} image(s).`)
     } catch (err) {
       setError(String(err))
     } finally {
-      setBusy(null)
+      endOperation()
     }
   }
 
@@ -188,7 +360,7 @@ export function BatchUploadPage() {
       )
       if (!ok) return
     }
-    setBusy('execute')
+    beginOperation('execute', 'Executing batch upload')
     setError(null)
     try {
       const result = await executeBatchUpload({
@@ -196,10 +368,11 @@ export function BatchUploadPage() {
         accepted_row_ids: selectedRowIds,
       })
       setExecuteResponse(result)
+      setSuccessReadout(`Batch upload ${result.status}: ${result.summary.accepted_images} accepted image(s), ${result.summary.executed_rows} executed row(s).`)
     } catch (err) {
       setError(String(err))
     } finally {
-      setBusy(null)
+      endOperation()
     }
   }
 
@@ -241,7 +414,7 @@ export function BatchUploadPage() {
             </label>
             <label>
               <div>Discovery mode</div>
-              <select aria-label="Discovery mode" value={discoveryMode} onChange={(e) => { setDiscoveryMode(e.target.value as DiscoverMode); invalidateDiscoveredPlan() }} style={input}>
+              <select aria-label="Discovery mode" value={discoveryMode} onChange={(e) => { setDiscoveryMode(e.target.value as DiscoverMode); setZipPreview(null); invalidateDiscoveredPlan() }} style={input}>
                 <option value="auto">Auto</option>
                 <option value="flat">Flat (ID / images)</option>
                 <option value="encounters">With Encounters (ID / date / images)</option>
@@ -362,12 +535,21 @@ export function BatchUploadPage() {
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <label>
                   <span style={{ position: 'absolute', left: -10000 }}>Source zip bundle</span>
-                  <input aria-label="Source zip bundle" type="file" accept=".zip,application/zip" onChange={(e) => setZipFile(e.target.files?.[0] ?? null)} />
+                  <input aria-label="Source zip bundle" type="file" accept=".zip,application/zip" onChange={(e) => handleZipFileChange(e.target.files?.[0] ?? null)} />
                 </label>
-                <button onClick={() => void handleUpload()} disabled={!zipFile || busy !== null} style={{ padding: '8px 12px' }}>
+                <button onClick={() => void handleTestZipStructure()} disabled={!zipFile || busy !== null} style={{ padding: '8px 12px' }}>
+                  {busy === 'preflight' ? 'Testing…' : 'Test zip structure'}
+                </button>
+                <button onClick={() => void handleUpload()} disabled={!canUploadZip || busy !== null} style={{ padding: '8px 12px' }}>
                   {busy === 'upload' ? 'Uploading…' : 'Upload zip'}
                 </button>
               </div>
+              {zipPreview && (
+                <div style={{ marginTop: 12, color: zipPreview.status === 'valid' ? '#0b6b2b' : '#7a1c1c' }}>
+                  <b>{zipPreview.message}</b><br />
+                  Resolved mode: <b>{zipPreview.resolvedMode}</b>; Importable images: <b>{zipPreview.importableImages}</b>; root entries: {zipPreview.rootEntries.join(', ') || 'none'}
+                </div>
+              )}
               {uploadInfo && uploadToken && (
                 <div style={{ marginTop: 12, color: '#24354d' }}>
                   <div><b>Upload token:</b> <code>{uploadToken}</code></div>
@@ -437,6 +619,18 @@ export function BatchUploadPage() {
         {planStale && (
           <section style={{ ...card, borderColor: '#d7a84a', background: '#fff8e7', color: '#6b4b00' }}>
             Settings changed. Rediscover IDs before executing this batch.
+          </section>
+        )}
+
+        {operation && (
+          <section role="status" style={{ ...card, borderColor: '#b6d8ff', background: '#eaf4ff', color: '#163c63' }}>
+            <b>{operation.label}</b> — Elapsed: {elapsedSeconds}s
+          </section>
+        )}
+
+        {successReadout && !operation && (
+          <section style={{ ...card, borderColor: '#9bd8ad', background: '#effaf1', color: '#0b6b2b' }}>
+            <b>{successReadout}</b>
           </section>
         )}
 
