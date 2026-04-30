@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   discoverBatchUpload,
   executeBatchUpload,
+  getLocationSites,
   previewBatchServerPath,
   uploadBatchZip,
   type BatchUploadDiscoverRequest,
@@ -10,7 +11,9 @@ import {
   type BatchUploadDiscoverRow,
   type BatchUploadExecuteResponse,
   type BatchUploadServerPathPreviewResponse,
+  type LocationSite,
 } from '../api/client'
+import { LocationSiteMap } from '../components/LocationSiteMap'
 
 type DiscoverMode = 'auto' | 'flat' | 'encounters' | 'grouped'
 type TargetArchive = 'gallery' | 'query'
@@ -45,6 +48,9 @@ export function BatchUploadPage() {
   const [flatEncounterDate, setFlatEncounterDate] = useState(new Date().toISOString().slice(0, 10))
   const [flatEncounterSuffix, setFlatEncounterSuffix] = useState('')
   const [batchLocation, setBatchLocation] = useState({ location: '', latitude: '', longitude: '' })
+  const [knownSites, setKnownSites] = useState<LocationSite[]>([])
+  const [showNewLocationInput, setShowNewLocationInput] = useState(false)
+  const [pickingCoordinates, setPickingCoordinates] = useState(false)
   const [sourceMode, setSourceMode] = useState<'zip' | 'server_path'>('zip')
   const [serverPath, setServerPath] = useState('')
   const [serverPathPreview, setServerPathPreview] = useState<BatchUploadServerPathPreviewResponse | null>(null)
@@ -64,6 +70,17 @@ export function BatchUploadPage() {
   const todayIso = new Date().toISOString().slice(0, 10)
   const canDiscover = sourceMode === 'server_path' ? serverPathPreview?.path === serverPath.trim() : Boolean(uploadToken)
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await getLocationSites()
+        setKnownSites(response.sites)
+      } catch {
+        setKnownSites([])
+      }
+    })()
+  }, [])
+
   function invalidateDiscoveredPlan() {
     if (discoverResponse) {
       setDiscoverResponse(null)
@@ -71,6 +88,28 @@ export function BatchUploadPage() {
       setSelectedRowIds([])
       setPlanStale(true)
     }
+  }
+
+  function updateSavedLocation(value: string) {
+    if (value === '__new__') {
+      setShowNewLocationInput(true)
+      setBatchLocation((cur) => ({ ...cur, location: '' }))
+      invalidateDiscoveredPlan()
+      return
+    }
+    setShowNewLocationInput(false)
+    setBatchLocation((cur) => ({ ...cur, location: value }))
+    invalidateDiscoveredPlan()
+  }
+
+  function handleMapPick(latitude: number, longitude: number) {
+    setBatchLocation((cur) => ({
+      ...cur,
+      latitude: latitude.toFixed(6),
+      longitude: longitude.toFixed(6),
+    }))
+    setPickingCoordinates(false)
+    invalidateDiscoveredPlan()
   }
 
   async function handleUpload() {
@@ -229,22 +268,71 @@ export function BatchUploadPage() {
                 </label>
               </>
             )}
-            <label>
-              <div>Batch location</div>
-              <input aria-label="Batch location" value={batchLocation.location} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, location: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
-            </label>
-            <label>
-              <div>Latitude</div>
-              <input aria-label="Latitude" value={batchLocation.latitude} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, latitude: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
-            </label>
-            <label>
-              <div>Longitude</div>
-              <input aria-label="Longitude" value={batchLocation.longitude} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, longitude: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
-            </label>
           </div>
           {showFlatEncounterControls && flatEncounterDate === todayIso && (
             <div style={{ marginTop: 8, color: '#8a5a00', fontStyle: 'italic' }}>Today's date selected</div>
           )}
+        </section>
+
+        <section style={card}>
+          <h2 style={{ marginTop: 0 }}>Location</h2>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+              <label>
+                <div>Saved locations</div>
+                <select
+                  aria-label="Saved locations"
+                  style={input}
+                  value={showNewLocationInput ? '__new__' : batchLocation.location}
+                  onChange={(e) => updateSavedLocation(e.target.value)}
+                >
+                  <option value="__new__">Add new…</option>
+                  <option value="">— choose —</option>
+                  {knownSites.map((site) => (
+                    <option key={`saved-location-${site.name}`} value={site.name}>{site.name}</option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ display: 'flex', alignItems: 'end' }}>
+                <button type="button" onClick={() => setShowNewLocationInput(true)} style={{ padding: '8px 12px' }}>Add new location</button>
+              </div>
+              {showNewLocationInput && (
+                <label style={{ gridColumn: '1 / -1' }}>
+                  <div>Location</div>
+                  <input aria-label="Location" value={batchLocation.location} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, location: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
+                </label>
+              )}
+              <label>
+                <div>Latitude</div>
+                <input aria-label="Latitude" type="number" value={batchLocation.latitude} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, latitude: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
+              </label>
+              <label>
+                <div>Longitude</div>
+                <input aria-label="Longitude" type="number" value={batchLocation.longitude} onChange={(e) => { setBatchLocation((cur) => ({ ...cur, longitude: e.target.value })); invalidateDiscoveredPlan() }} style={input} />
+              </label>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ color: '#516070', fontSize: 13 }}>
+                  {pickingCoordinates ? 'Click the map to set coordinates.' : 'Pan/zoom freely. Known sites are shown on the map.'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPickingCoordinates((current) => !current)}
+                  style={{ padding: '8px 12px' }}
+                >
+                  {pickingCoordinates ? 'Cancel coordinate pick' : 'Pick coordinates on map'}
+                </button>
+              </div>
+              <LocationSiteMap
+                sites={knownSites}
+                selectedLatitude={batchLocation.latitude ? Number(batchLocation.latitude) : undefined}
+                selectedLongitude={batchLocation.longitude ? Number(batchLocation.longitude) : undefined}
+                picking={pickingCoordinates}
+                onPick={handleMapPick}
+              />
+            </div>
+          </div>
         </section>
 
         <section style={card}>

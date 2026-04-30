@@ -2,20 +2,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+vi.mock('../components/LocationSiteMap', () => ({
+  LocationSiteMap: ({ onPick, sites }: { onPick: (lat: number, lon: number) => void; sites: Array<{ name: string }> }) => (
+    <div>
+      <div title="Location map">Mock map</div>
+      <div>{sites.map((site) => site.name).join(', ')}</div>
+      <button type="button" aria-label="Location map selector" onClick={() => onPick(48.5, -123.25)}>pick mock point</button>
+    </div>
+  ),
+}))
+
 vi.mock('../api/client', () => ({
   uploadBatchZip: vi.fn(),
   discoverBatchUpload: vi.fn(),
   executeBatchUpload: vi.fn(),
   previewBatchServerPath: vi.fn(),
+  getLocationSites: vi.fn(),
 }))
 
 import { BatchUploadPage } from './BatchUploadPage'
-import { discoverBatchUpload, executeBatchUpload, previewBatchServerPath, uploadBatchZip } from '../api/client'
+import { discoverBatchUpload, executeBatchUpload, getLocationSites, previewBatchServerPath, uploadBatchZip } from '../api/client'
 
 const mockedUploadBatchZip = vi.mocked(uploadBatchZip)
 const mockedDiscoverBatchUpload = vi.mocked(discoverBatchUpload)
 const mockedExecuteBatchUpload = vi.mocked(executeBatchUpload)
 const mockedPreviewBatchServerPath = vi.mocked(previewBatchServerPath)
+const mockedGetLocationSites = vi.mocked(getLocationSites)
 
 const baseDiscoverResponse = {
   plan_id: 'plan_123',
@@ -58,6 +70,13 @@ describe('BatchUploadPage', () => {
     mockedDiscoverBatchUpload.mockReset()
     mockedExecuteBatchUpload.mockReset()
     mockedPreviewBatchServerPath.mockReset()
+    mockedGetLocationSites.mockReset()
+    mockedGetLocationSites.mockResolvedValue({
+      sites: [
+        { name: 'Dock', latitude: 48.546, longitude: -123.013 },
+        { name: 'Pier', latitude: 48.5, longitude: -123.2 },
+      ],
+    })
     mockedUploadBatchZip.mockResolvedValue({
       upload_token: 'upload_123',
       file_count: 2,
@@ -155,7 +174,7 @@ describe('BatchUploadPage', () => {
     const user = userEvent.setup()
     render(<BatchUploadPage />)
 
-    await user.type(screen.getByLabelText('Batch location'), 'Dock')
+    await user.selectOptions(await screen.findByLabelText('Saved locations'), 'Dock')
     await user.type(screen.getByLabelText('Latitude'), '48.5')
     await user.type(screen.getByLabelText('Longitude'), '-123.1')
     await stageAndDiscover(user)
@@ -163,6 +182,31 @@ describe('BatchUploadPage', () => {
     expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
       batch_location: { location: 'Dock', latitude: '48.5', longitude: '-123.1' },
     }))
+  })
+
+  it('renders batch location entry like Single Entry with saved locations, add-new, and map picking', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    const savedLocations = await screen.findByLabelText('Saved locations') as HTMLSelectElement
+    expect(savedLocations.tagName).toBe('SELECT')
+    expect(savedLocations.options[0].textContent).toBe('Add new…')
+    expect(savedLocations.options[0].value).toBe('__new__')
+    expect(screen.getByRole('button', { name: 'Add new location' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Batch location')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Latitude')).toBeInTheDocument()
+    expect(screen.getByLabelText('Longitude')).toBeInTheDocument()
+    expect(screen.getByTitle('Location map')).toBeInTheDocument()
+    expect(screen.getByText('Dock, Pier')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Add new location' }))
+    await user.type(screen.getByLabelText('Location'), 'New Reef')
+    expect(screen.getByLabelText('Location')).toHaveValue('New Reef')
+
+    await user.click(screen.getByRole('button', { name: 'Pick coordinates on map' }))
+    await user.click(screen.getByLabelText('Location map selector'))
+    expect(screen.getByLabelText('Latitude')).toHaveValue(48.5)
+    expect(screen.getByLabelText('Longitude')).toHaveValue(-123.25)
   })
 
   it('requires confirmation before appending to existing IDs', async () => {
