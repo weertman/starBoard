@@ -8,9 +8,11 @@ from ..models.batch_upload_api import (
     BatchUploadDiscoverResponse,
     BatchUploadExecuteRequest,
     BatchUploadExecuteResponse,
+    BatchUploadServerPathPreviewRequest,
+    BatchUploadServerPathPreviewResponse,
     BatchUploadUploadResponse,
 )
-from ..services.batch_upload_discover_service import build_discover_preview
+from ..services.batch_upload_discover_service import build_discover_preview, preview_server_path
 from ..services.batch_upload_execute_service import BatchUploadPlanNotFoundError, execute_batch_upload
 from ..services.batch_upload_upload_service import stage_uploaded_bundle
 
@@ -23,6 +25,14 @@ def batch_upload_uploads(
     _user_email: str = Depends(require_authenticated_email),
 ):
     return stage_uploaded_bundle(file)
+
+
+@router.post('/batch-upload/server-path/preview', response_model=BatchUploadServerPathPreviewResponse)
+def batch_upload_server_path_preview(
+    request: BatchUploadServerPathPreviewRequest,
+    _user_email: str = Depends(require_authenticated_email),
+):
+    return preview_server_path(request)
 
 
 @router.post('/batch-upload/discover', response_model=BatchUploadDiscoverResponse)

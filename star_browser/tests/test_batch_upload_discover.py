@@ -31,6 +31,40 @@ def test_discover_batch_source_flat_mode(tmp_path):
     assert rows[0].image_count == 1
 
 
+def test_batch_upload_server_path_preview_route_reports_detected_structure(tmp_path):
+    base = tmp_path / 'ursa_minor'
+    (base / '04_21_26_dock').mkdir(parents=True)
+    (base / '04_21_26_dock' / 'a.jpg').write_bytes(b'x')
+
+    client = TestClient(create_app())
+    response = client.post(
+        '/api/batch-upload/server-path/preview',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={'path': str(base), 'discovery_mode': 'auto'},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['path'] == str(base)
+    assert body['exists'] is True
+    assert body['is_directory'] is True
+    assert body['resolved_discovery_mode'] == 'single_id'
+    assert body['immediate_entries'] == ['04_21_26_dock']
+    assert body['importable_images'] == 1
+
+
+def test_batch_upload_server_path_preview_rejects_missing_path(tmp_path):
+    client = TestClient(create_app())
+    response = client.post(
+        '/api/batch-upload/server-path/preview',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={'path': str(tmp_path / 'missing'), 'discovery_mode': 'auto'},
+    )
+
+    assert response.status_code == 400
+    assert response.json()['detail'] == 'invalid_source_path'
+
+
 def test_batch_upload_discover_route(tmp_path):
     base = tmp_path / 'flat'
     (base / 'anchovy').mkdir(parents=True)

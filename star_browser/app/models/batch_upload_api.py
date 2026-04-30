@@ -114,6 +114,20 @@ class BatchUploadExecuteResponse(BaseModel):
     message: str
 
 
+class BatchUploadServerPathPreviewRequest(BaseModel):
+    path: str
+    discovery_mode: Literal['auto', 'flat', 'encounters', 'grouped'] = 'auto'
+
+
+class BatchUploadServerPathPreviewResponse(BaseModel):
+    path: str
+    exists: bool
+    is_directory: bool
+    resolved_discovery_mode: Literal['flat', 'encounters', 'grouped', 'single_id', 'empty']
+    immediate_entries: list[str] = Field(default_factory=list)
+    importable_images: int
+
+
 class BatchUploadUploadResponse(BaseModel):
     upload_token: str
     file_count: int

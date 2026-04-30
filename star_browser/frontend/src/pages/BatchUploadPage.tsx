@@ -3,11 +3,13 @@ import { useMemo, useState } from 'react'
 import {
   discoverBatchUpload,
   executeBatchUpload,
+  previewBatchServerPath,
   uploadBatchZip,
   type BatchUploadDiscoverRequest,
   type BatchUploadDiscoverResponse,
   type BatchUploadDiscoverRow,
   type BatchUploadExecuteResponse,
+  type BatchUploadServerPathPreviewResponse,
 } from '../api/client'
 
 type DiscoverMode = 'auto' | 'flat' | 'encounters' | 'grouped'
@@ -43,6 +45,9 @@ export function BatchUploadPage() {
   const [flatEncounterDate, setFlatEncounterDate] = useState(new Date().toISOString().slice(0, 10))
   const [flatEncounterSuffix, setFlatEncounterSuffix] = useState('')
   const [batchLocation, setBatchLocation] = useState({ location: '', latitude: '', longitude: '' })
+  const [sourceMode, setSourceMode] = useState<'zip' | 'server_path'>('zip')
+  const [serverPath, setServerPath] = useState('')
+  const [serverPathPreview, setServerPathPreview] = useState<BatchUploadServerPathPreviewResponse | null>(null)
   const [zipFile, setZipFile] = useState<File | null>(null)
   const [uploadToken, setUploadToken] = useState<string | null>(null)
   const [uploadInfo, setUploadInfo] = useState<{ file_count: number; root_entries: string[] } | null>(null)
@@ -57,6 +62,7 @@ export function BatchUploadPage() {
   const selectedRows = useMemo(() => rows.filter((row) => selectedRowIds.includes(row.row_id)), [rows, selectedRowIds])
   const showFlatEncounterControls = discoveryMode === 'auto' || discoveryMode === 'flat'
   const todayIso = new Date().toISOString().slice(0, 10)
+  const canDiscover = sourceMode === 'server_path' ? serverPathPreview?.path === serverPath.trim() : Boolean(uploadToken)
 
   function invalidateDiscoveredPlan() {
     if (discoverResponse) {
@@ -84,8 +90,27 @@ export function BatchUploadPage() {
     }
   }
 
+  async function handlePreviewServerPath() {
+    const trimmed = serverPath.trim()
+    if (!trimmed) return
+    setBusy('discover')
+    setError(null)
+    setDiscoverResponse(null)
+    setExecuteResponse(null)
+    try {
+      const result = await previewBatchServerPath({ path: trimmed, discovery_mode: discoveryMode })
+      setServerPathPreview(result)
+      setPlanStale(false)
+    } catch (err) {
+      setServerPathPreview(null)
+      setError(String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function handleDiscover() {
-    if (!uploadToken) return
+    if (!canDiscover) return
     setBusy('discover')
     setError(null)
     setExecuteResponse(null)
@@ -98,7 +123,9 @@ export function BatchUploadPage() {
         flat_encounter_date: flatEncounterDate,
         flat_encounter_suffix: flatEncounterSuffix,
         batch_location: batchLocation,
-        import_source: { type: 'uploaded_bundle', upload_token: uploadToken },
+        import_source: sourceMode === 'server_path'
+          ? { type: 'server_path', path: serverPath.trim() }
+          : { type: 'uploaded_bundle', upload_token: uploadToken ?? '' },
       }
       const result = await discoverBatchUpload(request)
       setDiscoverResponse(result)
@@ -156,6 +183,15 @@ export function BatchUploadPage() {
           <p style={{ marginTop: 0, color: '#516070' }}>
             Browser workflow for desktop-style multi-ID batch upload into Gallery or Queries.
           </p>
+          <div style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
+            <b>Accepted source layouts</b>
+            <ul style={{ margin: '8px 0 0 20px', padding: 0, color: '#405064' }}>
+              <li><code>ID / images</code> for flat imports.</li>
+              <li><code>ID / date / images</code> for one individual with encounter folders.</li>
+              <li><code>group / ID / date / images</code> for grouped field exports.</li>
+              <li>Zipped folders with one wrapper directory are okay; Auto mode unwraps the wrapper before preview.</li>
+            </ul>
+          </div>
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
             <label>
               <div>Target archive</div>
@@ -212,21 +248,70 @@ export function BatchUploadPage() {
         </section>
 
         <section style={card}>
-          <h2 style={{ marginTop: 0 }}>1. Upload source bundle</h2>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label>
-              <span style={{ position: 'absolute', left: -10000 }}>Source zip bundle</span>
-              <input aria-label="Source zip bundle" type="file" accept=".zip,application/zip" onChange={(e) => setZipFile(e.target.files?.[0] ?? null)} />
+          <h2 style={{ marginTop: 0 }}>1. Choose source</h2>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                aria-label="Use zip upload"
+                type="radio"
+                checked={sourceMode === 'zip'}
+                onChange={() => { setSourceMode('zip'); setServerPathPreview(null); invalidateDiscoveredPlan() }}
+              />
+              Upload zip
             </label>
-            <button onClick={() => void handleUpload()} disabled={!zipFile || busy !== null} style={{ padding: '8px 12px' }}>
-              {busy === 'upload' ? 'Uploading…' : 'Upload zip'}
-            </button>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                aria-label="Select server folder path source"
+                type="radio"
+                checked={sourceMode === 'server_path'}
+                onChange={() => { setSourceMode('server_path'); invalidateDiscoveredPlan() }}
+              />
+              Server folder path
+            </label>
           </div>
-          {uploadInfo && uploadToken && (
-            <div style={{ marginTop: 12, color: '#24354d' }}>
-              <div><b>Upload token:</b> <code>{uploadToken}</code></div>
-              <div><b>Files staged:</b> {uploadInfo.file_count}</div>
-              <div><b>Root entries:</b> {uploadInfo.root_entries.join(', ') || 'none'}</div>
+          {sourceMode === 'zip' && (
+            <>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label>
+                  <span style={{ position: 'absolute', left: -10000 }}>Source zip bundle</span>
+                  <input aria-label="Source zip bundle" type="file" accept=".zip,application/zip" onChange={(e) => setZipFile(e.target.files?.[0] ?? null)} />
+                </label>
+                <button onClick={() => void handleUpload()} disabled={!zipFile || busy !== null} style={{ padding: '8px 12px' }}>
+                  {busy === 'upload' ? 'Uploading…' : 'Upload zip'}
+                </button>
+              </div>
+              {uploadInfo && uploadToken && (
+                <div style={{ marginTop: 12, color: '#24354d' }}>
+                  <div><b>Upload token:</b> <code>{uploadToken}</code></div>
+                  <div><b>Files staged:</b> {uploadInfo.file_count}</div>
+                  <div><b>Root entries:</b> {uploadInfo.root_entries.join(', ') || 'none'}</div>
+                </div>
+              )}
+            </>
+          )}
+          {sourceMode === 'server_path' && (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label>
+                <div>Server folder path</div>
+                <input
+                  aria-label="Server folder path"
+                  value={serverPath}
+                  placeholder="/home/weertman/path/to/batch-folder"
+                  onChange={(e) => { setServerPath(e.target.value); setServerPathPreview(null); invalidateDiscoveredPlan() }}
+                  style={input}
+                />
+              </label>
+              <div>
+                <button onClick={() => void handlePreviewServerPath()} disabled={!serverPath.trim() || busy !== null} style={{ padding: '8px 12px' }}>
+                  {busy === 'discover' ? 'Previewing…' : 'Preview server path'}
+                </button>
+              </div>
+              {serverPathPreview && (
+                <div style={{ color: '#24354d' }}>
+                  <b>Server path ready:</b> {serverPathPreview.path}<br />
+                  Resolved mode: <b>{serverPathPreview.resolved_discovery_mode}</b>; importable images: <b>{serverPathPreview.importable_images}</b>; entries: {serverPathPreview.immediate_entries.join(', ') || 'none'}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -234,7 +319,7 @@ export function BatchUploadPage() {
         <section style={card}>
           <h2 style={{ marginTop: 0 }}>2. Discover IDs</h2>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => void handleDiscover()} disabled={!uploadToken || busy !== null} style={{ padding: '8px 12px' }}>
+            <button onClick={() => void handleDiscover()} disabled={!canDiscover || busy !== null} style={{ padding: '8px 12px' }}>
               {busy === 'discover' ? 'Discovering…' : 'Discover IDs'}
             </button>
             {discoverResponse && (

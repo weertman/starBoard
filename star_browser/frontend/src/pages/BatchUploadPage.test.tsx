@@ -6,14 +6,16 @@ vi.mock('../api/client', () => ({
   uploadBatchZip: vi.fn(),
   discoverBatchUpload: vi.fn(),
   executeBatchUpload: vi.fn(),
+  previewBatchServerPath: vi.fn(),
 }))
 
 import { BatchUploadPage } from './BatchUploadPage'
-import { discoverBatchUpload, executeBatchUpload, uploadBatchZip } from '../api/client'
+import { discoverBatchUpload, executeBatchUpload, previewBatchServerPath, uploadBatchZip } from '../api/client'
 
 const mockedUploadBatchZip = vi.mocked(uploadBatchZip)
 const mockedDiscoverBatchUpload = vi.mocked(discoverBatchUpload)
 const mockedExecuteBatchUpload = vi.mocked(executeBatchUpload)
+const mockedPreviewBatchServerPath = vi.mocked(previewBatchServerPath)
 
 const baseDiscoverResponse = {
   plan_id: 'plan_123',
@@ -55,12 +57,12 @@ describe('BatchUploadPage', () => {
     mockedUploadBatchZip.mockReset()
     mockedDiscoverBatchUpload.mockReset()
     mockedExecuteBatchUpload.mockReset()
+    mockedPreviewBatchServerPath.mockReset()
     mockedUploadBatchZip.mockResolvedValue({
       upload_token: 'upload_123',
       file_count: 2,
       root_entries: ['anchovy'],
     })
-    mockedDiscoverBatchUpload.mockResolvedValue(baseDiscoverResponse)
     mockedExecuteBatchUpload.mockResolvedValue({
       status: 'ok',
       plan_id: 'plan_123',
@@ -89,6 +91,15 @@ describe('BatchUploadPage', () => {
       ],
       message: 'Batch upload completed.',
     })
+    mockedDiscoverBatchUpload.mockResolvedValue(baseDiscoverResponse)
+    mockedPreviewBatchServerPath.mockResolvedValue({
+      path: '/data/trip_upload',
+      exists: true,
+      is_directory: true,
+      resolved_discovery_mode: 'encounters',
+      immediate_entries: ['anchovy'],
+      importable_images: 2,
+    })
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
@@ -105,6 +116,27 @@ describe('BatchUploadPage', () => {
     await user.click(screen.getByRole('button', { name: 'Discover IDs' }))
     await screen.findByRole('heading', { name: '3. Preview plan' })
   }
+
+  it('shows source structure guidance and discovers from a validated server folder path', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    expect(screen.getByText(/Accepted source layouts/)).toBeInTheDocument()
+    expect(screen.getAllByText('ID / date / images')[0]).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Select server folder path source'))
+    await user.type(screen.getByRole('textbox', { name: 'Server folder path' }), '/data/trip_upload')
+    await user.click(screen.getByRole('button', { name: 'Preview server path' }))
+
+    await screen.findByText(/Server path ready/)
+    expect(mockedPreviewBatchServerPath).toHaveBeenCalledWith({ path: '/data/trip_upload', discovery_mode: 'auto' })
+
+    await user.click(screen.getByRole('button', { name: 'Discover IDs' }))
+
+    expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
+      import_source: { type: 'server_path', path: '/data/trip_upload' },
+    }))
+  })
 
   it('hides flat-only encounter controls outside flat mode and shows the today warning in flat mode', async () => {
     const user = userEvent.setup()
