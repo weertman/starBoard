@@ -44,6 +44,40 @@ function groupFields(fields: SchemaField[]) {
   return order.map((key) => ({ key, ...groups.get(key)! }))
 }
 
+const SHORT_ARM_SEVERITIES = ['very_tiny', 'tiny', 'small', 'short']
+
+type ShortArmEntry = {
+  position: number
+  severity: string
+}
+
+function parseShortArmCode(value: string): ShortArmEntry[] {
+  if (!value.trim()) return []
+  return value.split(',').map((part) => {
+    const trimmed = part.trim()
+    const modern = /^(very_tiny|tiny|small|short)\((\d+)\)$/i.exec(trimmed)
+    if (modern) {
+      return { severity: modern[1].toLowerCase(), position: Number(modern[2]) }
+    }
+    const legacy = /^\(?(\d+)\)?(\*{0,3})(?:\(r\))?$/.exec(trimmed)
+    if (legacy) {
+      let severity = 'short'
+      if (legacy[2].length >= 2) severity = 'tiny'
+      if (legacy[2].length === 1) severity = 'small'
+      if (trimmed.startsWith('(') && trimmed.endsWith(')')) severity = 'tiny'
+      return { severity, position: Number(legacy[1]) }
+    }
+    return null
+  }).filter((entry): entry is ShortArmEntry => Boolean(entry))
+}
+
+function serializeShortArmCode(entries: ShortArmEntry[]): string {
+  return [...entries]
+    .sort((a, b) => a.position - b.position)
+    .map((entry) => `${entry.severity}(${entry.position})`)
+    .join(', ')
+}
+
 export function SingleEntryPage() {
   const [schema, setSchema] = useState<SchemaField[]>([])
   const [knownSites, setKnownSites] = useState<LocationSite[]>([])
@@ -120,6 +154,62 @@ export function SingleEntryPage() {
     }
   }
 
+  function setShortArmEntries(fieldName: string, entries: ShortArmEntry[]) {
+    updateMetadata(fieldName, serializeShortArmCode(entries))
+  }
+
+  function renderShortArmField(field: SchemaField) {
+    const entries = parseShortArmCode(metadata[field.name] ?? '')
+    const updateEntry = (index: number, patch: Partial<ShortArmEntry>) => {
+      const next = entries.map((entry, i) => i === index ? { ...entry, ...patch } : entry)
+      setShortArmEntries(field.name, next)
+    }
+    return (
+      <div style={{ display: 'grid', gap: 8 }}>
+        {entries.map((entry, index) => (
+          <div key={`short-arm-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
+            <label>
+              <div>Arm position</div>
+              <input
+                aria-label={`Short arm ${index + 1} position`}
+                type="number"
+                min={1}
+                max={25}
+                value={entry.position}
+                onChange={(e) => updateEntry(index, { position: Number(e.target.value || 1) })}
+                style={{ ...input, width: 90 }}
+              />
+            </label>
+            <label>
+              <div>Severity</div>
+              <select
+                aria-label={`Short arm ${index + 1} severity`}
+                value={entry.severity}
+                onChange={(e) => updateEntry(index, { severity: e.target.value })}
+                style={{ ...input, width: 130 }}
+              >
+                {SHORT_ARM_SEVERITIES.map((severity) => <option key={severity} value={severity}>{severity}</option>)}
+              </select>
+            </label>
+            <button
+              type="button"
+              aria-label={`Remove short arm ${index + 1}`}
+              onClick={() => setShortArmEntries(field.name, entries.filter((_, i) => i !== index))}
+              style={{ padding: '8px 10px' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <div>
+          <button type="button" onClick={() => setShortArmEntries(field.name, [...entries, { position: 1, severity: 'very_tiny' }])} style={{ padding: '8px 12px' }}>
+            + Add short arm
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   function renderField(field: SchemaField) {
     const value = metadata[field.name] ?? ''
     const commonProps = {
@@ -131,6 +221,9 @@ export function SingleEntryPage() {
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => updateMetadata(field.name, e.target.value),
     }
 
+    if (field.mobile_widget === 'short_arm_code') {
+      return renderShortArmField(field)
+    }
     if (field.mobile_widget === 'textarea') {
       return <textarea {...commonProps} rows={3} />
     }
@@ -332,10 +425,17 @@ export function SingleEntryPage() {
             ) : (
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
                 {group.fields.map((field) => (
-                  <label key={field.name}>
-                    <div>{field.display_name}</div>
-                    {renderField(field)}
-                  </label>
+                  field.mobile_widget === 'short_arm_code' ? (
+                    <div key={field.name}>
+                      <div style={{ marginBottom: 6 }}>{field.display_name}</div>
+                      {renderField(field)}
+                    </div>
+                  ) : (
+                    <label key={field.name}>
+                      <div>{field.display_name}</div>
+                      {renderField(field)}
+                    </label>
+                  )
                 ))}
               </div>
             )}

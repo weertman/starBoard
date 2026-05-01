@@ -99,6 +99,20 @@ const schemaResponse = {
       mobile_widget: 'number',
     },
     {
+      name: 'short_arm_code',
+      display_name: 'Short arm coding',
+      field_type: 'morphometric_code',
+      group: 'short_arm',
+      group_display_name: 'Short Arm Coding',
+      required: false,
+      tooltip: 'Arm positions and severity of short arms',
+      min_value: null,
+      max_value: null,
+      options: [],
+      vocabulary: [],
+      mobile_widget: 'short_arm_code',
+    },
+    {
       name: 'health_observation',
       display_name: 'Health observation',
       field_type: 'text_free',
@@ -220,6 +234,34 @@ describe('SingleEntryPage', () => {
     expect(screen.getByText('2 file(s) selected from this computer.')).toBeInTheDocument()
     expect(screen.getByText('capture-a.jpg')).toBeInTheDocument()
     expect(screen.getByText('capture-b.jpg')).toBeInTheDocument()
+  })
+
+  it('renders short arm coding like the desktop app and serializes entries', async () => {
+    const user = userEvent.setup()
+    render(<SingleEntryPage />)
+
+    await screen.findByRole('heading', { name: 'Short Arm Coding' })
+    expect(screen.queryByRole('textbox', { name: 'Short arm coding' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '+ Add short arm' }))
+    const position = screen.getByLabelText('Short arm 1 position')
+    const severity = screen.getByLabelText('Short arm 1 severity')
+    expect(position).toHaveValue(1)
+    expect(severity).toHaveValue('very_tiny')
+
+    await user.click(position)
+    await user.keyboard('{Control>}a{/Control}7')
+    await user.selectOptions(severity, 'small')
+
+    await user.type(screen.getByLabelText('Target ID'), 'q1')
+    const file = new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' })
+    await user.upload(screen.getByLabelText('Upload images from this computer'), file)
+    await user.click(screen.getByRole('button', { name: 'Submit entry to archive' }))
+
+    await waitFor(() => {
+      expect(mockedSubmitEntry).toHaveBeenCalledTimes(1)
+    })
+    expect(mockedSubmitEntry.mock.calls[0][0].metadata.short_arm_code).toBe('small(7)')
   })
 
   it('submits target info, metadata, and files through the client API', async () => {
