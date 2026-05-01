@@ -240,23 +240,37 @@ describe('BatchUploadPage', () => {
     }))
   })
 
-  it('shows collapsible stepwise batch upload instructions at the top', async () => {
+  it('shows collapsible instructions chunked by interface section with discrete steps', async () => {
     const user = userEvent.setup()
     render(<BatchUploadPage />)
 
     const instructionsToggle = screen.getByText('How to use Batch Upload')
     expect(instructionsToggle).toBeVisible()
-    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders.')).not.toBeVisible()
+    expect(screen.getByRole('heading', { name: '1. Source and discovery settings', hidden: true })).not.toBeVisible()
 
     await user.click(instructionsToggle)
 
-    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders.')).toBeVisible()
-    expect(screen.getByText('Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.')).toBeVisible()
-    expect(screen.getByText('For local-folder sources, click Browse/Choose files, select the top folder from your own computer, then click Prepare folder for preview to upload that folder structure to starBoard.')).toBeVisible()
-    expect(screen.getByText('For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.')).toBeVisible()
-    expect(screen.getByText('Preview IDs and metadata to build the review table. This is still read-only: it does not write images, metadata, or IDs into Gallery or Queries.')).toBeVisible()
-    expect(screen.getByText('Review every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, warnings, and whether the row is selected.')).toBeVisible()
-    expect(screen.getByText('Submit selected IDs only after the review table looks correct; this final step writes the selected rows into the chosen archive.')).toBeVisible()
+    expect(screen.getByRole('heading', { name: '1. Source and discovery settings' })).toBeVisible()
+    expect(screen.getByText('Choose Local folder to browse a folder on your own computer, or Upload zip when folder selection is not available.')).toBeVisible()
+    expect(screen.getByText('Choose the target archive, then choose Auto unless you know the folder layout is Flat, With Encounters, or Grouped.')).toBeVisible()
+    expect(screen.getByText('Set optional ID prefix/suffix, flat encounter date/suffix when shown, and location metadata before previewing.')).toBeVisible()
+
+    expect(screen.getByRole('heading', { name: '2. Prepare the source for preview' })).toBeVisible()
+    expect(screen.getByText('For Local folder, pick the top folder from this computer, then click Prepare folder for preview.')).toBeVisible()
+    expect(screen.getByText('For Upload zip, click Test zip structure first, then Prepare zip for preview only after the structure check passes.')).toBeVisible()
+    expect(screen.getByText('Confirm the prepared file count/root entries look like the data you meant to import.')).toBeVisible()
+
+    expect(screen.getByRole('heading', { name: '3. Preview IDs and metadata' })).toBeVisible()
+    expect(screen.getByText('Click Preview IDs and metadata to build the review table; this is read-only and writes nothing to Gallery or Queries.')).toBeVisible()
+    expect(screen.getByText('If warnings or settings look wrong, change the settings/source and preview again before submitting.')).toBeVisible()
+
+    expect(screen.getByRole('heading', { name: '4. Review selected IDs and metadata' })).toBeVisible()
+    expect(screen.getByText('Check every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, and warnings.')).toBeVisible()
+    expect(screen.getByText('Deselect any row that should not be imported in this batch.')).toBeVisible()
+
+    expect(screen.getByRole('heading', { name: '5. Submit IDs' })).toBeVisible()
+    expect(screen.getByText('Submit selected IDs only after the review table looks correct.')).toBeVisible()
+    expect(screen.getByText('This is the final archive-writing step for the selected rows.')).toBeVisible()
   })
 
   it('shows source structure guidance without a server path workflow', async () => {

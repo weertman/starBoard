@@ -398,17 +398,45 @@ export function BatchUploadPage() {
           </p>
           <details style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>How to use Batch Upload</summary>
-            <ul style={{ margin: '10px 0 0 20px', padding: 0, color: '#405064' }}>
-              <li>Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders.</li>
-              <li>Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.</li>
-              <li>Set the target archive, optional ID prefix/suffix, flat encounter date/suffix when shown, and location metadata before previewing.</li>
-              <li>For local-folder sources, click Browse/Choose files, select the top folder from your own computer, then click Prepare folder for preview to upload that folder structure to starBoard.</li>
-              <li>For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.</li>
-              <li>Preview IDs and metadata to build the review table. This is still read-only: it does not write images, metadata, or IDs into Gallery or Queries.</li>
-              <li>Review every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, warnings, and whether the row is selected.</li>
-              <li>Deselect any row that should not be imported in this batch. If settings change after previewing, preview again before submitting.</li>
-              <li>Submit selected IDs only after the review table looks correct; this final step writes the selected rows into the chosen archive.</li>
-            </ul>
+            <div style={{ display: 'grid', gap: 12, marginTop: 12, color: '#405064' }}>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>1. Source and discovery settings</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Choose Local folder to browse a folder on your own computer, or Upload zip when folder selection is not available.</li>
+                  <li>Choose the target archive, then choose Auto unless you know the folder layout is Flat, With Encounters, or Grouped.</li>
+                  <li>Set optional ID prefix/suffix, flat encounter date/suffix when shown, and location metadata before previewing.</li>
+                </ol>
+              </section>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>2. Prepare the source for preview</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>For Local folder, pick the top folder from this computer, then click Prepare folder for preview.</li>
+                  <li>For Upload zip, click Test zip structure first, then Prepare zip for preview only after the structure check passes.</li>
+                  <li>Confirm the prepared file count/root entries look like the data you meant to import.</li>
+                </ol>
+              </section>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>3. Preview IDs and metadata</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Click Preview IDs and metadata to build the review table; this is read-only and writes nothing to Gallery or Queries.</li>
+                  <li>If warnings or settings look wrong, change the settings/source and preview again before submitting.</li>
+                </ol>
+              </section>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>4. Review selected IDs and metadata</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Check every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, and warnings.</li>
+                  <li>Deselect any row that should not be imported in this batch.</li>
+                </ol>
+              </section>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>5. Submit IDs</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Submit selected IDs only after the review table looks correct.</li>
+                  <li>This is the final archive-writing step for the selected rows.</li>
+                </ol>
+              </section>
+            </div>
           </details>
           <div style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
             <b>Accepted source layouts</b>
