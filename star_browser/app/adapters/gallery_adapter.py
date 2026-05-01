@@ -6,9 +6,11 @@ from pathlib import Path
 from src.data import archive_paths as ap
 from src.data.csv_io import last_row_per_id, read_rows_multi
 from src.data.encounter_info import get_encounter_date, list_encounters_for_id
+from src.data.id_registry import invalidate_id_cache, list_ids
 from src.data.image_index import list_image_files
+from src.data.observation_dates import last_observation_for_all
 
-from ..models.gallery_api import EncounterOption, ImageDescriptor, MetadataRow, TimelineEvent
+from ..models.gallery_api import EncounterOption, IdReviewOption, ImageDescriptor, MetadataRow, TimelineEvent
 
 
 def _target_name(archive_type: str) -> str:
@@ -20,12 +22,10 @@ def _id_column(archive_type: str) -> str:
 
 
 def _metadata_summary_for_id(archive_type: str, entity_id: str) -> dict[str, str]:
-    paths = ap.metadata_csv_paths_for_read(_target_name(archive_type))
-    rows = read_rows_multi(paths)
-    id_col = _id_column(archive_type)
-    latest = last_row_per_id(rows, id_col)
+    latest = _latest_metadata_by_id(archive_type)
     row = latest.get(entity_id, {})
     summary: dict[str, str] = {}
+    id_col = _id_column(archive_type)
     for k, v in row.items():
         if k == id_col:
             continue
@@ -33,6 +33,12 @@ def _metadata_summary_for_id(archive_type: str, entity_id: str) -> dict[str, str
         if text:
             summary[k] = text
     return summary
+
+
+def _latest_metadata_by_id(archive_type: str) -> dict[str, dict[str, str]]:
+    paths = ap.metadata_csv_paths_for_read(_target_name(archive_type))
+    rows = read_rows_multi(paths)
+    return last_row_per_id(rows, _id_column(archive_type))
 
 
 def _metadata_rows_for_id(archive_type: str, entity_id: str) -> list[MetadataRow]:
@@ -117,6 +123,42 @@ def _timeline_for_id(encounters: list[EncounterOption], images: list[ImageDescri
             image_labels=labels,
         ))
     return sorted(events, key=lambda event: (event.date or '9999-99-99', event.encounter))
+
+
+def _option_label(entity_id: str, location: str, last_date: str) -> str:
+    parts = [entity_id]
+    if location:
+        parts.append(location)
+    if last_date:
+        parts.append(last_date)
+    return ' — '.join(parts)
+
+
+def list_id_review_options(archive_type: str) -> list[IdReviewOption]:
+    if archive_type not in {'gallery', 'query'}:
+        return []
+    target = _target_name(archive_type)
+    latest = _latest_metadata_by_id(archive_type)
+    last_dates = last_observation_for_all(target)
+    invalidate_id_cache()
+    options: list[IdReviewOption] = []
+    for entity_id in list_ids(target, exclude_silent=(archive_type == 'query')):
+        metadata = {
+            k: (v or '').strip()
+            for k, v in latest.get(entity_id, {}).items()
+            if k != _id_column(archive_type) and v and v.strip()
+        }
+        location = metadata.get('location', '')
+        observed = last_dates.get(entity_id)
+        last_date = observed.isoformat() if observed else ''
+        options.append(IdReviewOption(
+            entity_id=entity_id,
+            label=_option_label(entity_id, location, last_date),
+            location=location,
+            last_observation_date=last_date,
+            metadata=metadata,
+        ))
+    return sorted(options, key=lambda option: (option.last_observation_date or '', option.entity_id), reverse=True)
 
 
 def resolve_gallery_image_path(image_id: str) -> Path | None:

@@ -6,11 +6,13 @@ import { GalleryPage } from './GalleryPage'
 
 vi.mock('../api/client', () => ({
   getIdReviewEntity: vi.fn(),
+  getIdReviewOptions: vi.fn(),
 }))
 
-import { getIdReviewEntity } from '../api/client'
+import { getIdReviewEntity, getIdReviewOptions } from '../api/client'
 
 const mockedGetIdReviewEntity = vi.mocked(getIdReviewEntity)
+const mockedGetIdReviewOptions = vi.mocked(getIdReviewOptions)
 
 const galleryResponse = {
   archive_type: 'gallery' as const,
@@ -53,6 +55,14 @@ const galleryResponse = {
   ],
 }
 
+const queryOptionsResponse = {
+  archive_type: 'query' as const,
+  options: [
+    { entity_id: 'query_friday_001', label: 'query_friday_001 — Friday Harbor — 2026-04-01', location: 'Friday Harbor', last_observation_date: '2026-04-01', metadata: { location: 'Friday Harbor', sex: 'female' } },
+    { entity_id: 'query_cattle_002', label: 'query_cattle_002 — Cattle Point — 2026-04-02', location: 'Cattle Point', last_observation_date: '2026-04-02', metadata: { location: 'Cattle Point', sex: 'male' } },
+  ],
+}
+
 describe('GalleryPage', () => {
   afterEach(() => {
     cleanup()
@@ -61,6 +71,8 @@ describe('GalleryPage', () => {
   beforeEach(() => {
     mockedGetIdReviewEntity.mockReset()
     mockedGetIdReviewEntity.mockResolvedValue(galleryResponse)
+    mockedGetIdReviewOptions.mockReset()
+    mockedGetIdReviewOptions.mockResolvedValue(queryOptionsResponse)
   })
 
   it('is labeled ID Review and lets users choose query or gallery IDs', async () => {
@@ -87,6 +99,36 @@ describe('GalleryPage', () => {
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
     expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_001')
+  })
+
+  it('lets users search and filter a scrollable ID combo box before loading an ID', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    expect(await screen.findByText('Available IDs')).toBeInTheDocument()
+    expect(mockedGetIdReviewOptions).toHaveBeenCalledWith('query')
+    expect(screen.getByRole('listbox', { name: 'Available IDs' })).toBeInTheDocument()
+    expect(screen.getByText('query_friday_001 — Friday Harbor — 2026-04-01')).toBeInTheDocument()
+    expect(screen.getByText('query_cattle_002 — Cattle Point — 2026-04-02')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Search IDs'), 'friday')
+    expect(screen.getByText('query_friday_001 — Friday Harbor — 2026-04-01')).toBeInTheDocument()
+    expect(screen.queryByText('query_cattle_002 — Cattle Point — 2026-04-02')).not.toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Search IDs'))
+    await user.selectOptions(screen.getByLabelText('Location filter'), 'Cattle Point')
+    expect(screen.queryByText('query_friday_001 — Friday Harbor — 2026-04-01')).not.toBeInTheDocument()
+    expect(screen.getByText('query_cattle_002 — Cattle Point — 2026-04-02')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Location filter'), '__all__')
+    await user.type(screen.getByLabelText('Observed from'), '2026-04-02')
+    expect(screen.queryByText('query_friday_001 — Friday Harbor — 2026-04-01')).not.toBeInTheDocument()
+    expect(screen.getByText('query_cattle_002 — Cattle Point — 2026-04-02')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('option', { name: 'query_cattle_002 — Cattle Point — 2026-04-02' }))
+    expect(screen.getByPlaceholderText('Enter query or gallery ID')).toHaveValue('query_cattle_002')
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+    expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_cattle_002')
   })
 
   it('shows images, metadata rows, and timeline for the selected ID', async () => {

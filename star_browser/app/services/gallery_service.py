@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from ..adapters.gallery_adapter import load_id_review_entity
-from ..models.gallery_api import GalleryEntityResponse
+from ..adapters.gallery_adapter import list_id_review_options, load_id_review_entity
+from ..models.gallery_api import GalleryEntityResponse, IdReviewOptionsResponse
 
 
 class GalleryNotFoundError(Exception):
@@ -10,6 +10,10 @@ class GalleryNotFoundError(Exception):
 
 def get_gallery_entity(entity_id: str) -> GalleryEntityResponse:
     return get_id_review_entity('gallery', entity_id)
+
+
+def get_id_review_options(archive_type: str) -> IdReviewOptionsResponse:
+    return IdReviewOptionsResponse(archive_type=archive_type, options=list_id_review_options(archive_type))
 
 
 def get_id_review_entity(archive_type: str, entity_id: str) -> GalleryEntityResponse:

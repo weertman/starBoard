@@ -101,6 +101,19 @@ export type GalleryEntityResponse = {
   images: ImageDescriptor[]
 }
 
+export type IdReviewOption = {
+  entity_id: string
+  label: string
+  location: string
+  last_observation_date: string
+  metadata: Record<string, string>
+}
+
+export type IdReviewOptionsResponse = {
+  archive_type: 'query' | 'gallery'
+  options: IdReviewOption[]
+}
+
 export type FirstOrderQueryOption = {
   query_id: string
   state: 'not_attempted' | 'pinned' | 'attempted' | 'matched'
@@ -308,6 +321,11 @@ export async function executeBatchUpload(req: BatchUploadExecuteRequest): Promis
     body: JSON.stringify(req),
   })
   return parseJsonOrThrow<BatchUploadExecuteResponse>(res)
+}
+
+export async function getIdReviewOptions(archiveType: 'query' | 'gallery'): Promise<IdReviewOptionsResponse> {
+  const res = await fetch(`/api/id-review/options/${archiveType}`)
+  return parseJsonOrThrow<IdReviewOptionsResponse>(res)
 }
 
 export async function getIdReviewEntity(archiveType: 'query' | 'gallery', entityId: string): Promise<GalleryEntityResponse> {

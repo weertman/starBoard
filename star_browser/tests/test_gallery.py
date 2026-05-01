@@ -57,6 +57,34 @@ def test_gallery_media_routes_return_image_bytes(tmp_path, monkeypatch):
     assert len(preview.content) > 0
 
 
+def test_id_review_options_route_returns_filterable_ids(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    friday = archive / 'queries' / 'query_friday_001' / '04_01_26'
+    cattle = archive / 'queries' / 'query_cattle_002' / '04_02_26'
+    friday.mkdir(parents=True)
+    cattle.mkdir(parents=True)
+    Image.new('RGB', (20, 20), color=(0, 0, 255)).save(friday / 'IMG_001.jpg')
+    Image.new('RGB', (20, 20), color=(0, 255, 0)).save(cattle / 'IMG_001.jpg')
+    (archive / 'queries' / 'queries_metadata.csv').write_text(
+        'query_id,location,sex\n'
+        'query_friday_001,Friday Harbor,female\n'
+        'query_cattle_002,Cattle Point,male\n'
+    )
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    r = client.get('/api/id-review/options/query', headers={'cf-access-authenticated-user-email': 'field@example.org'})
+    assert r.status_code == 200
+    body = r.json()
+    assert body['archive_type'] == 'query'
+    options = {item['entity_id']: item for item in body['options']}
+    assert options['query_friday_001']['location'] == 'Friday Harbor'
+    assert options['query_friday_001']['last_observation_date'] == '2026-04-01'
+    assert options['query_friday_001']['metadata']['sex'] == 'female'
+    assert options['query_friday_001']['label'] == 'query_friday_001 — Friday Harbor — 2026-04-01'
+    assert options['query_cattle_002']['location'] == 'Cattle Point'
+
+
 def test_id_review_query_entity_route_returns_seeded_query(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     q = archive / 'queries' / 'query_review_001' / '03_15_24'

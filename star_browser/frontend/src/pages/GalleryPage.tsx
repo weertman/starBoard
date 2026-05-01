@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { getIdReviewEntity, type GalleryEntityResponse } from '../api/client'
+import { getIdReviewEntity, getIdReviewOptions, type GalleryEntityResponse, type IdReviewOption } from '../api/client'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -26,6 +26,55 @@ export function GalleryPage() {
   const [result, setResult] = useState<GalleryEntityResponse | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [encounterFilter, setEncounterFilter] = useState('__all__')
+  const [idOptions, setIdOptions] = useState<IdReviewOption[]>([])
+  const [optionsBusy, setOptionsBusy] = useState(false)
+  const [optionError, setOptionError] = useState<string | null>(null)
+  const [idSearch, setIdSearch] = useState('')
+  const [locationFilter, setLocationFilter] = useState('__all__')
+  const [observedFrom, setObservedFrom] = useState('')
+  const [observedTo, setObservedTo] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setOptionsBusy(true)
+    setOptionError(null)
+    void getIdReviewOptions(archiveType)
+      .then((response) => {
+        if (!cancelled) setIdOptions(response.options)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setOptionError(String(err))
+          setIdOptions([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setOptionsBusy(false)
+      })
+    return () => { cancelled = true }
+  }, [archiveType])
+
+  const locations = useMemo(() => {
+    return Array.from(new Set(idOptions.map((option) => option.location).filter(Boolean))).sort()
+  }, [idOptions])
+
+  const visibleOptions = useMemo(() => {
+    const q = idSearch.trim().toLowerCase()
+    return idOptions.filter((option) => {
+      if (locationFilter !== '__all__' && option.location !== locationFilter) return false
+      if (observedFrom && (!option.last_observation_date || option.last_observation_date < observedFrom)) return false
+      if (observedTo && (!option.last_observation_date || option.last_observation_date > observedTo)) return false
+      if (!q) return true
+      const haystack = [
+        option.entity_id,
+        option.label,
+        option.location,
+        option.last_observation_date,
+        ...Object.values(option.metadata ?? {}),
+      ].join(' ').toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [idOptions, idSearch, locationFilter, observedFrom, observedTo])
 
   const filteredImages = useMemo(() => {
     if (!result) return []
@@ -66,7 +115,7 @@ export function GalleryPage() {
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(180px, 220px) minmax(260px, 1fr) auto', alignItems: 'end' }}>
             <label>
               <div style={{ marginBottom: 6 }}>Review ID type</div>
-              <select aria-label="Review ID type" value={archiveType} onChange={(e) => { setArchiveType(e.target.value as 'query' | 'gallery'); setResult(null); setError(null) }} style={input}>
+              <select aria-label="Review ID type" value={archiveType} onChange={(e) => { setArchiveType(e.target.value as 'query' | 'gallery'); setResult(null); setError(null); setIdSearch(''); setLocationFilter('__all__'); setObservedFrom(''); setObservedTo('') }} style={input}>
                 <option value="query">Query</option>
                 <option value="gallery">Gallery</option>
               </select>
@@ -78,6 +127,51 @@ export function GalleryPage() {
             <button onClick={() => void handleLoad()} disabled={busy || !entityId.trim()} style={{ padding: '8px 12px' }}>
               {busy ? 'Loading…' : 'Load ID'}
             </button>
+          </div>
+          <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>Available IDs</h2>
+            <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(220px, 1fr) minmax(180px, 220px) minmax(150px, 180px) minmax(150px, 180px)' }}>
+              <label>
+                <div style={{ marginBottom: 6 }}>Search IDs</div>
+                <input aria-label="Search IDs" value={idSearch} onChange={(e) => setIdSearch(e.target.value)} placeholder="Search ID, location, metadata" style={input} />
+              </label>
+              <label>
+                <div style={{ marginBottom: 6 }}>Location filter</div>
+                <select aria-label="Location filter" value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} style={input}>
+                  <option value="__all__">All locations</option>
+                  {locations.map((location) => <option key={location} value={location}>{location}</option>)}
+                </select>
+              </label>
+              <label>
+                <div style={{ marginBottom: 6 }}>Observed from</div>
+                <input aria-label="Observed from" type="date" value={observedFrom} onChange={(e) => setObservedFrom(e.target.value)} style={input} />
+              </label>
+              <label>
+                <div style={{ marginBottom: 6 }}>Observed to</div>
+                <input aria-label="Observed to" type="date" value={observedTo} onChange={(e) => setObservedTo(e.target.value)} style={input} />
+              </label>
+            </div>
+            <div style={{ color: '#516070', fontSize: 13 }}>
+              {optionsBusy ? 'Loading available IDs…' : `${visibleOptions.length} of ${idOptions.length} IDs shown.`}
+              {optionError ? ` Could not load available IDs: ${optionError}` : ''}
+            </div>
+            <div role="listbox" aria-label="Available IDs" style={{ display: 'grid', gap: 6, maxHeight: 260, overflowY: 'auto', border: '1px solid #d7deea', borderRadius: 8, padding: 8, background: '#f8fafc' }}>
+              {visibleOptions.length === 0 ? (
+                <div style={{ color: '#516070' }}>No IDs match the current filters.</div>
+              ) : visibleOptions.map((option) => (
+                <button
+                  key={option.entity_id}
+                  role="option"
+                  aria-label={option.label}
+                  aria-selected={entityId === option.entity_id}
+                  onClick={() => setEntityId(option.entity_id)}
+                  style={{ textAlign: 'left', border: entityId === option.entity_id ? '2px solid #2563eb' : '1px solid #d7deea', borderRadius: 8, background: entityId === option.entity_id ? '#eff6ff' : '#fff', padding: 8, cursor: 'pointer' }}
+                >
+                  <div style={{ fontWeight: 700 }}>{option.label}</div>
+                  <div style={{ color: '#516070', fontSize: 13 }}>{option.location || 'No location'}{option.last_observation_date ? ` · ${option.last_observation_date}` : ''}</div>
+                </button>
+              ))}
+            </div>
           </div>
         </section>
 

@@ -31,6 +31,19 @@ class TimelineEvent(BaseModel):
     image_labels: list[str] = Field(default_factory=list)
 
 
+class IdReviewOption(BaseModel):
+    entity_id: str
+    label: str
+    location: str = ''
+    last_observation_date: str = ''
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+
+class IdReviewOptionsResponse(BaseModel):
+    archive_type: str
+    options: list[IdReviewOption] = Field(default_factory=list)
+
+
 class GalleryEntityResponse(BaseModel):
     archive_type: str = 'gallery'
     entity_id: str
