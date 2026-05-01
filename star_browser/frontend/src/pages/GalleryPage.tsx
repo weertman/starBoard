@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { getIdReviewEntity, getIdReviewOptions, type GalleryEntityResponse, type IdReviewOption } from '../api/client'
+import { getIdReviewEntity, getIdReviewOptions, type GalleryEntityResponse, type IdReviewOption, type ImageDescriptor } from '../api/client'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -16,6 +16,104 @@ const input: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid #c8d0dd',
   boxSizing: 'border-box',
+}
+
+type ImageViewState = {
+  scale: number
+  x: number
+  y: number
+  rotation: number
+}
+
+function InteractiveImageViewer({ image }: { image: ImageDescriptor }) {
+  const [view, setView] = useState<ImageViewState>({ scale: 1, x: 0, y: 0, rotation: 0 })
+  const rotateKeyDown = useRef(false)
+  const dragStart = useRef<{ mode: 'pan' | 'rotate'; x: number; y: number; view: ImageViewState } | null>(null)
+
+  useEffect(() => {
+    setView({ scale: 1, x: 0, y: 0, rotation: 0 })
+  }, [image.image_id])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === 'r') rotateKeyDown.current = true
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === 'r') rotateKeyDown.current = false
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
+  function onWheel(e: React.WheelEvent<HTMLDivElement>) {
+    e.preventDefault()
+    const delta = Math.min(0.75, Math.abs(e.deltaY) / 1000)
+    setView((current) => ({
+      ...current,
+      scale: Number(Math.max(0.2, Math.min(8, current.scale + (e.deltaY < 0 ? delta : -delta))).toFixed(2)),
+    }))
+  }
+
+  function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    dragStart.current = {
+      mode: rotateKeyDown.current ? 'rotate' : 'pan',
+      x: e.clientX,
+      y: e.clientY,
+      view,
+    }
+    window.addEventListener('mousemove', onWindowMouseMove)
+    window.addEventListener('mouseup', onWindowMouseUp)
+  }
+
+  function onWindowMouseMove(e: MouseEvent) {
+    const start = dragStart.current
+    if (!start) return
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (start.mode === 'rotate') {
+      setView({ ...start.view, rotation: Number((start.view.rotation + dx * 0.3).toFixed(1)) })
+    } else {
+      setView({ ...start.view, x: start.view.x + dx, y: start.view.y + dy })
+    }
+  }
+
+  function onWindowMouseUp() {
+    dragStart.current = null
+    window.removeEventListener('mousemove', onWindowMouseMove)
+    window.removeEventListener('mouseup', onWindowMouseUp)
+  }
+
+  const transform = `translate(${view.x}px, ${view.y}px) rotate(${view.rotation}deg) scale(${view.scale})`
+
+  return (
+    <div>
+      <div style={{ marginBottom: 8, color: '#516070', fontSize: 13 }}>Wheel to zoom. Drag to pan. Hold R and drag to rotate.</div>
+      <div
+        aria-label="Interactive image viewer"
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+        style={{ height: 560, overflow: 'hidden', borderRadius: 10, border: '1px solid #d7deea', background: '#f7f9fc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: rotateKeyDown.current ? 'crosshair' : 'grab', userSelect: 'none' }}
+      >
+        <img
+          src={image.preview_url}
+          alt={image.label}
+          draggable={false}
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', transform, transformOrigin: 'center center' }}
+        />
+      </div>
+      <div style={{ marginTop: 8 }}><b>{image.label}</b>{image.encounter ? ` — ${image.encounter}` : ''}</div>
+      <div style={{ marginTop: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => setView({ scale: 1, x: 0, y: 0, rotation: 0 })}>Reset image view</button>
+        <a href={image.fullres_url} target="_blank" rel="noreferrer">Open full image</a>
+      </div>
+    </div>
+  )
 }
 
 export function GalleryPage() {
@@ -204,9 +302,7 @@ export function GalleryPage() {
               {selectedImage ? (
                 <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(320px, 2fr) minmax(280px, 1fr)' }}>
                   <div>
-                    <img src={selectedImage.preview_url} alt={selectedImage.label} style={{ width: '100%', maxHeight: 560, borderRadius: 10, border: '1px solid #d7deea', objectFit: 'contain', background: '#f7f9fc' }} />
-                    <div style={{ marginTop: 8 }}><b>{selectedImage.label}</b>{selectedImage.encounter ? ` — ${selectedImage.encounter}` : ''}</div>
-                    <div style={{ marginTop: 4 }}><a href={selectedImage.fullres_url} target="_blank" rel="noreferrer">Open full image</a></div>
+                    <InteractiveImageViewer image={selectedImage} />
                   </div>
                   <div style={{ display: 'grid', gap: 8, maxHeight: 560, overflowY: 'auto' }}>
                     {filteredImages.map((image, idx) => (

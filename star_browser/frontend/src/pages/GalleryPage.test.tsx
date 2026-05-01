@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { GalleryPage } from './GalleryPage'
@@ -152,6 +152,37 @@ describe('GalleryPage', () => {
     expect(screen.getByText('2026-04-01')).toBeInTheDocument()
     expect(screen.getByText('2 images')).toBeInTheDocument()
     expect(screen.getByText('Image A1, Image A2')).toBeInTheDocument()
+  })
+
+  it('lets users zoom, pan, rotate, and reset the selected ID image', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+
+    const viewer = await screen.findByLabelText('Interactive image viewer')
+    const image = screen.getByRole('img', { name: 'Image A1' })
+    expect(screen.getByText('Wheel to zoom. Drag to pan. Hold R and drag to rotate.')).toBeInTheDocument()
+
+    fireEvent.wheel(viewer, { deltaY: -300 })
+    expect(image).toHaveStyle({ transform: 'translate(0px, 0px) rotate(0deg) scale(1.3)' })
+
+    fireEvent.mouseDown(viewer, { clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(window, { clientX: 130, clientY: 120 })
+    fireEvent.mouseUp(window)
+    expect(image).toHaveStyle({ transform: 'translate(30px, 20px) rotate(0deg) scale(1.3)' })
+
+    fireEvent.keyDown(window, { key: 'r' })
+    fireEvent.mouseDown(viewer, { clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(window, { clientX: 130, clientY: 100 })
+    fireEvent.mouseUp(window)
+    fireEvent.keyUp(window, { key: 'r' })
+    expect(image).toHaveStyle({ transform: 'translate(30px, 20px) rotate(9deg) scale(1.3)' })
+
+    await user.click(screen.getByRole('button', { name: 'Reset image view' }))
+    expect(image).toHaveStyle({ transform: 'translate(0px, 0px) rotate(0deg) scale(1)' })
   })
 
   it('filters the image list by encounter', async () => {
