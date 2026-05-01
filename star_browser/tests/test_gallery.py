@@ -111,6 +111,29 @@ def test_id_review_query_entity_route_returns_seeded_query(tmp_path, monkeypatch
     assert body['images'][0]['preview_url'].startswith('/api/id-review/media/query:query_review_001:')
 
 
+def test_id_review_entity_orders_timeline_and_images_newest_first(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    older = archive / 'queries' / 'query_review_001' / '04_01_26'
+    newer = archive / 'queries' / 'query_review_001' / '04_03_26'
+    undated = archive / 'queries' / 'query_review_001' / 'unknown_encounter'
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    undated.mkdir(parents=True)
+    Image.new('RGB', (20, 20), color=(0, 0, 255)).save(older / 'older.jpg')
+    Image.new('RGB', (20, 20), color=(0, 255, 0)).save(newer / 'newer.jpg')
+    Image.new('RGB', (20, 20), color=(255, 0, 0)).save(undated / 'undated.jpg')
+    (archive / 'queries' / 'queries_metadata.csv').write_text('query_id,location\nquery_review_001,Friday Harbor\n')
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    r = client.get('/api/id-review/entities/query/query_review_001', headers={'cf-access-authenticated-user-email': 'field@example.org'})
+
+    assert r.status_code == 200
+    body = r.json()
+    assert [event['date'] for event in body['timeline']] == ['2026-04-03', '2026-04-01', '']
+    assert [image['label'] for image in body['images']] == ['newer.jpg', 'older.jpg', 'undated.jpg']
+
+
 def test_id_review_media_routes_return_query_image_bytes(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     q = archive / 'queries' / 'query_review_001' / '03_15_24'

@@ -71,10 +71,22 @@ def _encounter_options_for_id(archive_type: str, entity_id: str) -> list[Encount
     return items
 
 
+def _image_files_for_id(archive_type: str, entity_id: str) -> list[Path]:
+    target = _target_name(archive_type)
+    if hasattr(list_image_files, 'cache_clear'):
+        list_image_files.cache_clear()
+
+    def sort_key(path: Path) -> tuple[int, str, str]:
+        encounter = path.parent.name
+        d = get_encounter_date(target, entity_id, encounter)
+        return (1 if d else 0, d.isoformat() if d else '', path.name)
+
+    return sorted(list_image_files(target, entity_id), key=sort_key, reverse=True)
+
+
 def _image_descriptors_for_id(archive_type: str, entity_id: str) -> list[ImageDescriptor]:
     descriptors: list[ImageDescriptor] = []
-    target = _target_name(archive_type)
-    for idx, path in enumerate(list_image_files(target, entity_id)):
+    for idx, path in enumerate(_image_files_for_id(archive_type, entity_id)):
         encounter = None
         try:
             encounter = path.parent.name
@@ -122,7 +134,7 @@ def _timeline_for_id(encounters: list[EncounterOption], images: list[ImageDescri
             image_count=len(labels),
             image_labels=labels,
         ))
-    return sorted(events, key=lambda event: (event.date or '9999-99-99', event.encounter))
+    return sorted(events, key=lambda event: (1 if event.date else 0, event.date or '', event.encounter), reverse=True)
 
 
 def _option_label(entity_id: str, location: str, last_date: str) -> str:
@@ -175,7 +187,7 @@ def resolve_id_review_image_path(image_id: str) -> Path | None:
         idx = int(parts[2])
     except ValueError:
         return None
-    files = list(list_image_files(_target_name(archive_type), entity_id))
+    files = _image_files_for_id(archive_type, entity_id)
     if idx < 0 or idx >= len(files):
         return None
     return files[idx]
