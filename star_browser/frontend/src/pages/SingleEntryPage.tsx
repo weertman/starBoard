@@ -320,6 +320,17 @@ export function SingleEntryPage() {
             </button>
             <span style={{ color: '#516070' }}>{files.length} file(s) selected</span>
           </div>
+          {files.length > 0 && (
+            <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: 16 }}>Review selected image files</h2>
+              <div style={{ color: '#516070', fontSize: 13 }}>{files.length} file(s) selected from this computer.</div>
+              <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                {files.map((file) => (
+                  <li key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
 
         {result && (

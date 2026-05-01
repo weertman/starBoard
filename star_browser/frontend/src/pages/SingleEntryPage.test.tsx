@@ -181,6 +181,23 @@ describe('SingleEntryPage', () => {
     expect(screen.getByLabelText('Longitude')).toHaveValue(-123.25)
   })
 
+  it('shows a selected-file review before archive submit', async () => {
+    const user = userEvent.setup()
+    render(<SingleEntryPage />)
+
+    await screen.findByRole('heading', { name: 'Location' })
+    const files = [
+      new File(['image-a'], 'capture-a.jpg', { type: 'image/jpeg' }),
+      new File(['image-b'], 'capture-b.jpg', { type: 'image/jpeg' }),
+    ]
+    await user.upload(screen.getByLabelText('Upload images from this computer'), files)
+
+    expect(screen.getByRole('heading', { name: 'Review selected image files' })).toBeInTheDocument()
+    expect(screen.getByText('2 file(s) selected from this computer.')).toBeInTheDocument()
+    expect(screen.getByText('capture-a.jpg')).toBeInTheDocument()
+    expect(screen.getByText('capture-b.jpg')).toBeInTheDocument()
+  })
+
   it('submits target info, metadata, and files through the client API', async () => {
     const user = userEvent.setup()
     render(<SingleEntryPage />)
