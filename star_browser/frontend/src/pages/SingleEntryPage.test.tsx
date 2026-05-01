@@ -161,6 +161,10 @@ describe('SingleEntryPage', () => {
     expect(screen.getByText('Dock, Pier')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pick coordinates on map' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pick coordinates on map' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Upload images from this computer')).toBeInTheDocument()
+    expect(screen.getByText('Selected image files are uploaded from your browser into the chosen archive ID. There is no server-folder path mode here.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit entry to archive' })).toBeDisabled()
+    expect(screen.queryByText(/server folder path/i)).not.toBeInTheDocument()
     expect(screen.getByLabelText('Number of apparent arms')).toBeInTheDocument()
     expect(screen.getByLabelText('Health observation')).toBeInTheDocument()
   })
@@ -188,8 +192,8 @@ describe('SingleEntryPage', () => {
     await user.type(screen.getByLabelText('Health observation'), 'Looks healthy')
 
     const file = new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' })
-    await user.upload(screen.getByLabelText('Images'), file)
-    await user.click(screen.getByRole('button', { name: 'Submit entry' }))
+    await user.upload(screen.getByLabelText('Upload images from this computer'), file)
+    await user.click(screen.getByRole('button', { name: 'Submit entry to archive' }))
 
     await waitFor(() => {
       expect(mockedSubmitEntry).toHaveBeenCalledTimes(1)

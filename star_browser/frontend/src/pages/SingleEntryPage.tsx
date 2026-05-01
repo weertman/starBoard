@@ -224,8 +224,9 @@ export function SingleEntryPage() {
               <input aria-label="Encounter suffix" value={encounterSuffix} onChange={(e) => setEncounterSuffix(e.target.value)} style={input} />
             </label>
             <label>
-              <div>Images</div>
-              <input aria-label="Images" type="file" accept="image/*,.orf,.ORF" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} style={input} />
+              <div>Upload images from this computer</div>
+              <input aria-label="Upload images from this computer" type="file" accept="image/*,.orf,.ORF" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} style={input} />
+              <div style={{ color: '#516070', fontSize: 13, marginTop: 6 }}>Selected image files are uploaded from your browser into the chosen archive ID. There is no server-folder path mode here.</div>
             </label>
           </div>
         </section>
@@ -315,7 +316,7 @@ export function SingleEntryPage() {
         <section style={card}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => void handleSubmit()} disabled={busy || !targetId.trim() || files.length === 0} style={{ padding: '8px 12px' }}>
-              {busy ? 'Submitting…' : 'Submit entry'}
+              {busy ? 'Submitting…' : 'Submit entry to archive'}
             </button>
             <span style={{ color: '#516070' }}>{files.length} file(s) selected</span>
           </div>
