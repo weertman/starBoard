@@ -56,14 +56,14 @@ describe('FirstOrderPage query selector', () => {
     mockedGetFirstOrderMedia.mockImplementation(async (targetType, entityId) => ({
       target_type: targetType,
       entity_id: entityId,
-      images: [{
-        image_id: `${targetType}:${entityId}:0`,
-        label: `${entityId}.jpg`,
-        encounter: '01_02_26_a',
-        preview_url: `/preview/${targetType}/${entityId}.jpg`,
-        fullres_url: `/full/${targetType}/${entityId}.jpg`,
-        is_best: true,
-      }],
+      images: [0, 1].map((index) => ({
+        image_id: `${targetType}:${entityId}:${index}`,
+        label: index === 0 ? `${entityId}.jpg` : `${entityId}_detail.jpg`,
+        encounter: index === 0 ? '01_02_26_a' : '01_03_26_b',
+        preview_url: `/preview/${targetType}/${entityId}_${index}.jpg`,
+        fullres_url: `/full/${targetType}/${entityId}_${index}.jpg`,
+        is_best: index === 0,
+      })),
     }))
     mockedRunFirstOrderSearch.mockResolvedValue({
       query_id: 'query_b',
@@ -269,6 +269,17 @@ describe('FirstOrderPage query selector', () => {
     fireEvent.mouseMove(window, { clientX: 130, clientY: 120 })
     fireEvent.mouseUp(window)
     expect(firstProposalImage).toHaveStyle({ transform: 'translate(30px, 20px) rotate(0deg) scale(1)' })
+    expect(screen.getByText('Query image 1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('Proposal image 1 of 2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Previous query image' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Next query image' }))
+    expect(await screen.findByAltText('Selected query query_a image query_a_detail.jpg')).toBeInTheDocument()
+    expect(screen.getByText('Query image 2 of 2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next query image' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Next proposal image' }))
+    expect(await screen.findByAltText('Rank 1 gallery_visual_1 image gallery_visual_1_detail.jpg')).toBeInTheDocument()
+    expect(screen.getByText('Proposal image 2 of 2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next proposal image' })).toBeDisabled()
     expect(screen.getByText('Proposal 1 of 2')).toBeInTheDocument()
     expect(screen.getByText('gallery_visual_1')).toBeInTheDocument()
     expect(screen.getByText(/location: 1\.000/i)).toBeInTheDocument()

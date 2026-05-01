@@ -232,6 +232,8 @@ export function FirstOrderPage() {
   const [queryMedia, setQueryMedia] = useState<FirstOrderMediaResponse | null>(null)
   const [candidateMedia, setCandidateMedia] = useState<Record<string, FirstOrderMediaResponse>>({})
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0)
+  const [activeQueryImageIndex, setActiveQueryImageIndex] = useState(0)
+  const [activeCandidateImageIndexes, setActiveCandidateImageIndexes] = useState<Record<string, number>>({})
 
   async function refreshQueries(preferredQueryId = queryId) {
     setLoadingQueries(true)
@@ -263,15 +265,22 @@ export function FirstOrderPage() {
     const id = queryId.trim()
     if (!id) {
       setQueryMedia(null)
+      setActiveQueryImageIndex(0)
       return
     }
     let cancelled = false
     getFirstOrderMedia('query', id)
       .then((media) => {
-        if (!cancelled) setQueryMedia(media)
+        if (!cancelled) {
+          setQueryMedia(media)
+          setActiveQueryImageIndex(0)
+        }
       })
       .catch(() => {
-        if (!cancelled) setQueryMedia(null)
+        if (!cancelled) {
+          setQueryMedia(null)
+          setActiveQueryImageIndex(0)
+        }
       })
     return () => {
       cancelled = true
@@ -350,6 +359,8 @@ export function FirstOrderPage() {
       const next = await runFirstOrderSearch({ query_id: searchQueryId.trim(), top_k: topK, preset })
       setResult(next)
       setActiveCandidateIndex(0)
+      setActiveQueryImageIndex(0)
+      setActiveCandidateImageIndexes({})
       setCandidateMedia({})
       void Promise.all(next.candidates.map(async (candidate) => {
         try {
@@ -369,12 +380,29 @@ export function FirstOrderPage() {
 
   const activeCandidate = result?.candidates[activeCandidateIndex] ?? null
   const activeCandidateMedia = activeCandidate ? candidateMedia[activeCandidate.entity_id] ?? null : null
-  const activeCandidateImage = primaryImage(activeCandidateMedia)
-  const activeQueryImage = primaryImage(queryMedia)
+  const activeCandidateImageIndex = activeCandidate ? activeCandidateImageIndexes[activeCandidate.entity_id] ?? 0 : 0
+  const activeCandidateImage = activeCandidateMedia?.images[activeCandidateImageIndex] ?? null
+  const activeQueryImage = queryMedia?.images[activeQueryImageIndex] ?? null
 
   function stepProposal(delta: number) {
     if (!result?.candidates.length) return
     setActiveCandidateIndex((current) => Math.min(result.candidates.length - 1, Math.max(0, current + delta)))
+  }
+
+  function stepQueryImage(delta: number) {
+    if (!queryMedia?.images.length) return
+    setActiveQueryImageIndex((current) => Math.min(queryMedia.images.length - 1, Math.max(0, current + delta)))
+  }
+
+  function stepCandidateImage(delta: number) {
+    if (!activeCandidate || !activeCandidateMedia?.images.length) return
+    setActiveCandidateImageIndexes((current) => {
+      const currentIndex = current[activeCandidate.entity_id] ?? 0
+      return {
+        ...current,
+        [activeCandidate.entity_id]: Math.min(activeCandidateMedia.images.length - 1, Math.max(0, currentIndex + delta)),
+      }
+    })
   }
 
   return (
@@ -559,11 +587,18 @@ export function FirstOrderPage() {
                       <code>{result.query_id}</code>
                     </div>
                     {activeQueryImage ? (
-                      <QueryMatcherImagePane
-                        image={activeQueryImage}
-                        alt={`Selected query ${result.query_id} image ${activeQueryImage.label}`}
-                        ariaLabel="Query matcher query image viewer"
-                      />
+                      <>
+                        <QueryMatcherImagePane
+                          image={activeQueryImage}
+                          alt={`Selected query ${result.query_id} image ${activeQueryImage.label}`}
+                          ariaLabel="Query matcher query image viewer"
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button type="button" onClick={() => stepQueryImage(-1)} disabled={activeQueryImageIndex === 0}>Previous query image</button>
+                          <b>Query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
+                          <button type="button" onClick={() => stepQueryImage(1)} disabled={activeQueryImageIndex >= (queryMedia?.images.length ?? 0) - 1}>Next query image</button>
+                        </div>
+                      </>
                     ) : (
                       <div style={{ color: '#667085', padding: 16, textAlign: 'center' }}>No query image loaded.</div>
                     )}
@@ -574,11 +609,18 @@ export function FirstOrderPage() {
                       <span style={{ color: '#516070' }}>Score {activeCandidate.score.toFixed(4)}</span>
                     </div>
                     {activeCandidateImage ? (
-                      <QueryMatcherImagePane
-                        image={activeCandidateImage}
-                        alt={`Rank ${activeCandidateIndex + 1} ${activeCandidate.entity_id} image ${activeCandidateImage.label}`}
-                        ariaLabel="Query matcher proposal image viewer"
-                      />
+                      <>
+                        <QueryMatcherImagePane
+                          image={activeCandidateImage}
+                          alt={`Rank ${activeCandidateIndex + 1} ${activeCandidate.entity_id} image ${activeCandidateImage.label}`}
+                          ariaLabel="Query matcher proposal image viewer"
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button type="button" onClick={() => stepCandidateImage(-1)} disabled={activeCandidateImageIndex === 0}>Previous proposal image</button>
+                          <b>Proposal image {activeCandidateImageIndex + 1} of {activeCandidateMedia?.images.length ?? 0}</b>
+                          <button type="button" onClick={() => stepCandidateImage(1)} disabled={activeCandidateImageIndex >= (activeCandidateMedia?.images.length ?? 0) - 1}>Next proposal image</button>
+                        </div>
+                      </>
                     ) : (
                       <div style={{ color: '#667085', padding: 16, textAlign: 'center' }}>Image loads when media is available.</div>
                     )}
