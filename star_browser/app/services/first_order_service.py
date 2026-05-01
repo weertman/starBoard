@@ -19,6 +19,7 @@ from ..models.search_api import (
     FirstOrderQueryOptionsResponse,
     FirstOrderSearchResponse,
 )
+from .first_order_media_service import first_order_image_id_for_path, resolve_first_order_media_path
 
 _ENGINE: FirstOrderSearchEngine | None = None
 _PRESETS = {
@@ -148,7 +149,48 @@ def list_first_order_query_options() -> FirstOrderQueryOptionsResponse:
     )
 
 
-def _rank_megastar(query_id: str, top_k: int) -> FirstOrderSearchResponse:
+def _rank_megastar_by_query_image(query_image_id: str, top_k: int) -> FirstOrderSearchResponse | None:
+    query_image_path = resolve_first_order_media_path(query_image_id)
+    if query_image_path is None:
+        return None
+    parts = query_image_id.split(':')
+    if len(parts) != 3 or parts[0] != 'query':
+        return None
+    query_id = parts[1]
+    model_key = _active_megastar_model_key()
+    if not model_key:
+        return None
+    try:
+        from src.dl.similarity_lookup import get_image_lookup
+        lookup = get_image_lookup(model_key)
+    except Exception:
+        return None
+    if not lookup or not lookup.is_loaded():
+        return None
+    ranked = lookup.rank_gallery_by_query_image(str(query_image_path), top_k=top_k)
+    if not ranked:
+        return None
+    candidates: list[FirstOrderCandidate] = []
+    for gallery_id, raw_score, gallery_image_path, local_idx in ranked:
+        score = round(float(raw_score), 6)
+        preferred_image_id = first_order_image_id_for_path('gallery', gallery_id, gallery_image_path) or f'gallery:{gallery_id}:{local_idx}'
+        candidates.append(
+            FirstOrderCandidate(
+                entity_id=gallery_id,
+                score=score,
+                k_contrib=1,
+                field_breakdown={'megastar': score},
+                preferred_image_id=preferred_image_id,
+            )
+        )
+    return FirstOrderSearchResponse(query_id=query_id, query_image_id=query_image_id, preset='megastar', candidates=candidates)
+
+
+def _rank_megastar(query_id: str, top_k: int, query_image_id: str | None = None) -> FirstOrderSearchResponse:
+    if query_image_id:
+        image_response = _rank_megastar_by_query_image(query_image_id, top_k)
+        if image_response is not None:
+            return image_response
     store = _load_megastar_score_store()
     candidates: list[FirstOrderCandidate] = []
     if store is not None and query_id in store.query_ids:
@@ -171,7 +213,7 @@ def _rank_megastar(query_id: str, top_k: int) -> FirstOrderSearchResponse:
 
 
 @lru_cache(maxsize=1)
-def _load_megastar_score_store() -> _MegaStarScoreStore | None:
+def _active_megastar_model_key() -> str | None:
     precompute_root = ap.archive_root() / '_dl_precompute'
     registry_path = precompute_root / '_dl_registry.json'
     if not registry_path.exists():
@@ -181,9 +223,15 @@ def _load_megastar_score_store() -> _MegaStarScoreStore | None:
     except (OSError, json.JSONDecodeError):
         return None
     model_key = registry.get('active_model')
-    if not isinstance(model_key, str) or not model_key:
-        return None
+    return model_key if isinstance(model_key, str) and model_key else None
 
+
+@lru_cache(maxsize=1)
+def _load_megastar_score_store() -> _MegaStarScoreStore | None:
+    model_key = _active_megastar_model_key()
+    if not model_key:
+        return None
+    precompute_root = ap.archive_root() / '_dl_precompute'
     similarity_dir = precompute_root / model_key / 'similarity'
     mapping_path = similarity_dir / 'id_mapping.json'
     scores_path = similarity_dir / 'query_gallery_scores.npz'
@@ -202,9 +250,9 @@ def _load_megastar_score_store() -> _MegaStarScoreStore | None:
     return _MegaStarScoreStore(query_ids=query_ids, gallery_ids=gallery_ids, scores=scores)
 
 
-def run_first_order_search(query_id: str, top_k: int = 10, preset: str = 'all') -> FirstOrderSearchResponse:
+def run_first_order_search(query_id: str, top_k: int = 10, preset: str = 'all', query_image_id: str | None = None) -> FirstOrderSearchResponse:
     if preset == 'megastar':
-        return _rank_megastar(query_id, top_k)
+        return _rank_megastar(query_id, top_k, query_image_id=query_image_id)
 
     engine = _get_engine()
     include_fields = _PRESETS.get(preset, _PRESETS['all'])

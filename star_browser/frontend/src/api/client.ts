@@ -133,16 +133,19 @@ export type FirstOrderSearchRequest = {
   query_id: string
   top_k?: number
   preset?: FirstOrderPreset
+  query_image_id?: string
 }
 
 export type FirstOrderSearchResponse = {
   query_id: string
   preset: FirstOrderPreset
+  query_image_id?: string | null
   candidates: Array<{
     entity_id: string
     score: number
     k_contrib: number
     field_breakdown: Record<string, number>
+    preferred_image_id?: string | null
   }>
 }
 

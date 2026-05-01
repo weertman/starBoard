@@ -110,10 +110,6 @@ function optionLabel(option: FirstOrderQueryOption): string {
   return `${option.query_id}${date} — ${stateLabels[option.state]}`
 }
 
-function primaryImage(media: FirstOrderMediaResponse | null) {
-  return media?.images[0] ?? null
-}
-
 function QueryMatcherImagePane({ image, alt, ariaLabel }: { image: FirstOrderMediaImage; alt: string; ariaLabel: string }) {
   const [view, setView] = useState<ImageViewState>({ scale: 1, x: 0, y: 0, rotation: 0 })
   const rotateKeyDown = useRef(false)
@@ -356,16 +352,22 @@ export function FirstOrderPage() {
     setBusy(true)
     setError(null)
     try {
-      const next = await runFirstOrderSearch({ query_id: searchQueryId.trim(), top_k: topK, preset })
+      const request = { query_id: searchQueryId.trim(), top_k: topK, preset, ...(preset === 'megastar' && activeQueryImage ? { query_image_id: activeQueryImage.image_id } : {}) }
+      const next = await runFirstOrderSearch(request)
       setResult(next)
       setActiveCandidateIndex(0)
-      setActiveQueryImageIndex(0)
       setActiveCandidateImageIndexes({})
       setCandidateMedia({})
       void Promise.all(next.candidates.map(async (candidate) => {
         try {
           const media = await getFirstOrderMedia('gallery', candidate.entity_id)
           setCandidateMedia((current) => ({ ...current, [candidate.entity_id]: media }))
+          if (candidate.preferred_image_id) {
+            const preferredIndex = media.images.findIndex((image) => image.image_id === candidate.preferred_image_id)
+            if (preferredIndex >= 0) {
+              setActiveCandidateImageIndexes((current) => ({ ...current, [candidate.entity_id]: preferredIndex }))
+            }
+          }
         } catch {
           setCandidateMedia((current) => ({ ...current, [candidate.entity_id]: { target_type: 'gallery', entity_id: candidate.entity_id, images: [] } }))
         }
@@ -547,15 +549,22 @@ export function FirstOrderPage() {
           <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'minmax(220px, 360px) 1fr', gap: 12, alignItems: 'start' }}>
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fbfdff' }}>
               <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>Selected query image</h2>
-              {primaryImage(queryMedia) ? (
-                <a href={primaryImage(queryMedia)!.fullres_url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
-                  <img
-                    src={primaryImage(queryMedia)!.preview_url}
-                    alt={`Selected query ${queryId} image ${primaryImage(queryMedia)!.label}`}
-                    loading="lazy"
-                    style={{ display: 'block', width: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 8, background: '#eef2f7' }}
-                  />
-                </a>
+              {activeQueryImage ? (
+                <>
+                  <a href={activeQueryImage.fullres_url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
+                    <img
+                      src={activeQueryImage.preview_url}
+                      alt={`Selected query ${queryId} image ${activeQueryImage.label}`}
+                      loading="lazy"
+                      style={{ display: 'block', width: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 8, background: '#eef2f7' }}
+                    />
+                  </a>
+                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => stepQueryImage(-1)} disabled={activeQueryImageIndex === 0}>Previous selected query image</button>
+                    <b>Selected query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
+                    <button type="button" onClick={() => stepQueryImage(1)} disabled={activeQueryImageIndex >= (queryMedia?.images.length ?? 0) - 1}>Next selected query image</button>
+                  </div>
+                </>
               ) : (
                 <div style={{ color: '#667085', padding: 16, background: '#eef2f7', borderRadius: 8 }}>No query image loaded.</div>
               )}

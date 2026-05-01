@@ -92,6 +92,21 @@ def resolve_first_order_media_path(image_id: str) -> Path | None:
     return ordered_paths[idx]
 
 
+def first_order_image_id_for_path(target_type: TargetType, entity_id: str, image_path: str | Path) -> str | None:
+    wanted = Path(image_path)
+    ordered_paths = _ordered_image_files(target_type, entity_id)
+    for idx, path in enumerate(ordered_paths):
+        try:
+            if path.resolve() == wanted.resolve():
+                return _image_id(target_type, entity_id, idx)
+        except Exception:
+            if str(path) == str(wanted):
+                return _image_id(target_type, entity_id, idx)
+        if path.stem == wanted.stem:
+            return _image_id(target_type, entity_id, idx)
+    return None
+
+
 def resized_preview_response(path: Path, *, long_edge: int = 1400) -> Response:
     try:
         with Image.open(path) as image:

@@ -25,6 +25,7 @@ class FirstOrderSearchRequest(BaseModel):
     query_id: str
     top_k: int = 10
     preset: Literal['all', 'colors', 'text', 'arms_patterns', 'megastar'] = 'all'
+    query_image_id: str | None = None
 
 
 class FirstOrderCandidate(BaseModel):
@@ -32,11 +33,13 @@ class FirstOrderCandidate(BaseModel):
     score: float
     k_contrib: int
     field_breakdown: dict[str, float] = Field(default_factory=dict)
+    preferred_image_id: str | None = None
 
 
 class FirstOrderSearchResponse(BaseModel):
     query_id: str
     preset: Literal['all', 'colors', 'text', 'arms_patterns', 'megastar']
+    query_image_id: str | None = None
     candidates: list[FirstOrderCandidate] = Field(default_factory=list)
 
 

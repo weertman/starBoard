@@ -189,14 +189,19 @@ describe('FirstOrderPage query selector', () => {
     const user = userEvent.setup()
     mockedRunFirstOrderSearch.mockResolvedValueOnce({
       query_id: 'query_a',
+      query_image_id: 'query:query_a:1',
       preset: 'megastar',
       candidates: [
-        { entity_id: 'gallery_from_megastar', score: 0.91, k_contrib: 1, field_breakdown: { megastar: 0.91 } },
+        { entity_id: 'gallery_from_megastar', score: 0.91, k_contrib: 1, field_breakdown: { megastar: 0.91 }, preferred_image_id: 'gallery:gallery_from_megastar:1' },
       ],
     })
     render(<FirstOrderPage />)
 
     await screen.findByDisplayValue('query_a')
+    expect(await screen.findByText('Selected query image 1 of 2')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next selected query image' }))
+    expect(await screen.findByAltText('Selected query query_a image query_a_detail.jpg')).toBeInTheDocument()
+    expect(screen.getByText('Selected query image 2 of 2')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'MegaStar' })).toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar ranking')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar query image')).not.toBeInTheDocument()
@@ -206,9 +211,11 @@ describe('FirstOrderPage query selector', () => {
     await user.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() => {
-      expect(mockedRunFirstOrderSearch).toHaveBeenCalledWith({ query_id: 'query_a', top_k: 10, preset: 'megastar' })
+      expect(mockedRunFirstOrderSearch).toHaveBeenCalledWith({ query_id: 'query_a', top_k: 10, preset: 'megastar', query_image_id: 'query:query_a:1' })
     })
     expect(await screen.findByText('gallery_from_megastar')).toBeInTheDocument()
+    expect(await screen.findByAltText('Rank 1 gallery_from_megastar image gallery_from_megastar_detail.jpg')).toBeInTheDocument()
+    expect(screen.getByText('Proposal image 2 of 2')).toBeInTheDocument()
     expect(screen.getByText(/megastar: 0\.910/i)).toBeInTheDocument()
   })
 
@@ -273,7 +280,9 @@ describe('FirstOrderPage query selector', () => {
     expect(screen.getByText('Proposal image 1 of 2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Previous query image' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Next query image' }))
-    expect(await screen.findByAltText('Selected query query_a image query_a_detail.jpg')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByAltText('Selected query query_a image query_a_detail.jpg').length).toBeGreaterThanOrEqual(1)
+    })
     expect(screen.getByText('Query image 2 of 2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Next query image' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Next proposal image' }))

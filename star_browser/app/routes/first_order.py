@@ -23,7 +23,7 @@ def first_order_search(
     request: FirstOrderSearchRequest,
     _user_email: str = Depends(require_authenticated_email),
 ):
-    return run_first_order_search(request.query_id, top_k=request.top_k, preset=request.preset)
+    return run_first_order_search(request.query_id, top_k=request.top_k, preset=request.preset, query_image_id=request.query_image_id)
 
 
 @router.get('/first-order/queries/{query_id}/media', response_model=FirstOrderMediaResponse)

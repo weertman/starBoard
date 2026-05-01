@@ -95,3 +95,36 @@ def test_first_order_search_megastar_preset_uses_precomputed_numeric_scores(monk
     assert response.candidates[0].score == 0.91
     assert response.candidates[0].k_contrib == 1
     assert response.candidates[0].field_breakdown == {'megastar': 0.91}
+
+
+def test_first_order_megastar_image_preset_uses_selected_query_image(monkeypatch):
+    engine = _DummyEngine()
+    monkeypatch.setattr(first_order_service, '_get_engine', lambda: engine)
+    monkeypatch.setattr(
+        first_order_service,
+        '_rank_megastar_by_query_image',
+        lambda query_image_id, top_k: first_order_service.FirstOrderSearchResponse(
+            query_id='query_001',
+            query_image_id=query_image_id,
+            preset='megastar',
+            candidates=[
+                first_order_service.FirstOrderCandidate(
+                    entity_id='gallery_visual',
+                    score=0.97,
+                    k_contrib=1,
+                    field_breakdown={'megastar': 0.97},
+                    preferred_image_id='gallery:gallery_visual:1',
+                )
+            ],
+        ),
+    )
+
+    response = first_order_service.run_first_order_search(
+        'query_001', top_k=1, preset='megastar', query_image_id='query:query_001:1'
+    )
+
+    assert response.preset == 'megastar'
+    assert response.query_image_id == 'query:query_001:1'
+    assert engine.calls == []
+    assert response.candidates[0].entity_id == 'gallery_visual'
+    assert response.candidates[0].preferred_image_id == 'gallery:gallery_visual:1'
