@@ -213,6 +213,22 @@ describe('BatchUploadPage', () => {
     expect(screen.queryByRole('heading', { name: '2. Discover IDs' })).not.toBeInTheDocument()
   })
 
+  it('shows collapsible stepwise batch upload instructions at the top', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    const instructionsToggle = screen.getByText('How to use Batch Upload')
+    expect(instructionsToggle).toBeVisible()
+    expect(screen.getByText('Choose a source: use a server folder path for local files already on this machine, or prepare a zip when the files are elsewhere.')).not.toBeVisible()
+
+    await user.click(instructionsToggle)
+
+    expect(screen.getByText('Choose a source: use a server folder path for local files already on this machine, or prepare a zip when the files are elsewhere.')).toBeVisible()
+    expect(screen.getByText('Preview IDs and metadata before writing anything to the archive.')).toBeVisible()
+    expect(screen.getByText('Review the detected IDs, encounters, image counts, target actions, warnings, and selected rows.')).toBeVisible()
+    expect(screen.getByText('Submit selected IDs only after the review table looks correct.')).toBeVisible()
+  })
+
   it('shows source structure guidance and discovers from a validated server folder path', async () => {
     const user = userEvent.setup()
     render(<BatchUploadPage />)
