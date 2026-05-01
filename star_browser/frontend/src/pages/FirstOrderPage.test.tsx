@@ -207,10 +207,13 @@ describe('FirstOrderPage query selector', () => {
 
     await screen.findByDisplayValue('query_a')
     expect(await screen.findByText('Selected query image 1 of 2')).toBeInTheDocument()
+    const selectedQueryImageRegion = screen.getByLabelText('Selected query image region')
+    expect(selectedQueryImageRegion).toHaveStyle({ gridTemplateColumns: '1fr' })
     const selectedQueryImagePanel = screen.getByLabelText('Selected query image panel')
     const selectedQueryImageControls = screen.getByLabelText('Selected query image controls')
     expect(selectedQueryImagePanel).toContainElement(selectedQueryImageControls)
     expect(selectedQueryImagePanel).toHaveStyle({ gridTemplateColumns: 'minmax(0, 1fr) auto' })
+    expect(screen.getByAltText('Selected query query_a image query_a.jpg')).toHaveStyle({ maxHeight: '520px' })
     await user.click(screen.getByRole('button', { name: 'Next selected query image' }))
     expect(await screen.findByAltText('Selected query query_a image query_a_detail.jpg')).toBeInTheDocument()
     expect(screen.getByText('Selected query image 2 of 2')).toBeInTheDocument()

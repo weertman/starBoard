@@ -547,7 +547,7 @@ export function FirstOrderPage() {
               </span>
             </div>
           )}
-          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'minmax(220px, 360px) 1fr', gap: 12, alignItems: 'start' }}>
+          <div aria-label="Selected query image region" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr', gap: 12, alignItems: 'start' }}>
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fbfdff' }}>
               <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>Selected query image</h2>
               {activeQueryImage ? (
@@ -557,7 +557,7 @@ export function FirstOrderPage() {
                       src={activeQueryImage.preview_url}
                       alt={`Selected query ${queryId} image ${activeQueryImage.label}`}
                       loading="lazy"
-                      style={{ display: 'block', width: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 8, background: '#eef2f7' }}
+                      style={{ display: 'block', width: '100%', maxHeight: 520, objectFit: 'contain', borderRadius: 8, background: '#eef2f7' }}
                     />
                   </a>
                   <div aria-label="Selected query image controls" style={{ display: 'grid', gap: 8, justifyItems: 'stretch', minWidth: 132 }}>
