@@ -35,8 +35,17 @@ def _encounter_for_path(path: Path) -> str | None:
         return None
 
 
+def _ordered_image_files(target_type: TargetType, entity_id: str) -> list[Path]:
+    if hasattr(list_image_files, 'cache_clear'):
+        list_image_files.cache_clear()
+    target = _canonical_target(target_type)
+    return reorder_files_with_best(target, entity_id, list(list_image_files(target, entity_id)))
+
+
 def list_first_order_media(target_type: TargetType, entity_id: str) -> FirstOrderMediaResponse:
     target = _canonical_target(target_type)
+    if hasattr(list_image_files, 'cache_clear'):
+        list_image_files.cache_clear()
     original_files = list(list_image_files(target, entity_id))
     if not original_files:
         return FirstOrderMediaResponse(target_type=target_type, entity_id=entity_id, images=[])
@@ -77,20 +86,19 @@ def resolve_first_order_media_path(image_id: str) -> Path | None:
     if idx < 0 or idx >= len(files):
         return None
     # Resolve against the same best-first order used to create descriptors.
-    target = _canonical_target(target_type)
-    ordered_paths = reorder_files_with_best(target, entity_id, list(list_image_files(target, entity_id)))
+    ordered_paths = _ordered_image_files(target_type, entity_id)
     if idx >= len(ordered_paths):
         return None
     return ordered_paths[idx]
 
 
-def resized_preview_response(path: Path, *, long_edge: int = 48) -> Response:
+def resized_preview_response(path: Path, *, long_edge: int = 1400) -> Response:
     try:
         with Image.open(path) as image:
             image = image.convert('RGB')
             image.thumbnail((long_edge, long_edge))
             buf = BytesIO()
-            image.save(buf, format='JPEG', quality=60, optimize=True)
+            image.save(buf, format='JPEG', quality=85, optimize=True)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='first_order_image_not_readable') from exc
     return Response(content=buf.getvalue(), media_type='image/jpeg')

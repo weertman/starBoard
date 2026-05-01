@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -127,3 +129,22 @@ def test_first_order_media_routes_return_best_first_descriptors_and_resized_prev
     assert preview.headers['content-type'].startswith('image/')
     assert full.headers['content-type'].startswith('image/')
     assert len(preview.content) < len(full.content)
+
+
+def test_first_order_preview_is_large_enough_for_query_matcher_comparison(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    query_dir = archive / 'queries' / 'query_001' / '01_02_26_a'
+    query_dir.mkdir(parents=True)
+    query_image = query_dir / 'query_large.jpg'
+    Image.linear_gradient('L').resize((1600, 900)).convert('RGB').save(query_image, quality=95)
+    (archive / 'queries' / 'queries_metadata.csv').write_text('query_id,location\nquery_001,Friday Harbor\n', encoding='utf-8-sig')
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    headers = {'cf-access-authenticated-user-email': 'field@example.org'}
+    query_media = client.get('/api/first-order/queries/query_001/media', headers=headers)
+    preview = client.get(query_media.json()['images'][0]['preview_url'], headers=headers)
+
+    assert preview.status_code == 200
+    preview_image = Image.open(BytesIO(preview.content))
+    assert max(preview_image.size) >= 1200
