@@ -283,7 +283,7 @@ export function BatchUploadPage() {
 
   async function handleUpload() {
     if (!zipFile) return
-    beginOperation('upload', 'Uploading zip')
+    beginOperation('upload', 'Preparing preview source')
     setError(null)
     setDiscoverResponse(null)
     setExecuteResponse(null)
@@ -291,7 +291,7 @@ export function BatchUploadPage() {
       const result = await uploadBatchZip(zipFile)
       setUploadToken(result.upload_token)
       setUploadInfo({ file_count: result.file_count, root_entries: result.root_entries })
-      setSuccessReadout(`Upload complete: ${result.file_count} file(s) staged.`)
+      setSuccessReadout(`Preview source ready: ${result.file_count} file(s) available for review.`)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -321,7 +321,7 @@ export function BatchUploadPage() {
 
   async function handleDiscover() {
     if (!canDiscover) return
-    beginOperation('discover', 'Discovering IDs')
+    beginOperation('discover', 'Previewing IDs and metadata')
     setError(null)
     setExecuteResponse(null)
     try {
@@ -341,7 +341,7 @@ export function BatchUploadPage() {
       setDiscoverResponse(result)
       setSelectedRowIds(result.rows.map((row) => row.row_id))
       setPlanStale(false)
-      setSuccessReadout(`Discovery complete: ${result.summary.detected_rows} row(s), ${result.summary.total_images} image(s).`)
+      setSuccessReadout(`Preview ready: ${result.summary.detected_rows} row(s), ${result.summary.detected_ids} ID(s), ${result.summary.total_images} image(s).`)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -356,11 +356,11 @@ export function BatchUploadPage() {
       const preview = existingTargets.slice(0, 10).map((row) => `• ${row.transformed_target_id}`).join('\n')
       const more = existingTargets.length > 10 ? `\n... and ${existingTargets.length - 10} more` : ''
       const ok = window.confirm(
-        `The following IDs already exist and selected rows will append images to them:\n\n${preview}${more}\n\nProceed with batch upload?`,
+        `The following IDs already exist and selected rows will append images to them:\n\n${preview}${more}\n\nPush this selected upload?`,
       )
       if (!ok) return
     }
-    beginOperation('execute', 'Executing batch upload')
+    beginOperation('execute', 'Pushing selected upload')
     setError(null)
     try {
       const result = await executeBatchUpload({
@@ -368,7 +368,7 @@ export function BatchUploadPage() {
         accepted_row_ids: selectedRowIds,
       })
       setExecuteResponse(result)
-      setSuccessReadout(`Batch upload ${result.status}: ${result.summary.accepted_images} accepted image(s), ${result.summary.executed_rows} executed row(s).`)
+      setSuccessReadout(`Upload ${result.status}: ${result.summary.accepted_images} accepted image(s), ${result.summary.executed_rows} pushed row(s).`)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -507,6 +507,9 @@ export function BatchUploadPage() {
 
         <section style={card}>
           <h2 style={{ marginTop: 0 }}>1. Choose source</h2>
+          <p style={{ marginTop: 0, color: '#516070' }}>
+            Select the source first. starBoard will preview the detected IDs, encounters, image counts, and metadata before anything is pushed into the archive.
+          </p>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input
@@ -538,7 +541,7 @@ export function BatchUploadPage() {
                   {busy === 'preflight' ? 'Testing…' : 'Test zip structure'}
                 </button>
                 <button onClick={() => void handleUpload()} disabled={!canUploadZip || busy !== null} style={{ padding: '8px 12px' }}>
-                  {busy === 'upload' ? 'Uploading…' : 'Upload zip'}
+                  {busy === 'upload' ? 'Preparing preview…' : 'Prepare zip for preview'}
                 </button>
               </div>
               {zipPreview && (
@@ -550,7 +553,7 @@ export function BatchUploadPage() {
               {uploadInfo && uploadToken && (
                 <div style={{ marginTop: 12, color: '#24354d' }}>
                   <div><b>Upload token:</b> <code>{uploadToken}</code></div>
-                  <div><b>Files staged:</b> {uploadInfo.file_count}</div>
+                  <div><b>Files ready for preview:</b> {uploadInfo.file_count}</div>
                   <div><b>Root entries:</b> {uploadInfo.root_entries.join(', ') || 'none'}</div>
                 </div>
               )}
@@ -584,10 +587,13 @@ export function BatchUploadPage() {
         </section>
 
         <section style={card}>
-          <h2 style={{ marginTop: 0 }}>2. Discover IDs</h2>
+          <h2 style={{ marginTop: 0 }}>2. Preview IDs and metadata</h2>
+          <p style={{ marginTop: 0, color: '#516070' }}>
+            Build a review table from the selected source. This still does not write to the archive.
+          </p>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => void handleDiscover()} disabled={!canDiscover || busy !== null} style={{ padding: '8px 12px' }}>
-              {busy === 'discover' ? 'Discovering…' : 'Discover IDs'}
+              {busy === 'discover' ? 'Previewing…' : 'Preview IDs and metadata'}
             </button>
             {discoverResponse && (
               <span style={{ color: '#516070' }}>
@@ -615,7 +621,7 @@ export function BatchUploadPage() {
 
         {planStale && (
           <section style={{ ...card, borderColor: '#d7a84a', background: '#fff8e7', color: '#6b4b00' }}>
-            Settings changed. Rediscover IDs before executing this batch.
+            Settings changed. Preview IDs and metadata again before pushing this upload.
           </section>
         )}
 
@@ -640,7 +646,7 @@ export function BatchUploadPage() {
         {rows.length > 0 && (
           <section style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0 }}>3. Preview plan</h2>
+              <h2 style={{ margin: 0 }}>3. Review selected IDs and metadata</h2>
               <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   type="checkbox"
@@ -690,12 +696,15 @@ export function BatchUploadPage() {
 
         {discoverResponse && (
           <section style={card}>
-            <h2 style={{ marginTop: 0 }}>4. Execute</h2>
+            <h2 style={{ marginTop: 0 }}>4. Push upload</h2>
+            <p style={{ marginTop: 0, color: '#516070' }}>
+              Only this final action writes the selected rows into the archive.
+            </p>
             <div style={{ color: '#24354d', marginBottom: 12 }}>
               Selected rows: <b>{selectedRows.length}</b> / {rows.length}
             </div>
             <button onClick={() => void handleExecute()} disabled={selectedRows.length === 0 || busy !== null} style={{ padding: '8px 12px' }}>
-              {busy === 'execute' ? 'Executing…' : 'Start batch upload'}
+              {busy === 'execute' ? 'Pushing…' : 'Push selected upload'}
             </button>
           </section>
         )}

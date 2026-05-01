@@ -198,11 +198,19 @@ describe('BatchUploadPage', () => {
     await user.upload(screen.getByLabelText('Source zip bundle'), zip)
     await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
     await screen.findByText(/Zip structure looks valid/i)
-    await user.click(screen.getByRole('button', { name: 'Upload zip' }))
-    await screen.findByText(/Files staged:/)
-    await user.click(screen.getByRole('button', { name: 'Discover IDs' }))
-    await screen.findByRole('heading', { name: '3. Preview plan' })
+    await user.click(screen.getByRole('button', { name: 'Prepare zip for preview' }))
+    await screen.findByText(/Files ready for preview:/)
+    await user.click(screen.getByRole('button', { name: 'Preview IDs and metadata' }))
+    await screen.findByRole('heading', { name: '3. Review selected IDs and metadata' })
   }
+
+  it('uses preview-first wording and reserves upload wording for the final push', async () => {
+    render(<BatchUploadPage />)
+
+    expect(screen.getByRole('heading', { name: '2. Preview IDs and metadata' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preview IDs and metadata' })).toBeDisabled()
+    expect(screen.queryByRole('heading', { name: '2. Discover IDs' })).not.toBeInTheDocument()
+  })
 
   it('shows source structure guidance and discovers from a validated server folder path', async () => {
     const user = userEvent.setup()
@@ -218,7 +226,7 @@ describe('BatchUploadPage', () => {
     await screen.findByText(/Server path ready/)
     expect(mockedPreviewBatchServerPath).toHaveBeenCalledWith({ path: '/data/trip_upload', discovery_mode: 'auto' })
 
-    await user.click(screen.getByRole('button', { name: 'Discover IDs' }))
+    await user.click(screen.getByRole('button', { name: 'Preview IDs and metadata' }))
 
     expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
       import_source: { type: 'server_path', path: '/data/trip_upload' },
@@ -233,13 +241,13 @@ describe('BatchUploadPage', () => {
     const zip = makeZipFile(['trip_upload/anchovy/04_21_26/a.jpg', 'trip_upload/anchovy/04_21_26/b.jpg'])
     await user.upload(screen.getByLabelText('Source zip bundle'), zip)
 
-    expect(screen.getByRole('button', { name: 'Upload zip' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Prepare zip for preview' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
 
     expect(await screen.findByText(/Zip structure looks valid/i)).toBeInTheDocument()
     expect(screen.getByText(/Resolved mode:/i)).toBeInTheDocument()
     expect(screen.getByText(/Importable images:/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Upload zip' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Prepare zip for preview' })).toBeEnabled()
     expect(mockedUploadBatchZip).not.toHaveBeenCalled()
   })
 
@@ -254,7 +262,7 @@ describe('BatchUploadPage', () => {
 
     expect(await screen.findByText(/Zip structure looks valid/i)).toBeInTheDocument()
     expect(screen.getByText(/root entries: anchovy/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Upload zip' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Prepare zip for preview' })).toBeEnabled()
   })
 
   it('shows elapsed time while an operation is running and success after upload', async () => {
@@ -268,13 +276,14 @@ describe('BatchUploadPage', () => {
     await user.upload(screen.getByLabelText('Source zip bundle'), zip)
     await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
     await screen.findByText(/Zip structure looks valid/i)
-    await user.click(screen.getByRole('button', { name: 'Upload zip' }))
-    await screen.findByText(/Uploading zip/i)
+    await user.click(screen.getByRole('button', { name: 'Prepare zip for preview' }))
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent(/Preparing preview source/i)
     await waitFor(() => expect(screen.getByText(/Elapsed: [1-9]\d*s/i)).toBeInTheDocument(), { timeout: 2500 })
 
     resolveUpload({ upload_token: 'upload_123', file_count: 1, root_entries: ['anchovy'] })
-    await screen.findByText(/Upload complete/i)
-    expect(screen.getByText(/Files staged:/)).toBeInTheDocument()
+    await screen.findByText(/Preview source ready/i)
+    expect(screen.getByText(/Files ready for preview:/)).toBeInTheDocument()
   })
 
   it('hides flat-only encounter controls outside flat mode and shows the today warning in flat mode', async () => {
@@ -346,7 +355,7 @@ describe('BatchUploadPage', () => {
     render(<BatchUploadPage />)
 
     await stageAndDiscover(user)
-    await user.click(screen.getByRole('button', { name: 'Start batch upload' }))
+    await user.click(screen.getByRole('button', { name: 'Push selected upload' }))
 
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('already exist'))
     expect(mockedExecuteBatchUpload).not.toHaveBeenCalled()
@@ -357,12 +366,12 @@ describe('BatchUploadPage', () => {
     render(<BatchUploadPage />)
 
     await stageAndDiscover(user)
-    expect(screen.getByRole('button', { name: 'Start batch upload' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Push selected upload' })).toBeEnabled()
 
     await user.type(screen.getByLabelText('ID prefix'), 'new_')
 
-    expect(screen.queryByRole('button', { name: 'Start batch upload' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Settings changed. Rediscover IDs before executing/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Push selected upload' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Settings changed. Preview IDs and metadata again before pushing this upload/)).toBeInTheDocument()
   })
 
   it('renders discover warnings and row-level execute results', async () => {
@@ -377,7 +386,7 @@ describe('BatchUploadPage', () => {
     await stageAndDiscover(user)
     expect(screen.getByText('Some files were ignored')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Start batch upload' }))
+    await user.click(screen.getByRole('button', { name: 'Push selected upload' }))
 
     await screen.findByText('Row results')
     const results = screen.getByRole('table', { name: 'Batch upload row results' })
