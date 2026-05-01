@@ -31,7 +31,7 @@ export default function App() {
           <button style={tabButton(tab === 'single-entry')} onClick={() => setTab('single-entry')}>Single Entry</button>
           <button style={tabButton(tab === 'batch')} onClick={() => setTab('batch')}>Batch Upload</button>
           <button style={tabButton(tab === 'gallery')} onClick={() => setTab('gallery')}>ID Review</button>
-          <button style={tabButton(tab === 'first-order')} onClick={() => setTab('first-order')}>First-order Search</button>
+          <button style={tabButton(tab === 'first-order')} onClick={() => setTab('first-order')}>Query Matcher</button>
         </div>
       </div>
       {tab === 'single-entry' && <SingleEntryPage />}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { FirstOrderPage } from './FirstOrderPage'
@@ -70,6 +70,13 @@ describe('FirstOrderPage query selector', () => {
       preset: 'all',
       candidates: [{ entity_id: 'gallery_1', score: 0.9, k_contrib: 2, field_breakdown: { location: 1 } }],
     })
+  })
+
+  it('is labeled Query Matcher instead of First-order Search', () => {
+    render(<FirstOrderPage />)
+
+    expect(screen.getByRole('heading', { name: 'Query Matcher' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'First-order Search' })).not.toBeInTheDocument()
   })
 
   it('loads query options with desktop-style state and quality indicators', async () => {
@@ -224,9 +231,12 @@ describe('FirstOrderPage query selector', () => {
 
     await user.click(screen.getByRole('button', { name: 'Search' }))
 
-    expect(await screen.findByRole('region', { name: 'First-order side-by-side comparison' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Query Matcher side-by-side comparison' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Query image comparison panel' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Active proposal comparison panel' })).toBeInTheDocument()
+    expect(screen.getAllByText('Wheel to zoom. Drag to pan. Hold R and drag to rotate.').length).toBeGreaterThanOrEqual(2)
+    const queryViewer = screen.getByLabelText('Query matcher query image viewer')
+    const proposalViewer = screen.getByLabelText('Query matcher proposal image viewer')
     const comparisonQueryImages = screen.getAllByAltText('Selected query query_a image query_a.jpg')
     const activeQueryImage = comparisonQueryImages.find((image) => image !== selectorQueryImage)
     expect(activeQueryImage).toBeTruthy()
@@ -235,6 +245,30 @@ describe('FirstOrderPage query selector', () => {
     const firstProposalImage = await screen.findByAltText('Rank 1 gallery_visual_1 image gallery_visual_1.jpg')
     expect(firstProposalImage).not.toHaveAttribute('loading')
     expect(firstProposalImage.closest('a')).toBeNull()
+    expect(queryViewer).toHaveStyle({ height: '640px' })
+    expect(proposalViewer).toHaveStyle({ height: '640px' })
+
+    vi.spyOn(queryViewer, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 10,
+      left: 10,
+      top: 10,
+      right: 510,
+      bottom: 650,
+      width: 500,
+      height: 640,
+      toJSON: () => ({}),
+    })
+    const wheelEvent = new WheelEvent('wheel', { clientX: 100, clientY: 100, deltaY: -300, bubbles: true, cancelable: true })
+    window.dispatchEvent(wheelEvent)
+    expect(wheelEvent.defaultPrevented).toBe(true)
+    await waitFor(() => {
+      expect(activeQueryImage).toHaveStyle({ transform: 'translate(0px, 0px) rotate(0deg) scale(1.3)' })
+    })
+    fireEvent.mouseDown(proposalViewer, { clientX: 100, clientY: 100 })
+    fireEvent.mouseMove(window, { clientX: 130, clientY: 120 })
+    fireEvent.mouseUp(window)
+    expect(firstProposalImage).toHaveStyle({ transform: 'translate(30px, 20px) rotate(0deg) scale(1)' })
     expect(screen.getByText('Proposal 1 of 2')).toBeInTheDocument()
     expect(screen.getByText('gallery_visual_1')).toBeInTheDocument()
     expect(screen.getByText(/location: 1\.000/i)).toBeInTheDocument()

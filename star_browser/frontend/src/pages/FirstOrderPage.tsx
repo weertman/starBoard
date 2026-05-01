@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   getFirstOrderMedia,
   getFirstOrderQueries,
   runFirstOrderSearch,
+  type FirstOrderMediaImage,
   type FirstOrderMediaResponse,
   type FirstOrderPreset,
   type FirstOrderQueryOption,
@@ -50,6 +51,12 @@ const stateOrder: FirstOrderQueryOption['state'][] = ['not_attempted', 'pinned',
 
 type StateFilter = Record<FirstOrderQueryOption['state'], boolean>
 type RankOrder = 'date_time' | 'existing_easy_match'
+type ImageViewState = {
+  scale: number
+  x: number
+  y: number
+  rotation: number
+}
 
 function defaultStateFilter(): StateFilter {
   return { not_attempted: false, pinned: false, attempted: false, matched: false }
@@ -105,6 +112,105 @@ function optionLabel(option: FirstOrderQueryOption): string {
 
 function primaryImage(media: FirstOrderMediaResponse | null) {
   return media?.images[0] ?? null
+}
+
+function QueryMatcherImagePane({ image, alt, ariaLabel }: { image: FirstOrderMediaImage; alt: string; ariaLabel: string }) {
+  const [view, setView] = useState<ImageViewState>({ scale: 1, x: 0, y: 0, rotation: 0 })
+  const rotateKeyDown = useRef(false)
+  const viewerRef = useRef<HTMLDivElement | null>(null)
+  const dragStart = useRef<{ mode: 'pan' | 'rotate'; x: number; y: number; view: ImageViewState } | null>(null)
+
+  useEffect(() => {
+    setView({ scale: 1, x: 0, y: 0, rotation: 0 })
+  }, [image.image_id])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === 'r') rotateKeyDown.current = true
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === 'r') rotateKeyDown.current = false
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
+  function applyWheelZoom(e: WheelEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const delta = Math.min(0.75, Math.abs(e.deltaY) / 1000)
+    setView((current) => ({
+      ...current,
+      scale: Number(Math.max(0.2, Math.min(8, current.scale + (e.deltaY < 0 ? delta : -delta))).toFixed(2)),
+    }))
+  }
+
+  useEffect(() => {
+    function onWindowWheel(e: WheelEvent) {
+      const viewer = viewerRef.current
+      if (!viewer) return
+      const rect = viewer.getBoundingClientRect()
+      const isInsideViewer = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
+      const targetIsInsideViewer = e.target instanceof Node && viewer.contains(e.target)
+      if (isInsideViewer || targetIsInsideViewer) applyWheelZoom(e)
+    }
+    window.addEventListener('wheel', onWindowWheel, { capture: true, passive: false })
+    return () => window.removeEventListener('wheel', onWindowWheel, { capture: true })
+  }, [])
+
+  function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    dragStart.current = { mode: rotateKeyDown.current ? 'rotate' : 'pan', x: e.clientX, y: e.clientY, view }
+    window.addEventListener('mousemove', onWindowMouseMove)
+    window.addEventListener('mouseup', onWindowMouseUp)
+  }
+
+  function onWindowMouseMove(e: MouseEvent) {
+    const start = dragStart.current
+    if (!start) return
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (start.mode === 'rotate') {
+      setView({ ...start.view, rotation: Number((start.view.rotation + dx * 0.3).toFixed(1)) })
+    } else {
+      setView({ ...start.view, x: start.view.x + dx, y: start.view.y + dy })
+    }
+  }
+
+  function onWindowMouseUp() {
+    dragStart.current = null
+    window.removeEventListener('mousemove', onWindowMouseMove)
+    window.removeEventListener('mouseup', onWindowMouseUp)
+  }
+
+  const transform = `translate(${view.x}px, ${view.y}px) rotate(${view.rotation}deg) scale(${view.scale})`
+
+  return (
+    <div>
+      <div style={{ marginBottom: 8, color: '#516070', fontSize: 13 }}>Wheel to zoom. Drag to pan. Hold R and drag to rotate.</div>
+      <div
+        ref={viewerRef}
+        aria-label={ariaLabel}
+        onMouseDown={onMouseDown}
+        style={{ height: 640, overflow: 'hidden', borderRadius: 10, border: '1px solid #d7deea', background: '#eef2f7', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: rotateKeyDown.current ? 'crosshair' : 'grab', userSelect: 'none' }}
+      >
+        <img
+          src={image.preview_url}
+          alt={alt}
+          draggable={false}
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', transform, transformOrigin: 'center center' }}
+        />
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => setView({ scale: 1, x: 0, y: 0, rotation: 0 })}>Reset image view</button>
+      </div>
+    </div>
+  )
 }
 
 export function FirstOrderPage() {
@@ -275,8 +381,8 @@ export function FirstOrderPage() {
     <main style={{ maxWidth: 1180, margin: '0 auto', padding: 18, fontFamily: 'system-ui, sans-serif', color: '#152033', background: '#f7f9fc', minHeight: '100vh' }}>
       <div style={{ display: 'grid', gap: 16 }}>
         <section style={card}>
-          <h1 style={{ marginTop: 0 }}>First-order Search</h1>
-          <p style={{ marginTop: 0, color: '#516070' }}>Run first-order ranking with desktop-style query selection: type-to-search, workflow state, quality indicators, refresh, and previous/next navigation.</p>
+          <h1 style={{ marginTop: 0 }}>Query Matcher</h1>
+          <p style={{ marginTop: 0, color: '#516070' }}>Run query-to-gallery matching with desktop-style query selection: type-to-search, workflow state, quality indicators, refresh, and previous/next navigation.</p>
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(280px, 1fr) 32px 32px 140px 180px auto auto', alignItems: 'start' }}>
             <div>
               <label style={{ display: 'block', fontWeight: 600, marginBottom: 4 }} htmlFor="first-order-query">Query</label>
@@ -432,7 +538,7 @@ export function FirstOrderPage() {
         {error && <section style={{ ...card, borderColor: '#e29a9a', background: '#fff5f5', color: '#7a1c1c' }}><b>Error:</b> {error}</section>}
 
         {result && (
-          <section style={card} aria-label="First-order side-by-side comparison">
+          <section style={card} aria-label="Query Matcher side-by-side comparison">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <h2 style={{ marginTop: 0, marginBottom: 0 }}>Results for {result.query_id}</h2>
               <div style={{ color: '#516070' }}>Preset: <b>{result.preset}</b></div>
@@ -452,34 +558,30 @@ export function FirstOrderPage() {
                       <h3 style={{ margin: 0 }}>Query</h3>
                       <code>{result.query_id}</code>
                     </div>
-                    <div style={{ minHeight: 430, display: 'grid', placeItems: 'center', background: '#eef2f7', borderRadius: 10 }}>
-                      {activeQueryImage ? (
-                        <img
-                          src={activeQueryImage.preview_url}
-                          alt={`Selected query ${result.query_id} image ${activeQueryImage.label}`}
-                          style={{ maxWidth: '100%', maxHeight: 430, objectFit: 'contain' }}
-                        />
-                      ) : (
-                        <div style={{ color: '#667085', padding: 16, textAlign: 'center' }}>No query image loaded.</div>
-                      )}
-                    </div>
+                    {activeQueryImage ? (
+                      <QueryMatcherImagePane
+                        image={activeQueryImage}
+                        alt={`Selected query ${result.query_id} image ${activeQueryImage.label}`}
+                        ariaLabel="Query matcher query image viewer"
+                      />
+                    ) : (
+                      <div style={{ color: '#667085', padding: 16, textAlign: 'center' }}>No query image loaded.</div>
+                    )}
                   </section>
                   <section aria-label="Active proposal comparison panel" style={{ border: '1px solid #d7deea', borderRadius: 12, background: '#fff', padding: 12, display: 'grid', gap: 10 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
                       <h3 style={{ margin: 0 }}>Proposal</h3>
                       <span style={{ color: '#516070' }}>Score {activeCandidate.score.toFixed(4)}</span>
                     </div>
-                    <div style={{ minHeight: 430, display: 'grid', placeItems: 'center', background: '#eef2f7', borderRadius: 10 }}>
-                      {activeCandidateImage ? (
-                        <img
-                          src={activeCandidateImage.preview_url}
-                          alt={`Rank ${activeCandidateIndex + 1} ${activeCandidate.entity_id} image ${activeCandidateImage.label}`}
-                          style={{ maxWidth: '100%', maxHeight: 430, objectFit: 'contain' }}
-                        />
-                      ) : (
-                        <div style={{ color: '#667085', padding: 16, textAlign: 'center' }}>Image loads when media is available.</div>
-                      )}
-                    </div>
+                    {activeCandidateImage ? (
+                      <QueryMatcherImagePane
+                        image={activeCandidateImage}
+                        alt={`Rank ${activeCandidateIndex + 1} ${activeCandidate.entity_id} image ${activeCandidateImage.label}`}
+                        ariaLabel="Query matcher proposal image viewer"
+                      />
+                    ) : (
+                      <div style={{ color: '#667085', padding: 16, textAlign: 'center' }}>Image loads when media is available.</div>
+                    )}
                     <div style={{ display: 'grid', gap: 8 }}>
                       <code style={{ fontWeight: 700, fontSize: 16 }}>{activeCandidate.entity_id}</code>
                       {activeCandidateImage?.encounter && <span style={{ color: '#b26a00', fontSize: 12 }}>Encounter: {activeCandidateImage.encounter}</span>}
