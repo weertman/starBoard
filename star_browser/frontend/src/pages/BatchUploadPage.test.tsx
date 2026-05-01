@@ -210,6 +210,12 @@ describe('BatchUploadPage', () => {
     expect(screen.queryByRole('heading', { name: '2. Discover IDs' })).not.toBeInTheDocument()
   })
 
+  it('defaults to Query as the target archive', async () => {
+    render(<BatchUploadPage />)
+
+    expect(screen.getByLabelText('Target archive')).toHaveValue('query')
+  })
+
   it('defaults to browsing a local folder from the user machine for remote uploads', async () => {
     const user = userEvent.setup()
     render(<BatchUploadPage />)

@@ -151,7 +151,7 @@ function analyzeZipEntries(names: string[], requestedMode: DiscoverMode): ZipStr
 }
 
 export function BatchUploadPage() {
-  const [targetArchive, setTargetArchive] = useState<TargetArchive>('gallery')
+  const [targetArchive, setTargetArchive] = useState<TargetArchive>('query')
   const [discoveryMode, setDiscoveryMode] = useState<DiscoverMode>('auto')
   const [idPrefix, setIdPrefix] = useState('')
   const [idSuffix, setIdSuffix] = useState('')
