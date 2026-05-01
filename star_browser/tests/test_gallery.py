@@ -11,6 +11,8 @@ def test_gallery_entity_response_model_fields():
     obj = GalleryEntityResponse(
         entity_id='anchovy',
         metadata_summary={},
+        metadata_rows=[],
+        timeline=[],
         encounters=[],
         images=[],
     )
@@ -69,7 +71,13 @@ def test_id_review_query_entity_route_returns_seeded_query(tmp_path, monkeypatch
     assert r.status_code == 200
     body = r.json()
     assert body['entity_id'] == 'query_review_001'
+    assert body['archive_type'] == 'query'
     assert body['metadata_summary']['location'] == 'Friday Harbor'
+    assert body['metadata_rows'][0]['source'] == 'queries_metadata.csv'
+    assert body['metadata_rows'][0]['values']['location'] == 'Friday Harbor'
+    assert body['timeline'][0]['encounter'] == '03_15_24'
+    assert body['timeline'][0]['image_count'] == 1
+    assert body['timeline'][0]['image_labels'] == ['IMG_001.jpg']
     assert len(body['images']) == 1
     assert body['images'][0]['image_id'].startswith('query:query_review_001:')
     assert body['images'][0]['preview_url'].startswith('/api/id-review/media/query:query_review_001:')

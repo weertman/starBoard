@@ -13,8 +13,17 @@ import { getIdReviewEntity } from '../api/client'
 const mockedGetIdReviewEntity = vi.mocked(getIdReviewEntity)
 
 const galleryResponse = {
+  archive_type: 'gallery' as const,
   entity_id: 'entity_001',
   metadata_summary: { location: 'Friday Harbor' },
+  metadata_rows: [
+    { row_index: 1, source: 'gallery_metadata.csv', values: { location: 'Friday Harbor', sex: 'female' } },
+    { row_index: 2, source: 'gallery_metadata.csv', values: { location: 'Cattle Point', sex: 'male' } },
+  ],
+  timeline: [
+    { encounter: 'enc_a', date: '2026-04-01', label: 'A — 2026-04-01', image_count: 2, image_labels: ['Image A1', 'Image A2'] },
+    { encounter: 'enc_b', date: '2026-04-02', label: 'B — 2026-04-02', image_count: 1, image_labels: ['Image B1'] },
+  ],
   encounters: [
     { encounter: 'enc_a', date: '2026-04-01', label: 'A — 2026-04-01' },
     { encounter: 'enc_b', date: '2026-04-02', label: 'B — 2026-04-02' },
@@ -78,6 +87,26 @@ describe('GalleryPage', () => {
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
     expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_001')
+  })
+
+  it('shows images, metadata rows, and timeline for the selected ID', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+
+    expect(await screen.findByRole('heading', { name: 'Images' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Metadata' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Timeline' })).toBeInTheDocument()
+    expect(screen.getByText('Latest metadata')).toBeInTheDocument()
+    expect(screen.getByText('All metadata rows')).toBeInTheDocument()
+    expect(screen.getByText('Row 1 · gallery_metadata.csv')).toBeInTheDocument()
+    expect(screen.getAllByText(/sex:/).length).toBeGreaterThan(0)
+    expect(screen.getByText('female')).toBeInTheDocument()
+    expect(screen.getByText('2026-04-01')).toBeInTheDocument()
+    expect(screen.getByText('2 images')).toBeInTheDocument()
+    expect(screen.getByText('Image A1, Image A2')).toBeInTheDocument()
   })
 
   it('filters the image list by encounter', async () => {

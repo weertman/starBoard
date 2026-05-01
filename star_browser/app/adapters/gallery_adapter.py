@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from src.data import archive_paths as ap
@@ -7,7 +8,7 @@ from src.data.csv_io import last_row_per_id, read_rows_multi
 from src.data.encounter_info import get_encounter_date, list_encounters_for_id
 from src.data.image_index import list_image_files
 
-from ..models.gallery_api import EncounterOption, ImageDescriptor
+from ..models.gallery_api import EncounterOption, ImageDescriptor, MetadataRow, TimelineEvent
 
 
 def _target_name(archive_type: str) -> str:
@@ -32,6 +33,25 @@ def _metadata_summary_for_id(archive_type: str, entity_id: str) -> dict[str, str
         if text:
             summary[k] = text
     return summary
+
+
+def _metadata_rows_for_id(archive_type: str, entity_id: str) -> list[MetadataRow]:
+    id_col = _id_column(archive_type)
+    rows: list[MetadataRow] = []
+    for path in ap.metadata_csv_paths_for_read(_target_name(archive_type)):
+        if not path.exists():
+            continue
+        with path.open(newline='', encoding='utf-8-sig') as f:
+            for row_index, row in enumerate(csv.DictReader(f), start=1):
+                if (row.get(id_col) or '').strip() != entity_id:
+                    continue
+                values = {
+                    k: v.strip()
+                    for k, v in row.items()
+                    if k != id_col and v and v.strip()
+                }
+                rows.append(MetadataRow(row_index=row_index, source=path.name, values=values))
+    return rows
 
 
 def _encounter_options_for_id(archive_type: str, entity_id: str) -> list[EncounterOption]:
@@ -67,6 +87,38 @@ def _image_descriptors_for_id(archive_type: str, entity_id: str) -> list[ImageDe
     return descriptors
 
 
+def _timeline_for_id(encounters: list[EncounterOption], images: list[ImageDescriptor]) -> list[TimelineEvent]:
+    labels_by_encounter: dict[str, list[str]] = {}
+    for image in images:
+        key = image.encounter or ''
+        labels_by_encounter.setdefault(key, []).append(image.label)
+
+    events: list[TimelineEvent] = []
+    seen: set[str] = set()
+    for encounter in encounters:
+        seen.add(encounter.encounter)
+        labels = labels_by_encounter.get(encounter.encounter, [])
+        events.append(TimelineEvent(
+            encounter=encounter.encounter,
+            date=encounter.date,
+            label=encounter.label,
+            image_count=len(labels),
+            image_labels=labels,
+        ))
+    for encounter, labels in labels_by_encounter.items():
+        if encounter in seen:
+            continue
+        label = encounter or 'No encounter'
+        events.append(TimelineEvent(
+            encounter=encounter,
+            date='',
+            label=label,
+            image_count=len(labels),
+            image_labels=labels,
+        ))
+    return sorted(events, key=lambda event: (event.date or '9999-99-99', event.encounter))
+
+
 def resolve_gallery_image_path(image_id: str) -> Path | None:
     return resolve_id_review_image_path(image_id)
 
@@ -87,15 +139,19 @@ def resolve_id_review_image_path(image_id: str) -> Path | None:
     return files[idx]
 
 
-def load_gallery_entity(entity_id: str) -> tuple[dict[str, str], list[EncounterOption], list[ImageDescriptor]]:
+def load_gallery_entity(entity_id: str) -> tuple[dict[str, str], list[MetadataRow], list[TimelineEvent], list[EncounterOption], list[ImageDescriptor]]:
     return load_id_review_entity('gallery', entity_id)
 
 
-def load_id_review_entity(archive_type: str, entity_id: str) -> tuple[dict[str, str], list[EncounterOption], list[ImageDescriptor]]:
+def load_id_review_entity(archive_type: str, entity_id: str) -> tuple[dict[str, str], list[MetadataRow], list[TimelineEvent], list[EncounterOption], list[ImageDescriptor]]:
     if archive_type not in {'gallery', 'query'}:
-        return {}, [], []
+        return {}, [], [], [], []
+    encounters = _encounter_options_for_id(archive_type, entity_id)
+    images = _image_descriptors_for_id(archive_type, entity_id)
     return (
         _metadata_summary_for_id(archive_type, entity_id),
-        _encounter_options_for_id(archive_type, entity_id),
-        _image_descriptors_for_id(archive_type, entity_id),
+        _metadata_rows_for_id(archive_type, entity_id),
+        _timeline_for_id(encounters, images),
+        encounters,
+        images,
     )

@@ -104,12 +104,42 @@ export function GalleryPage() {
             </section>
 
             <section style={card}>
-              <h2 style={{ marginTop: 0 }}>Metadata summary</h2>
+              <h2 style={{ marginTop: 0 }}>Metadata</h2>
+              <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Latest metadata</h3>
               <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
                 {Object.entries(result.metadata_summary).length === 0 ? (
                   <div style={{ color: '#516070' }}>No metadata summary available.</div>
                 ) : Object.entries(result.metadata_summary).map(([k, v]) => (
                   <div key={k}><b>{k}:</b> {v}</div>
+                ))}
+              </div>
+              <h3 style={{ margin: '16px 0 8px', fontSize: 16 }}>All metadata rows</h3>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {(result.metadata_rows ?? []).length === 0 ? (
+                  <div style={{ color: '#516070' }}>No metadata rows available.</div>
+                ) : (result.metadata_rows ?? []).map((row) => (
+                  <div key={`${row.source}-${row.row_index}`} style={{ border: '1px solid #e1e7f0', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Row {row.row_index} · {row.source}</div>
+                    <div style={{ display: 'grid', gap: 4, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                      {Object.entries(row.values).map(([k, v]) => <div key={k}><b>{k}:</b> {v}</div>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={card}>
+              <h2 style={{ marginTop: 0 }}>Timeline</h2>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {(result.timeline ?? []).length === 0 ? (
+                  <div style={{ color: '#516070' }}>No timeline events available.</div>
+                ) : (result.timeline ?? []).map((event) => (
+                  <div key={event.encounter || event.label} style={{ borderLeft: '4px solid #2563eb', paddingLeft: 10 }}>
+                    <div style={{ fontWeight: 700 }}>{event.date || 'Unknown date'}</div>
+                    <div>{event.label}</div>
+                    <div style={{ color: '#516070' }}>{event.image_count} {event.image_count === 1 ? 'image' : 'images'}</div>
+                    {event.image_labels.length > 0 && <div style={{ color: '#516070', fontSize: 13 }}>{event.image_labels.join(', ')}</div>}
+                  </div>
                 ))}
               </div>
             </section>

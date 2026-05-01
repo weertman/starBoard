@@ -77,9 +77,26 @@ export type EncounterOption = {
   label: string
 }
 
+export type MetadataRow = {
+  row_index: number
+  source: string
+  values: Record<string, string>
+}
+
+export type TimelineEvent = {
+  encounter: string
+  date: string
+  label: string
+  image_count: number
+  image_labels: string[]
+}
+
 export type GalleryEntityResponse = {
+  archive_type?: 'query' | 'gallery'
   entity_id: string
   metadata_summary: Record<string, string>
+  metadata_rows?: MetadataRow[]
+  timeline?: TimelineEvent[]
   encounters: EncounterOption[]
   images: ImageDescriptor[]
 }
