@@ -156,7 +156,7 @@ describe('GalleryPage', () => {
 
   it('lets users zoom, pan, rotate, and reset the selected ID image', async () => {
     const user = userEvent.setup()
-    const addEventListenerSpy = vi.spyOn(HTMLElement.prototype, 'addEventListener')
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
     render(<GalleryPage />)
 
     await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
@@ -166,10 +166,21 @@ describe('GalleryPage', () => {
     const viewer = await screen.findByLabelText('Interactive image viewer')
     const image = screen.getByRole('img', { name: 'Image A1' })
     expect(screen.getByText('Wheel to zoom. Drag to pan. Hold R and drag to rotate.')).toBeInTheDocument()
-    expect(addEventListenerSpy).toHaveBeenCalledWith('wheel', expect.any(Function), expect.objectContaining({ passive: false }))
+    expect(addEventListenerSpy).toHaveBeenCalledWith('wheel', expect.any(Function), expect.objectContaining({ capture: true, passive: false }))
 
-    const wheelEvent = new WheelEvent('wheel', { deltaY: -300, bubbles: true, cancelable: true })
-    viewer.dispatchEvent(wheelEvent)
+    vi.spyOn(viewer, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 10,
+      left: 10,
+      top: 10,
+      right: 510,
+      bottom: 410,
+      width: 500,
+      height: 400,
+      toJSON: () => ({}),
+    })
+    const wheelEvent = new WheelEvent('wheel', { clientX: 100, clientY: 100, deltaY: -300, bubbles: true, cancelable: true })
+    window.dispatchEvent(wheelEvent)
     expect(wheelEvent.defaultPrevented).toBe(true)
     await waitFor(() => {
       expect(image).toHaveStyle({ transform: 'translate(0px, 0px) rotate(0deg) scale(1.3)' })

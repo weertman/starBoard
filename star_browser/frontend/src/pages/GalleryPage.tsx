@@ -50,19 +50,26 @@ function InteractiveImageViewer({ image }: { image: ImageDescriptor }) {
     }
   }, [])
 
+  function applyWheelZoom(e: WheelEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const delta = Math.min(0.75, Math.abs(e.deltaY) / 1000)
+    setView((current) => ({
+      ...current,
+      scale: Number(Math.max(0.2, Math.min(8, current.scale + (e.deltaY < 0 ? delta : -delta))).toFixed(2)),
+    }))
+  }
+
   useEffect(() => {
-    const viewer = viewerRef.current
-    if (!viewer) return undefined
-    function onNativeWheel(e: WheelEvent) {
-      e.preventDefault()
-      const delta = Math.min(0.75, Math.abs(e.deltaY) / 1000)
-      setView((current) => ({
-        ...current,
-        scale: Number(Math.max(0.2, Math.min(8, current.scale + (e.deltaY < 0 ? delta : -delta))).toFixed(2)),
-      }))
+    function onWindowWheel(e: WheelEvent) {
+      const viewer = viewerRef.current
+      if (!viewer) return
+      const rect = viewer.getBoundingClientRect()
+      const isInsideViewer = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
+      if (isInsideViewer || viewer.contains(e.target as Node | null)) applyWheelZoom(e)
     }
-    viewer.addEventListener('wheel', onNativeWheel, { passive: false })
-    return () => viewer.removeEventListener('wheel', onNativeWheel)
+    window.addEventListener('wheel', onWindowWheel, { capture: true, passive: false })
+    return () => window.removeEventListener('wheel', onWindowWheel, { capture: true })
   }, [])
 
   function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
