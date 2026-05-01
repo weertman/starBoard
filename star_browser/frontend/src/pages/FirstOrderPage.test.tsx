@@ -24,6 +24,7 @@ const queryOptions = [
     last_location: 'Eagle Point',
     easy_match_score: 0.75,
     quality: { madreporite_visibility: 0.75, anus_visibility: null, postural_visibility: 1 },
+    metadata: { location: 'Eagle Point', notes: 'large selected-query metadata note', tide: 'low' },
   },
   {
     query_id: 'query_b',
@@ -32,6 +33,7 @@ const queryOptions = [
     last_location: 'Cattle Point',
     easy_match_score: 0.5,
     quality: { madreporite_visibility: null, anus_visibility: null, postural_visibility: null },
+    metadata: { location: 'Cattle Point', notes: 'attempted note' },
   },
   {
     query_id: 'query_matched',
@@ -40,6 +42,7 @@ const queryOptions = [
     last_location: 'Friday Harbor',
     easy_match_score: 1,
     quality: { madreporite_visibility: 1, anus_visibility: 1, postural_visibility: 1 },
+    metadata: { location: 'Friday Harbor', notes: 'already matched note' },
   },
 ]
 
@@ -211,6 +214,12 @@ describe('FirstOrderPage query selector', () => {
     expect(selectedQueryImageRegion).toHaveStyle({ gridTemplateColumns: '1fr' })
     const selectedQueryImagePanel = screen.getByLabelText('Selected query image panel')
     const selectedQueryImageControls = screen.getByLabelText('Selected query image controls')
+    const selectedQueryMetadata = screen.getByLabelText('Selected query metadata')
+    expect(selectedQueryImagePanel).toContainElement(selectedQueryMetadata)
+    expect(selectedQueryMetadata).toHaveStyle({ maxHeight: '360px', overflow: 'auto' })
+    expect(selectedQueryMetadata).toHaveTextContent('notes')
+    expect(selectedQueryMetadata).toHaveTextContent('large selected-query metadata note')
+    expect(selectedQueryMetadata).toHaveTextContent('tide')
     expect(selectedQueryImagePanel).toContainElement(selectedQueryImageControls)
     expect(selectedQueryImagePanel).toHaveStyle({ gridTemplateColumns: 'minmax(0, 1fr) auto' })
     expect(screen.getByAltText('Selected query query_a image query_a.jpg')).toHaveStyle({ maxHeight: '520px' })

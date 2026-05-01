@@ -121,6 +121,7 @@ export type FirstOrderQueryOption = {
   last_location?: string | null
   easy_match_score: number
   quality: Record<string, number | null>
+  metadata?: Record<string, string>
 }
 
 export type FirstOrderQueryOptionsResponse = {

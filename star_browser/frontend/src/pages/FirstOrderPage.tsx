@@ -386,6 +386,7 @@ export function FirstOrderPage() {
   const activeCandidateImageIndex = activeCandidate ? activeCandidateImageIndexes[activeCandidate.entity_id] ?? 0 : 0
   const activeCandidateImage = activeCandidateMedia?.images[activeCandidateImageIndex] ?? null
   const activeQueryImage = queryMedia?.images[activeQueryImageIndex] ?? null
+  const selectedMetadataEntries = Object.entries(selectedOption?.metadata ?? {}).filter(([, value]) => value)
 
   function stepProposal(delta: number) {
     if (!result?.candidates.length) return
@@ -560,11 +561,28 @@ export function FirstOrderPage() {
                       style={{ display: 'block', width: '100%', maxHeight: 520, objectFit: 'contain', borderRadius: 8, background: '#eef2f7' }}
                     />
                   </a>
-                  <div aria-label="Selected query image controls" style={{ display: 'grid', gap: 8, justifyItems: 'stretch', minWidth: 132 }}>
-                    <button type="button" onClick={() => stepQueryImage(-1)} disabled={activeQueryImageIndex === 0}>Previous selected query image</button>
-                    <b style={{ fontSize: 13, textAlign: 'center' }}>Selected query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
-                    <button type="button" onClick={() => stepQueryImage(1)} disabled={activeQueryImageIndex >= (queryMedia?.images.length ?? 0) - 1}>Next selected query image</button>
-                    <button type="button" onClick={() => void handleSearch('megastar')} disabled={busy || !queryId.trim() || !activeQueryImage} style={{ fontWeight: 700 }}>MegaStar search selected image</button>
+                  <div style={{ display: 'grid', gap: 10, alignSelf: 'stretch', minWidth: 180, maxWidth: 260 }}>
+                    <div aria-label="Selected query metadata" style={{ maxHeight: 360, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#fff' }}>
+                      <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Selected query metadata</h3>
+                      {selectedMetadataEntries.length > 0 ? (
+                        <dl style={{ margin: 0, display: 'grid', gap: 6 }}>
+                          {selectedMetadataEntries.map(([key, value]) => (
+                            <div key={key} style={{ display: 'grid', gap: 2 }}>
+                              <dt style={{ fontSize: 12, color: '#667085', fontWeight: 700 }}>{key}</dt>
+                              <dd style={{ margin: 0, fontSize: 13, overflowWrap: 'anywhere' }}>{value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : (
+                        <div style={{ color: '#667085', fontSize: 13 }}>No metadata for this query.</div>
+                      )}
+                    </div>
+                    <div aria-label="Selected query image controls" style={{ display: 'grid', gap: 8, justifyItems: 'stretch' }}>
+                      <button type="button" onClick={() => stepQueryImage(-1)} disabled={activeQueryImageIndex === 0}>Previous selected query image</button>
+                      <b style={{ fontSize: 13, textAlign: 'center' }}>Selected query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
+                      <button type="button" onClick={() => stepQueryImage(1)} disabled={activeQueryImageIndex >= (queryMedia?.images.length ?? 0) - 1}>Next selected query image</button>
+                      <button type="button" onClick={() => void handleSearch('megastar')} disabled={busy || !queryId.trim() || !activeQueryImage} style={{ fontWeight: 700 }}>MegaStar search selected image</button>
+                    </div>
                   </div>
                 </div>
               ) : (

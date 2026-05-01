@@ -134,6 +134,7 @@ def list_first_order_query_options() -> FirstOrderQueryOptionsResponse:
             last_location=(metadata_row.get('location') or '').strip() or None,
             easy_match_score=_easy_match_score(state),
             quality=_normalized_quality(metadata_row),
+            metadata={key: value for key, value in metadata_row.items() if value},
         )
         if state == 'matched':
             matched.append(option)

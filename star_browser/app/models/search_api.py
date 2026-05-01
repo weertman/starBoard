@@ -15,6 +15,7 @@ class FirstOrderQueryOption(BaseModel):
     last_location: str | None = None
     easy_match_score: float = 0.0
     quality: dict[str, float | None] = Field(default_factory=dict)
+    metadata: dict[str, str] = Field(default_factory=dict)
 
 
 class FirstOrderQueryOptionsResponse(BaseModel):

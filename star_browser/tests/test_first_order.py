@@ -38,11 +38,11 @@ def test_first_order_query_options_match_desktop_selector_order_and_state(tmp_pa
     queries.mkdir(parents=True)
     (gallery / 'gallery_metadata.csv').write_text('gallery_id,location\nmedia_anchovy,Friday Harbor\n', encoding='utf-8-sig')
     (queries / 'queries_metadata.csv').write_text(
-        'query_id,madreporite_visibility,anus_visibility,postural_visibility,location\n'
-        'matched,3,1,4,Friday Harbor\n'
-        'pinned,2,,,Eagle Point\n'
-        'attempted,,,,Cattle Point\n'
-        'silent,,,,Hidden Cove\n',
+        'query_id,madreporite_visibility,anus_visibility,postural_visibility,location,notes\n'
+        'matched,3,1,4,Friday Harbor,already matched note\n'
+        'pinned,2,,,Eagle Point,large selected-query metadata note\n'
+        'attempted,,,,Cattle Point,attempted note\n'
+        'silent,,,,Hidden Cove,hidden note\n',
         encoding='utf-8-sig',
     )
     for query_id, encounter in {
@@ -76,6 +76,8 @@ def test_first_order_query_options_match_desktop_selector_order_and_state(tmp_pa
     assert body['queries'][1]['easy_match_score'] > body['queries'][0]['easy_match_score']
     assert body['queries'][1]['quality']['madreporite_visibility'] == 2 / 3
     assert body['queries'][1]['quality']['anus_visibility'] is None
+    assert body['queries'][1]['metadata']['notes'] == 'large selected-query metadata note'
+    assert body['queries'][1]['metadata']['location'] == 'Eagle Point'
 
 
 def test_first_order_media_routes_return_best_first_descriptors_and_resized_previews(tmp_path, monkeypatch):
