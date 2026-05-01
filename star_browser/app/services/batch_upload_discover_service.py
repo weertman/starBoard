@@ -12,8 +12,6 @@ from ..models.batch_upload_api import (
     BatchUploadDiscoverRequest,
     BatchUploadDiscoverResponse,
     BatchUploadDiscoverSummary,
-    BatchUploadServerPathPreviewRequest,
-    BatchUploadServerPathPreviewResponse,
 )
 from ..models.batch_upload_plan import PlannedBatch, put_plan
 from .batch_upload_upload_service import resolve_uploaded_bundle_path
@@ -33,31 +31,10 @@ def _resolved_mode(source_path: Path, requested_mode: str) -> str:
 
 
 def _source_path_for_request(req: BatchUploadDiscoverRequest) -> Path:
-    if req.import_source.type == 'server_path':
-        source_path = Path(req.import_source.path)
-        if not source_path.is_dir():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_source_path')
-        return source_path
-
     resolved = resolve_uploaded_bundle_path(req.import_source.upload_token)
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='upload_token_not_found')
     return resolved
-
-
-def preview_server_path(req: BatchUploadServerPathPreviewRequest) -> BatchUploadServerPathPreviewResponse:
-    source_path = Path(req.path).expanduser()
-    if not source_path.is_dir():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_source_path')
-    entries = sorted(p.name for p in source_path.iterdir())[:50]
-    return BatchUploadServerPathPreviewResponse(
-        path=str(source_path),
-        exists=source_path.exists(),
-        is_directory=source_path.is_dir(),
-        resolved_discovery_mode=_resolved_mode(source_path, req.discovery_mode),
-        immediate_entries=entries,
-        importable_images=sum(1 for p in source_path.rglob('*') if p.is_file() and is_importable_image(p)),
-    )
 
 
 def build_discover_preview(req: BatchUploadDiscoverRequest) -> BatchUploadDiscoverResponse:

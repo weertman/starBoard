@@ -4,14 +4,12 @@ import {
   discoverBatchUpload,
   executeBatchUpload,
   getLocationSites,
-  previewBatchServerPath,
   uploadBatchFolder,
   uploadBatchZip,
   type BatchUploadDiscoverRequest,
   type BatchUploadDiscoverResponse,
   type BatchUploadDiscoverRow,
   type BatchUploadExecuteResponse,
-  type BatchUploadServerPathPreviewResponse,
   type LocationSite,
 } from '../api/client'
 import { LocationSiteMap } from '../components/LocationSiteMap'
@@ -163,10 +161,8 @@ export function BatchUploadPage() {
   const [knownSites, setKnownSites] = useState<LocationSite[]>([])
   const [showNewLocationInput, setShowNewLocationInput] = useState(false)
   const [pickingCoordinates, setPickingCoordinates] = useState(false)
-  const [sourceMode, setSourceMode] = useState<'local_folder' | 'zip' | 'server_path'>('local_folder')
+  const [sourceMode, setSourceMode] = useState<'local_folder' | 'zip'>('local_folder')
   const [folderFiles, setFolderFiles] = useState<File[]>([])
-  const [serverPath, setServerPath] = useState('')
-  const [serverPathPreview, setServerPathPreview] = useState<BatchUploadServerPathPreviewResponse | null>(null)
   const [zipFile, setZipFile] = useState<File | null>(null)
   const [zipPreview, setZipPreview] = useState<ZipStructurePreview | null>(null)
   const [uploadToken, setUploadToken] = useState<string | null>(null)
@@ -187,7 +183,7 @@ export function BatchUploadPage() {
   const todayIso = new Date().toISOString().slice(0, 10)
   const canUploadZip = Boolean(zipFile && zipPreview?.status === 'valid')
   const canUploadFolder = folderFiles.length > 0
-  const canDiscover = sourceMode === 'server_path' ? serverPathPreview?.path === serverPath.trim() : Boolean(uploadToken)
+  const canDiscover = Boolean(uploadToken)
 
   useEffect(() => {
     void (async () => {
@@ -329,26 +325,6 @@ export function BatchUploadPage() {
     }
   }
 
-  async function handlePreviewServerPath() {
-    const trimmed = serverPath.trim()
-    if (!trimmed) return
-    beginOperation('discover', 'Previewing server path')
-    setError(null)
-    setDiscoverResponse(null)
-    setExecuteResponse(null)
-    try {
-      const result = await previewBatchServerPath({ path: trimmed, discovery_mode: discoveryMode })
-      setServerPathPreview(result)
-      setPlanStale(false)
-      setSuccessReadout(`Server path preview complete: ${result.importable_images} importable image(s).`)
-    } catch (err) {
-      setServerPathPreview(null)
-      setError(String(err))
-    } finally {
-      endOperation()
-    }
-  }
-
   async function handleDiscover() {
     if (!canDiscover) return
     beginOperation('discover', 'Previewing IDs and metadata')
@@ -363,9 +339,7 @@ export function BatchUploadPage() {
         flat_encounter_date: flatEncounterDate,
         flat_encounter_suffix: flatEncounterSuffix,
         batch_location: batchLocation,
-        import_source: sourceMode === 'server_path'
-          ? { type: 'server_path', path: serverPath.trim() }
-          : { type: 'uploaded_bundle', upload_token: uploadToken ?? '' },
+        import_source: { type: 'uploaded_bundle', upload_token: uploadToken ?? '' },
       }
       const result = await discoverBatchUpload(request)
       setDiscoverResponse(result)
@@ -425,11 +399,10 @@ export function BatchUploadPage() {
           <details style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>How to use Batch Upload</summary>
             <ul style={{ margin: '10px 0 0 20px', padding: 0, color: '#405064' }}>
-              <li>Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders. Server folder path is only for advanced same-machine operation.</li>
+              <li>Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders.</li>
               <li>Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.</li>
               <li>Set the target archive, optional ID prefix/suffix, flat encounter date/suffix when shown, and location metadata before previewing.</li>
               <li>For local-folder sources, click Browse/Choose files, select the top folder from your own computer, then click Prepare folder for preview to upload that folder structure to starBoard.</li>
-              <li>For server-folder sources, paste the absolute folder path and click Preview server path to confirm the directory exists and contains importable images.</li>
               <li>For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.</li>
               <li>Preview IDs and metadata to build the review table. This is still read-only: it does not write images, metadata, or IDs into Gallery or Queries.</li>
               <li>Review every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, warnings, and whether the row is selected.</li>
@@ -561,7 +534,7 @@ export function BatchUploadPage() {
                 aria-label="Use local folder upload"
                 type="radio"
                 checked={sourceMode === 'local_folder'}
-                onChange={() => { setSourceMode('local_folder'); setServerPathPreview(null); invalidateDiscoveredPlan() }}
+                onChange={() => { setSourceMode('local_folder'); invalidateDiscoveredPlan() }}
               />
               Local folder
             </label>
@@ -570,18 +543,9 @@ export function BatchUploadPage() {
                 aria-label="Use zip upload"
                 type="radio"
                 checked={sourceMode === 'zip'}
-                onChange={() => { setSourceMode('zip'); setServerPathPreview(null); invalidateDiscoveredPlan() }}
+                onChange={() => { setSourceMode('zip'); invalidateDiscoveredPlan() }}
               />
               Upload zip
-            </label>
-            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                aria-label="Select server folder path source"
-                type="radio"
-                checked={sourceMode === 'server_path'}
-                onChange={() => { setSourceMode('server_path'); invalidateDiscoveredPlan() }}
-              />
-              Advanced: server folder path
             </label>
           </div>
           {sourceMode === 'local_folder' && (
@@ -644,31 +608,6 @@ export function BatchUploadPage() {
                 </div>
               )}
             </>
-          )}
-          {sourceMode === 'server_path' && (
-            <div style={{ display: 'grid', gap: 10 }}>
-              <label>
-                <div>Server folder path</div>
-                <input
-                  aria-label="Server folder path"
-                  value={serverPath}
-                  placeholder="/home/weertman/path/to/batch-folder"
-                  onChange={(e) => { setServerPath(e.target.value); setServerPathPreview(null); invalidateDiscoveredPlan() }}
-                  style={input}
-                />
-              </label>
-              <div>
-                <button onClick={() => void handlePreviewServerPath()} disabled={!serverPath.trim() || busy !== null} style={{ padding: '8px 12px' }}>
-                  {busy === 'discover' ? 'Previewing…' : 'Preview server path'}
-                </button>
-              </div>
-              {serverPathPreview && (
-                <div style={{ color: '#24354d' }}>
-                  <b>Server path ready:</b> {serverPathPreview.path}<br />
-                  Resolved mode: <b>{serverPathPreview.resolved_discovery_mode}</b>; importable images: <b>{serverPathPreview.importable_images}</b>; entries: {serverPathPreview.immediate_entries.join(', ') || 'none'}
-                </div>
-              )}
-            </div>
           )}
         </section>
 

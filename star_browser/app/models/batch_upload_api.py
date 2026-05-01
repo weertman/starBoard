@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
-
-class ServerPathImportSource(BaseModel):
-    type: Literal['server_path']
-    path: str
 
 
 class UploadedBundleImportSource(BaseModel):
@@ -15,7 +10,7 @@ class UploadedBundleImportSource(BaseModel):
     upload_token: str
 
 
-BatchUploadImportSource = Union[ServerPathImportSource, UploadedBundleImportSource]
+BatchUploadImportSource = UploadedBundleImportSource
 
 
 class BatchUploadLocationDraft(BaseModel):
@@ -112,20 +107,6 @@ class BatchUploadExecuteResponse(BaseModel):
     summary: BatchUploadExecuteSummary
     rows: list[BatchUploadExecuteRowResult] = Field(default_factory=list)
     message: str
-
-
-class BatchUploadServerPathPreviewRequest(BaseModel):
-    path: str
-    discovery_mode: Literal['auto', 'flat', 'encounters', 'grouped'] = 'auto'
-
-
-class BatchUploadServerPathPreviewResponse(BaseModel):
-    path: str
-    exists: bool
-    is_directory: bool
-    resolved_discovery_mode: Literal['flat', 'encounters', 'grouped', 'single_id', 'empty']
-    immediate_entries: list[str] = Field(default_factory=list)
-    importable_images: int
 
 
 class BatchUploadUploadResponse(BaseModel):

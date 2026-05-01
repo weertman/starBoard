@@ -117,7 +117,6 @@ export type FirstOrderSearchResponse = {
 }
 
 export type BatchUploadImportSource =
-  | { type: 'server_path'; path: string }
   | { type: 'uploaded_bundle'; upload_token: string }
 
 export type BatchUploadLocationDraft = {
@@ -210,20 +209,6 @@ export type BatchUploadExecuteResponse = {
   message: string
 }
 
-export type BatchUploadServerPathPreviewRequest = {
-  path: string
-  discovery_mode: 'auto' | 'flat' | 'encounters' | 'grouped'
-}
-
-export type BatchUploadServerPathPreviewResponse = {
-  path: string
-  exists: boolean
-  is_directory: boolean
-  resolved_discovery_mode: 'flat' | 'encounters' | 'grouped' | 'single_id' | 'empty'
-  immediate_entries: string[]
-  importable_images: number
-}
-
 export type BatchUploadUploadResponse = {
   upload_token: string
   file_count: number
@@ -288,15 +273,6 @@ export async function uploadBatchFolder(files: File[]): Promise<BatchUploadUploa
   }
   const res = await fetch('/api/batch-upload/folder-uploads', { method: 'POST', body: form })
   return parseJsonOrThrow<BatchUploadUploadResponse>(res)
-}
-
-export async function previewBatchServerPath(req: BatchUploadServerPathPreviewRequest): Promise<BatchUploadServerPathPreviewResponse> {
-  const res = await fetch('/api/batch-upload/server-path/preview', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  return parseJsonOrThrow<BatchUploadServerPathPreviewResponse>(res)
 }
 
 export async function discoverBatchUpload(req: BatchUploadDiscoverRequest): Promise<BatchUploadDiscoverResponse> {

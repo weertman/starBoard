@@ -17,18 +17,16 @@ vi.mock('../api/client', () => ({
   uploadBatchFolder: vi.fn(),
   discoverBatchUpload: vi.fn(),
   executeBatchUpload: vi.fn(),
-  previewBatchServerPath: vi.fn(),
   getLocationSites: vi.fn(),
 }))
 
 import { BatchUploadPage } from './BatchUploadPage'
-import { discoverBatchUpload, executeBatchUpload, getLocationSites, previewBatchServerPath, uploadBatchFolder, uploadBatchZip } from '../api/client'
+import { discoverBatchUpload, executeBatchUpload, getLocationSites, uploadBatchFolder, uploadBatchZip } from '../api/client'
 
 const mockedUploadBatchZip = vi.mocked(uploadBatchZip)
 const mockedUploadBatchFolder = vi.mocked(uploadBatchFolder)
 const mockedDiscoverBatchUpload = vi.mocked(discoverBatchUpload)
 const mockedExecuteBatchUpload = vi.mocked(executeBatchUpload)
-const mockedPreviewBatchServerPath = vi.mocked(previewBatchServerPath)
 const mockedGetLocationSites = vi.mocked(getLocationSites)
 
 function makeZipFile(paths: string[], name = 'bundle.zip') {
@@ -136,7 +134,6 @@ describe('BatchUploadPage', () => {
     mockedUploadBatchFolder.mockReset()
     mockedDiscoverBatchUpload.mockReset()
     mockedExecuteBatchUpload.mockReset()
-    mockedPreviewBatchServerPath.mockReset()
     mockedGetLocationSites.mockReset()
     mockedGetLocationSites.mockResolvedValue({
       sites: [
@@ -183,14 +180,6 @@ describe('BatchUploadPage', () => {
       message: 'Batch upload completed.',
     })
     mockedDiscoverBatchUpload.mockResolvedValue(baseDiscoverResponse)
-    mockedPreviewBatchServerPath.mockResolvedValue({
-      path: '/data/trip_upload',
-      exists: true,
-      is_directory: true,
-      resolved_discovery_mode: 'encounters',
-      immediate_entries: ['anchovy'],
-      importable_images: 2,
-    })
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
@@ -228,6 +217,8 @@ describe('BatchUploadPage', () => {
     expect(screen.getByLabelText('Use local folder upload')).toBeChecked()
     expect(screen.getByLabelText('Source image folder')).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Server folder path' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Select server folder path source')).not.toBeInTheDocument()
+    expect(screen.queryByText(/server folder path/i)).not.toBeInTheDocument()
 
     const folderInput = screen.getByLabelText('Source image folder')
     const files = [
@@ -255,11 +246,11 @@ describe('BatchUploadPage', () => {
 
     const instructionsToggle = screen.getByText('How to use Batch Upload')
     expect(instructionsToggle).toBeVisible()
-    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders. Server folder path is only for advanced same-machine operation.')).not.toBeVisible()
+    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders.')).not.toBeVisible()
 
     await user.click(instructionsToggle)
 
-    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders. Server folder path is only for advanced same-machine operation.')).toBeVisible()
+    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders.')).toBeVisible()
     expect(screen.getByText('Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.')).toBeVisible()
     expect(screen.getByText('For local-folder sources, click Browse/Choose files, select the top folder from your own computer, then click Prepare folder for preview to upload that folder structure to starBoard.')).toBeVisible()
     expect(screen.getByText('For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.')).toBeVisible()
@@ -268,25 +259,13 @@ describe('BatchUploadPage', () => {
     expect(screen.getByText('Submit selected IDs only after the review table looks correct; this final step writes the selected rows into the chosen archive.')).toBeVisible()
   })
 
-  it('shows source structure guidance and discovers from a validated server folder path', async () => {
+  it('shows source structure guidance without a server path workflow', async () => {
     const user = userEvent.setup()
     render(<BatchUploadPage />)
 
     expect(screen.getByText(/Accepted source layouts/)).toBeInTheDocument()
     expect(screen.getAllByText('ID / date / images')[0]).toBeInTheDocument()
-
-    await user.click(screen.getByLabelText('Select server folder path source'))
-    await user.type(screen.getByRole('textbox', { name: 'Server folder path' }), '/data/trip_upload')
-    await user.click(screen.getByRole('button', { name: 'Preview server path' }))
-
-    await screen.findByText(/Server path ready/)
-    expect(mockedPreviewBatchServerPath).toHaveBeenCalledWith({ path: '/data/trip_upload', discovery_mode: 'auto' })
-
-    await user.click(screen.getByRole('button', { name: 'Preview IDs and metadata' }))
-
-    expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
-      import_source: { type: 'server_path', path: '/data/trip_upload' },
-    }))
+    expect(screen.queryByLabelText('Select server folder path source')).not.toBeInTheDocument()
   })
 
   it('tests zip source structure locally before upload is allowed', async () => {
