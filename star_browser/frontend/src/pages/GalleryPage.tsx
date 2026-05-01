@@ -115,15 +115,17 @@ export function GalleryPage() {
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(180px, 220px) minmax(260px, 1fr) auto', alignItems: 'end' }}>
             <label>
               <div style={{ marginBottom: 6 }}>Review ID type</div>
-              <select aria-label="Review ID type" value={archiveType} onChange={(e) => { setArchiveType(e.target.value as 'query' | 'gallery'); setResult(null); setError(null); setIdSearch(''); setLocationFilter('__all__'); setObservedFrom(''); setObservedTo('') }} style={input}>
+              <select aria-label="Review ID type" value={archiveType} onChange={(e) => { setArchiveType(e.target.value as 'query' | 'gallery'); setEntityId(''); setResult(null); setError(null); setIdSearch(''); setLocationFilter('__all__'); setObservedFrom(''); setObservedTo('') }} style={input}>
                 <option value="query">Query</option>
                 <option value="gallery">Gallery</option>
               </select>
             </label>
-            <label>
-              <div style={{ marginBottom: 6 }}>ID</div>
-              <input value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="Enter query or gallery ID" style={input} />
-            </label>
+            <div>
+              <div style={{ marginBottom: 6 }}>Selected ID</div>
+              <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #c8d0dd', background: '#f8fafc', minHeight: 18 }}>
+                {entityId || 'Choose an ID from Available IDs below'}
+              </div>
+            </div>
             <button onClick={() => void handleLoad()} disabled={busy || !entityId.trim()} style={{ padding: '8px 12px' }}>
               {busy ? 'Loading…' : 'Load ID'}
             </button>

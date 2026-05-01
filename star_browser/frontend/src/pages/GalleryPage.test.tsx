@@ -82,23 +82,23 @@ describe('GalleryPage', () => {
     expect(screen.getByRole('heading', { name: 'ID Review' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Gallery Review' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Review ID type')).toHaveValue('query')
-    expect(screen.getByPlaceholderText('Enter query or gallery ID')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Enter query or gallery ID')).not.toBeInTheDocument()
+    expect(await screen.findByRole('listbox', { name: 'Available IDs' })).toBeInTheDocument()
 
     await user.selectOptions(screen.getByLabelText('Review ID type'), 'gallery')
-    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
-    await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
-    expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('gallery', 'entity_001')
+    expect(mockedGetIdReviewOptions).toHaveBeenCalledWith('gallery')
   })
 
-  it('loads query IDs through ID Review', async () => {
+  it('loads query IDs selected from the available ID list', async () => {
     const user = userEvent.setup()
     render(<GalleryPage />)
 
-    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'query_001')
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
-    expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_001')
+    expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_friday_001')
   })
 
   it('lets users search and filter a scrollable ID combo box before loading an ID', async () => {
@@ -126,7 +126,7 @@ describe('GalleryPage', () => {
     expect(screen.getByText('query_cattle_002 — Cattle Point — 2026-04-02')).toBeInTheDocument()
 
     await user.click(screen.getByRole('option', { name: 'query_cattle_002 — Cattle Point — 2026-04-02' }))
-    expect(screen.getByPlaceholderText('Enter query or gallery ID')).toHaveValue('query_cattle_002')
+    expect(screen.queryByPlaceholderText('Enter query or gallery ID')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
     expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_cattle_002')
   })
@@ -135,7 +135,8 @@ describe('GalleryPage', () => {
     const user = userEvent.setup()
     render(<GalleryPage />)
 
-    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
     expect(await screen.findByRole('heading', { name: 'Images' })).toBeInTheDocument()
@@ -155,7 +156,8 @@ describe('GalleryPage', () => {
     const user = userEvent.setup()
     render(<GalleryPage />)
 
-    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
     await screen.findByRole('img', { name: 'Image A1' })
@@ -172,7 +174,8 @@ describe('GalleryPage', () => {
     const user = userEvent.setup()
     render(<GalleryPage />)
 
-    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
     await screen.findByRole('img', { name: 'Image A1' })
