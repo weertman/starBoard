@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..adapters.gallery_adapter import load_gallery_entity
+from ..adapters.gallery_adapter import load_id_review_entity
 from ..models.gallery_api import GalleryEntityResponse
 
 
@@ -9,7 +9,11 @@ class GalleryNotFoundError(Exception):
 
 
 def get_gallery_entity(entity_id: str) -> GalleryEntityResponse:
-    metadata_summary, encounters, images = load_gallery_entity(entity_id)
+    return get_id_review_entity('gallery', entity_id)
+
+
+def get_id_review_entity(archive_type: str, entity_id: str) -> GalleryEntityResponse:
+    metadata_summary, encounters, images = load_id_review_entity(archive_type, entity_id)
     if not metadata_summary and not encounters and not images:
         raise GalleryNotFoundError(entity_id)
     return GalleryEntityResponse(

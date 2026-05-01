@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { getGalleryEntity, type GalleryEntityResponse } from '../api/client'
+import { getIdReviewEntity, type GalleryEntityResponse } from '../api/client'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -19,6 +19,7 @@ const input: React.CSSProperties = {
 }
 
 export function GalleryPage() {
+  const [archiveType, setArchiveType] = useState<'query' | 'gallery'>('query')
   const [entityId, setEntityId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,7 +40,7 @@ export function GalleryPage() {
     setBusy(true)
     setError(null)
     try {
-      const next = await getGalleryEntity(entityId.trim())
+      const next = await getIdReviewEntity(archiveType, entityId.trim())
       setResult(next)
       setEncounterFilter('__all__')
       setSelectedIndex(0)
@@ -60,12 +61,22 @@ export function GalleryPage() {
     <main style={{ maxWidth: 1180, margin: '0 auto', padding: 18, fontFamily: 'system-ui, sans-serif', color: '#152033', background: '#f7f9fc', minHeight: '100vh' }}>
       <div style={{ display: 'grid', gap: 16 }}>
         <section style={card}>
-          <h1 style={{ marginTop: 0 }}>Gallery Review</h1>
-          <p style={{ marginTop: 0, color: '#516070' }}>Inspect one gallery ID, filter by encounter, and browse images in a stronger review layout.</p>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <input value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="Enter gallery ID" style={input} />
+          <h1 style={{ marginTop: 0 }}>ID Review</h1>
+          <p style={{ marginTop: 0, color: '#516070' }}>Inspect one query or gallery ID, filter by encounter, and browse images in a stronger review layout.</p>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(180px, 220px) minmax(260px, 1fr) auto', alignItems: 'end' }}>
+            <label>
+              <div style={{ marginBottom: 6 }}>Review ID type</div>
+              <select aria-label="Review ID type" value={archiveType} onChange={(e) => { setArchiveType(e.target.value as 'query' | 'gallery'); setResult(null); setError(null) }} style={input}>
+                <option value="query">Query</option>
+                <option value="gallery">Gallery</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ marginBottom: 6 }}>ID</div>
+              <input value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="Enter query or gallery ID" style={input} />
+            </label>
             <button onClick={() => void handleLoad()} disabled={busy || !entityId.trim()} style={{ padding: '8px 12px' }}>
-              {busy ? 'Loading…' : 'Load'}
+              {busy ? 'Loading…' : 'Load ID'}
             </button>
           </div>
         </section>
@@ -82,7 +93,7 @@ export function GalleryPage() {
                 </div>
                 <label style={{ minWidth: 260 }}>
                   <div style={{ marginBottom: 6 }}>Encounter filter</div>
-                  <select value={encounterFilter} onChange={(e) => onChangeEncounterFilter(e.target.value)} style={input}>
+                  <select aria-label="Encounter filter" value={encounterFilter} onChange={(e) => onChangeEncounterFilter(e.target.value)} style={input}>
                     <option value="__all__">All encounters</option>
                     {result.encounters.map((enc) => (
                       <option key={enc.encounter} value={enc.encounter}>{enc.label}</option>

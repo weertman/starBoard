@@ -293,9 +293,13 @@ export async function executeBatchUpload(req: BatchUploadExecuteRequest): Promis
   return parseJsonOrThrow<BatchUploadExecuteResponse>(res)
 }
 
-export async function getGalleryEntity(entityId: string): Promise<GalleryEntityResponse> {
-  const res = await fetch(`/api/gallery/entities/${encodeURIComponent(entityId)}`)
+export async function getIdReviewEntity(archiveType: 'query' | 'gallery', entityId: string): Promise<GalleryEntityResponse> {
+  const res = await fetch(`/api/id-review/entities/${archiveType}/${encodeURIComponent(entityId)}`)
   return parseJsonOrThrow<GalleryEntityResponse>(res)
+}
+
+export async function getGalleryEntity(entityId: string): Promise<GalleryEntityResponse> {
+  return getIdReviewEntity('gallery', entityId)
 }
 
 export async function getFirstOrderQueries(): Promise<FirstOrderQueryOptionsResponse> {

@@ -30,7 +30,7 @@ export default function App() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button style={tabButton(tab === 'single-entry')} onClick={() => setTab('single-entry')}>Single Entry</button>
           <button style={tabButton(tab === 'batch')} onClick={() => setTab('batch')}>Batch Upload</button>
-          <button style={tabButton(tab === 'gallery')} onClick={() => setTab('gallery')}>Gallery Review</button>
+          <button style={tabButton(tab === 'gallery')} onClick={() => setTab('gallery')}>ID Review</button>
           <button style={tabButton(tab === 'first-order')} onClick={() => setTab('first-order')}>First-order Search</button>
         </div>
       </div>

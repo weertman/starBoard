@@ -53,3 +53,44 @@ def test_gallery_media_routes_return_image_bytes(tmp_path, monkeypatch):
     assert preview.status_code == 200
     assert len(full.content) > 0
     assert len(preview.content) > 0
+
+
+def test_id_review_query_entity_route_returns_seeded_query(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    q = archive / 'queries' / 'query_review_001' / '03_15_24'
+    q.mkdir(parents=True)
+    img = q / 'IMG_001.jpg'
+    Image.new('RGB', (20, 20), color=(0, 0, 255)).save(img)
+    (archive / 'queries' / 'queries_metadata.csv').write_text('query_id,location\nquery_review_001,Friday Harbor\n')
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    r = client.get('/api/id-review/entities/query/query_review_001', headers={'cf-access-authenticated-user-email': 'field@example.org'})
+    assert r.status_code == 200
+    body = r.json()
+    assert body['entity_id'] == 'query_review_001'
+    assert body['metadata_summary']['location'] == 'Friday Harbor'
+    assert len(body['images']) == 1
+    assert body['images'][0]['image_id'].startswith('query:query_review_001:')
+    assert body['images'][0]['preview_url'].startswith('/api/id-review/media/query:query_review_001:')
+
+
+def test_id_review_media_routes_return_query_image_bytes(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    q = archive / 'queries' / 'query_review_001' / '03_15_24'
+    q.mkdir(parents=True)
+    img = q / 'IMG_001.jpg'
+    Image.new('RGB', (20, 20), color=(0, 0, 255)).save(img)
+    (archive / 'queries' / 'queries_metadata.csv').write_text('query_id,location\nquery_review_001,Friday Harbor\n')
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    entity = client.get('/api/id-review/entities/query/query_review_001', headers={'cf-access-authenticated-user-email': 'field@example.org'})
+    image_id = entity.json()['images'][0]['image_id']
+
+    full = client.get(f'/api/id-review/media/{image_id}/full', headers={'cf-access-authenticated-user-email': 'field@example.org'})
+    preview = client.get(f'/api/id-review/media/{image_id}/preview', headers={'cf-access-authenticated-user-email': 'field@example.org'})
+    assert full.status_code == 200
+    assert preview.status_code == 200
+    assert len(full.content) > 0
+    assert len(preview.content) > 0

@@ -5,12 +5,12 @@ import userEvent from '@testing-library/user-event'
 import { GalleryPage } from './GalleryPage'
 
 vi.mock('../api/client', () => ({
-  getGalleryEntity: vi.fn(),
+  getIdReviewEntity: vi.fn(),
 }))
 
-import { getGalleryEntity } from '../api/client'
+import { getIdReviewEntity } from '../api/client'
 
-const mockedGetGalleryEntity = vi.mocked(getGalleryEntity)
+const mockedGetIdReviewEntity = vi.mocked(getIdReviewEntity)
 
 const galleryResponse = {
   entity_id: 'entity_001',
@@ -50,19 +50,45 @@ describe('GalleryPage', () => {
   })
 
   beforeEach(() => {
-    mockedGetGalleryEntity.mockReset()
-    mockedGetGalleryEntity.mockResolvedValue(galleryResponse)
+    mockedGetIdReviewEntity.mockReset()
+    mockedGetIdReviewEntity.mockResolvedValue(galleryResponse)
+  })
+
+  it('is labeled ID Review and lets users choose query or gallery IDs', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    expect(screen.getByRole('heading', { name: 'ID Review' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Gallery Review' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Review ID type')).toHaveValue('query')
+    expect(screen.getByPlaceholderText('Enter query or gallery ID')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Review ID type'), 'gallery')
+    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+
+    expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('gallery', 'entity_001')
+  })
+
+  it('loads query IDs through ID Review', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'query_001')
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+
+    expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_001')
   })
 
   it('filters the image list by encounter', async () => {
     const user = userEvent.setup()
     render(<GalleryPage />)
 
-    await user.type(screen.getByPlaceholderText('Enter gallery ID'), 'entity_001')
-    await user.click(screen.getByRole('button', { name: 'Load' }))
+    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
     await screen.findByRole('img', { name: 'Image A1' })
-    await user.selectOptions(screen.getByRole('combobox'), 'enc_b')
+    await user.selectOptions(screen.getByLabelText('Encounter filter'), 'enc_b')
 
     await waitFor(() => {
       expect(screen.queryByText('Image A1')).not.toBeInTheDocument()
@@ -75,14 +101,14 @@ describe('GalleryPage', () => {
     const user = userEvent.setup()
     render(<GalleryPage />)
 
-    await user.type(screen.getByPlaceholderText('Enter gallery ID'), 'entity_001')
-    await user.click(screen.getByRole('button', { name: 'Load' }))
+    await user.type(screen.getByPlaceholderText('Enter query or gallery ID'), 'entity_001')
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
     await screen.findByRole('img', { name: 'Image A1' })
     await user.click(screen.getByRole('button', { name: /Image A2/i }))
     expect(screen.getByRole('img')).toHaveAttribute('src', '/preview/a2.jpg')
 
-    await user.selectOptions(screen.getByRole('combobox'), 'enc_b')
+    await user.selectOptions(screen.getByLabelText('Encounter filter'), 'enc_b')
 
     await waitFor(() => {
       expect(screen.getByRole('img')).toHaveAttribute('src', '/preview/b1.jpg')
