@@ -226,7 +226,6 @@ export function SingleEntryPage() {
             <label>
               <div>Upload images from this computer</div>
               <input aria-label="Upload images from this computer" type="file" accept="image/*,.orf,.ORF" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} style={input} />
-              <div style={{ color: '#516070', fontSize: 13, marginTop: 6 }}>Selected image files are uploaded from your browser into the chosen archive ID. There is no server-folder path mode here.</div>
             </label>
           </div>
         </section>

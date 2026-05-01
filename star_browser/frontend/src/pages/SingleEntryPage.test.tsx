@@ -162,7 +162,7 @@ describe('SingleEntryPage', () => {
     expect(screen.getByRole('button', { name: 'Pick coordinates on map' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pick coordinates on map' })).toBeInTheDocument()
     expect(screen.getByLabelText('Upload images from this computer')).toBeInTheDocument()
-    expect(screen.getByText('Selected image files are uploaded from your browser into the chosen archive ID. There is no server-folder path mode here.')).toBeInTheDocument()
+    expect(screen.queryByText('Selected image files are uploaded from your browser into the chosen archive ID. There is no server-folder path mode here.')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Submit entry to archive' })).toBeDisabled()
     expect(screen.queryByText(/server folder path/i)).not.toBeInTheDocument()
     expect(screen.getByLabelText('Number of apparent arms')).toBeInTheDocument()
