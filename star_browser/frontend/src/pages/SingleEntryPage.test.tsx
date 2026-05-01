@@ -143,6 +143,30 @@ describe('SingleEntryPage', () => {
     })
   })
 
+  it('shows collapsible single entry instructions with discrete sections', async () => {
+    const user = userEvent.setup()
+    render(<SingleEntryPage />)
+
+    await screen.findByRole('heading', { name: 'Single Entry' })
+    const instructionsToggle = screen.getByText('How to use Single Entry')
+    expect(instructionsToggle).toBeVisible()
+    expect(screen.getByRole('heading', { name: '1. Target and encounter', hidden: true })).not.toBeVisible()
+
+    await user.click(instructionsToggle)
+
+    expect(screen.getByRole('heading', { name: '1. Target and encounter' })).toBeVisible()
+    expect(screen.getByText('Choose Queries or Gallery, choose create/append mode, then enter the target ID.')).toBeVisible()
+    expect(screen.getByText('Set the encounter date and optional encounter suffix before submitting.')).toBeVisible()
+    expect(screen.getByRole('heading', { name: '2. Location and metadata' })).toBeVisible()
+    expect(screen.getByText('Use a saved location or Add new location, then verify latitude/longitude on the map.')).toBeVisible()
+    expect(screen.getByText('Fill in the observation metadata fields that apply to this entry.')).toBeVisible()
+    expect(screen.getByRole('heading', { name: '3. Images and review' })).toBeVisible()
+    expect(screen.getByText('Choose image files from this computer.')).toBeVisible()
+    expect(screen.getByText('Review the selected filenames before submitting.')).toBeVisible()
+    expect(screen.getByRole('heading', { name: '4. Submit entry' })).toBeVisible()
+    expect(screen.getByText('Click Submit entry to archive only after the target, metadata, and selected images look correct.')).toBeVisible()
+  })
+
   it('loads schema fields and renders grouped form controls', async () => {
     render(<SingleEntryPage />)
 

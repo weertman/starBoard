@@ -196,6 +196,38 @@ export function SingleEntryPage() {
         <section style={card}>
           <h1 style={{ marginTop: 0 }}>Single Entry</h1>
           <p style={{ marginTop: 0, color: '#516070' }}>Schema-driven browser data entry for creating or appending archive observations.</p>
+          <details style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 700 }}>How to use Single Entry</summary>
+            <div style={{ display: 'grid', gap: 12, marginTop: 12, color: '#405064' }}>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>1. Target and encounter</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Choose Queries or Gallery, choose create/append mode, then enter the target ID.</li>
+                  <li>Set the encounter date and optional encounter suffix before submitting.</li>
+                </ol>
+              </section>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>2. Location and metadata</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Use a saved location or Add new location, then verify latitude/longitude on the map.</li>
+                  <li>Fill in the observation metadata fields that apply to this entry.</li>
+                </ol>
+              </section>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>3. Images and review</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Choose image files from this computer.</li>
+                  <li>Review the selected filenames before submitting.</li>
+                </ol>
+              </section>
+              <section>
+                <h3 style={{ margin: '0 0 6px', fontSize: 15, color: '#152033' }}>4. Submit entry</h3>
+                <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
+                  <li>Click Submit entry to archive only after the target, metadata, and selected images look correct.</li>
+                </ol>
+              </section>
+            </div>
+          </details>
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
             <label>
               <div>Archive</div>
