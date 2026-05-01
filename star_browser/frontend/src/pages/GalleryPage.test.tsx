@@ -200,6 +200,11 @@ describe('GalleryPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Reset image view' }))
     expect(image).toHaveStyle({ transform: 'translate(0px, 0px) rotate(0deg) scale(1)' })
+
+    const download = screen.getByRole('link', { name: 'Download image' })
+    expect(download).toHaveAttribute('href', '/full/a1.jpg')
+    expect(download).toHaveAttribute('download', 'Image A1')
+    expect(screen.queryByRole('link', { name: 'Open full image' })).not.toBeInTheDocument()
   })
 
   it('filters the image list by encounter', async () => {

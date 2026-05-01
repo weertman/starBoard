@@ -124,7 +124,7 @@ function InteractiveImageViewer({ image }: { image: ImageDescriptor }) {
       <div style={{ marginTop: 8 }}><b>{image.label}</b>{image.encounter ? ` — ${image.encounter}` : ''}</div>
       <div style={{ marginTop: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => setView({ scale: 1, x: 0, y: 0, rotation: 0 })}>Reset image view</button>
-        <a href={image.fullres_url} target="_blank" rel="noreferrer">Open full image</a>
+        <a href={image.fullres_url} download={image.label}>Download image</a>
       </div>
     </div>
   )
