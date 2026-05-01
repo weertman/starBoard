@@ -195,10 +195,22 @@ describe('FirstOrderPage query selector', () => {
         { entity_id: 'gallery_from_megastar', score: 0.91, k_contrib: 1, field_breakdown: { megastar: 0.91 }, preferred_image_id: 'gallery:gallery_from_megastar:1' },
       ],
     })
+    mockedRunFirstOrderSearch.mockResolvedValueOnce({
+      query_id: 'query_a',
+      query_image_id: 'query:query_a:1',
+      preset: 'megastar',
+      candidates: [
+        { entity_id: 'gallery_from_megastar_button', score: 0.94, k_contrib: 1, field_breakdown: { megastar: 0.94 }, preferred_image_id: 'gallery:gallery_from_megastar_button:1' },
+      ],
+    })
     render(<FirstOrderPage />)
 
     await screen.findByDisplayValue('query_a')
     expect(await screen.findByText('Selected query image 1 of 2')).toBeInTheDocument()
+    const selectedQueryImagePanel = screen.getByLabelText('Selected query image panel')
+    const selectedQueryImageControls = screen.getByLabelText('Selected query image controls')
+    expect(selectedQueryImagePanel).toContainElement(selectedQueryImageControls)
+    expect(selectedQueryImagePanel).toHaveStyle({ gridTemplateColumns: 'minmax(0, 1fr) auto' })
     await user.click(screen.getByRole('button', { name: 'Next selected query image' }))
     expect(await screen.findByAltText('Selected query query_a image query_a_detail.jpg')).toBeInTheDocument()
     expect(screen.getByText('Selected query image 2 of 2')).toBeInTheDocument()
@@ -217,6 +229,12 @@ describe('FirstOrderPage query selector', () => {
     expect(await screen.findByAltText('Rank 1 gallery_from_megastar image gallery_from_megastar_detail.jpg')).toBeInTheDocument()
     expect(screen.getByText('Proposal image 2 of 2')).toBeInTheDocument()
     expect(screen.getByText(/megastar: 0\.910/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'MegaStar search selected image' }))
+    await waitFor(() => {
+      expect(mockedRunFirstOrderSearch).toHaveBeenLastCalledWith({ query_id: 'query_a', top_k: 10, preset: 'megastar', query_image_id: 'query:query_a:1' })
+    })
+    expect(await screen.findByText('gallery_from_megastar_button')).toBeInTheDocument()
   })
 
   it('shows query imagery beside one active proposal with quick proposal navigation', async () => {

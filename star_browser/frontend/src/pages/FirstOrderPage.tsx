@@ -342,17 +342,18 @@ export function FirstOrderPage() {
     setLocationFilter('')
   }
 
-  async function handleSearch() {
+  async function handleSearch(presetOverride?: typeof preset) {
     const searchQueryId = queryOptions.some((option) => option.query_id === queryId)
       ? queryId
       : filteredOptions.length === 1
         ? filteredOptions[0].query_id
         : queryId
     if (!searchQueryId.trim()) return
+    const searchPreset = presetOverride ?? preset
     setBusy(true)
     setError(null)
     try {
-      const request = { query_id: searchQueryId.trim(), top_k: topK, preset, ...(preset === 'megastar' && activeQueryImage ? { query_image_id: activeQueryImage.image_id } : {}) }
+      const request = { query_id: searchQueryId.trim(), top_k: topK, preset: searchPreset, ...(searchPreset === 'megastar' && activeQueryImage ? { query_image_id: activeQueryImage.image_id } : {}) }
       const next = await runFirstOrderSearch(request)
       setResult(next)
       setActiveCandidateIndex(0)
@@ -550,7 +551,7 @@ export function FirstOrderPage() {
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fbfdff' }}>
               <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 16 }}>Selected query image</h2>
               {activeQueryImage ? (
-                <>
+                <div aria-label="Selected query image panel" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center' }}>
                   <a href={activeQueryImage.fullres_url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
                     <img
                       src={activeQueryImage.preview_url}
@@ -559,12 +560,13 @@ export function FirstOrderPage() {
                       style={{ display: 'block', width: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 8, background: '#eef2f7' }}
                     />
                   </a>
-                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div aria-label="Selected query image controls" style={{ display: 'grid', gap: 8, justifyItems: 'stretch', minWidth: 132 }}>
                     <button type="button" onClick={() => stepQueryImage(-1)} disabled={activeQueryImageIndex === 0}>Previous selected query image</button>
-                    <b>Selected query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
+                    <b style={{ fontSize: 13, textAlign: 'center' }}>Selected query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
                     <button type="button" onClick={() => stepQueryImage(1)} disabled={activeQueryImageIndex >= (queryMedia?.images.length ?? 0) - 1}>Next selected query image</button>
+                    <button type="button" onClick={() => void handleSearch('megastar')} disabled={busy || !queryId.trim() || !activeQueryImage} style={{ fontWeight: 700 }}>MegaStar search selected image</button>
                   </div>
-                </>
+                </div>
               ) : (
                 <div style={{ color: '#667085', padding: 16, background: '#eef2f7', borderRadius: 8 }}>No query image loaded.</div>
               )}
