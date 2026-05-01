@@ -14,6 +14,7 @@ vi.mock('../components/LocationSiteMap', () => ({
 
 vi.mock('../api/client', () => ({
   uploadBatchZip: vi.fn(),
+  uploadBatchFolder: vi.fn(),
   discoverBatchUpload: vi.fn(),
   executeBatchUpload: vi.fn(),
   previewBatchServerPath: vi.fn(),
@@ -21,9 +22,10 @@ vi.mock('../api/client', () => ({
 }))
 
 import { BatchUploadPage } from './BatchUploadPage'
-import { discoverBatchUpload, executeBatchUpload, getLocationSites, previewBatchServerPath, uploadBatchZip } from '../api/client'
+import { discoverBatchUpload, executeBatchUpload, getLocationSites, previewBatchServerPath, uploadBatchFolder, uploadBatchZip } from '../api/client'
 
 const mockedUploadBatchZip = vi.mocked(uploadBatchZip)
+const mockedUploadBatchFolder = vi.mocked(uploadBatchFolder)
 const mockedDiscoverBatchUpload = vi.mocked(discoverBatchUpload)
 const mockedExecuteBatchUpload = vi.mocked(executeBatchUpload)
 const mockedPreviewBatchServerPath = vi.mocked(previewBatchServerPath)
@@ -131,6 +133,7 @@ const baseDiscoverResponse = {
 describe('BatchUploadPage', () => {
   beforeEach(() => {
     mockedUploadBatchZip.mockReset()
+    mockedUploadBatchFolder.mockReset()
     mockedDiscoverBatchUpload.mockReset()
     mockedExecuteBatchUpload.mockReset()
     mockedPreviewBatchServerPath.mockReset()
@@ -143,6 +146,11 @@ describe('BatchUploadPage', () => {
     })
     mockedUploadBatchZip.mockResolvedValue({
       upload_token: 'upload_123',
+      file_count: 2,
+      root_entries: ['anchovy'],
+    })
+    mockedUploadBatchFolder.mockResolvedValue({
+      upload_token: 'folder_123',
       file_count: 2,
       root_entries: ['anchovy'],
     })
@@ -213,18 +221,47 @@ describe('BatchUploadPage', () => {
     expect(screen.queryByRole('heading', { name: '2. Discover IDs' })).not.toBeInTheDocument()
   })
 
+  it('defaults to browsing a local folder from the user machine for remote uploads', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    expect(screen.getByLabelText('Use local folder upload')).toBeChecked()
+    expect(screen.getByLabelText('Source image folder')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Server folder path' })).not.toBeInTheDocument()
+
+    const folderInput = screen.getByLabelText('Source image folder')
+    const files = [
+      new File(['a'], 'a.jpg', { type: 'image/jpeg' }),
+      new File(['b'], 'b.jpg', { type: 'image/jpeg' }),
+    ]
+    Object.defineProperty(files[0], 'webkitRelativePath', { value: 'trip_upload/anchovy/a.jpg' })
+    Object.defineProperty(files[1], 'webkitRelativePath', { value: 'trip_upload/anchovy/b.jpg' })
+
+    await user.upload(folderInput, files)
+    await user.click(screen.getByRole('button', { name: 'Prepare folder for preview' }))
+
+    expect(mockedUploadBatchFolder).toHaveBeenCalledWith(files)
+    await screen.findByText(/Files ready for preview:/)
+
+    await user.click(screen.getByRole('button', { name: 'Preview IDs and metadata' }))
+    expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
+      import_source: { type: 'uploaded_bundle', upload_token: 'folder_123' },
+    }))
+  })
+
   it('shows collapsible stepwise batch upload instructions at the top', async () => {
     const user = userEvent.setup()
     render(<BatchUploadPage />)
 
     const instructionsToggle = screen.getByText('How to use Batch Upload')
     expect(instructionsToggle).toBeVisible()
-    expect(screen.getByText('Choose the source: use Server folder path when the images are already on this starBoard machine; use Upload zip only when you need to bring files in from another computer.')).not.toBeVisible()
+    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders. Server folder path is only for advanced same-machine operation.')).not.toBeVisible()
 
     await user.click(instructionsToggle)
 
-    expect(screen.getByText('Choose the source: use Server folder path when the images are already on this starBoard machine; use Upload zip only when you need to bring files in from another computer.')).toBeVisible()
+    expect(screen.getByText('Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders. Server folder path is only for advanced same-machine operation.')).toBeVisible()
     expect(screen.getByText('Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.')).toBeVisible()
+    expect(screen.getByText('For local-folder sources, click Browse/Choose files, select the top folder from your own computer, then click Prepare folder for preview to upload that folder structure to starBoard.')).toBeVisible()
     expect(screen.getByText('For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.')).toBeVisible()
     expect(screen.getByText('Preview IDs and metadata to build the review table. This is still read-only: it does not write images, metadata, or IDs into Gallery or Queries.')).toBeVisible()
     expect(screen.getByText('Review every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, warnings, and whether the row is selected.')).toBeVisible()

@@ -14,7 +14,7 @@ from ..models.batch_upload_api import (
 )
 from ..services.batch_upload_discover_service import build_discover_preview, preview_server_path
 from ..services.batch_upload_execute_service import BatchUploadPlanNotFoundError, execute_batch_upload
-from ..services.batch_upload_upload_service import stage_uploaded_bundle
+from ..services.batch_upload_upload_service import stage_uploaded_bundle, stage_uploaded_folder
 
 router = APIRouter()
 
@@ -25,6 +25,14 @@ def batch_upload_uploads(
     _user_email: str = Depends(require_authenticated_email),
 ):
     return stage_uploaded_bundle(file)
+
+
+@router.post('/batch-upload/folder-uploads', response_model=BatchUploadUploadResponse)
+def batch_upload_folder_uploads(
+    files: list[UploadFile] = File(...),
+    _user_email: str = Depends(require_authenticated_email),
+):
+    return stage_uploaded_folder(files)
 
 
 @router.post('/batch-upload/server-path/preview', response_model=BatchUploadServerPathPreviewResponse)

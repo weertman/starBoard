@@ -280,6 +280,16 @@ export async function uploadBatchZip(file: File): Promise<BatchUploadUploadRespo
   return parseJsonOrThrow<BatchUploadUploadResponse>(res)
 }
 
+export async function uploadBatchFolder(files: File[]): Promise<BatchUploadUploadResponse> {
+  const form = new FormData()
+  for (const file of files) {
+    const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
+    form.append('files', file, relativePath)
+  }
+  const res = await fetch('/api/batch-upload/folder-uploads', { method: 'POST', body: form })
+  return parseJsonOrThrow<BatchUploadUploadResponse>(res)
+}
+
 export async function previewBatchServerPath(req: BatchUploadServerPathPreviewRequest): Promise<BatchUploadServerPathPreviewResponse> {
   const res = await fetch('/api/batch-upload/server-path/preview', {
     method: 'POST',

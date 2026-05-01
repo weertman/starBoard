@@ -5,6 +5,7 @@ import {
   executeBatchUpload,
   getLocationSites,
   previewBatchServerPath,
+  uploadBatchFolder,
   uploadBatchZip,
   type BatchUploadDiscoverRequest,
   type BatchUploadDiscoverResponse,
@@ -162,7 +163,8 @@ export function BatchUploadPage() {
   const [knownSites, setKnownSites] = useState<LocationSite[]>([])
   const [showNewLocationInput, setShowNewLocationInput] = useState(false)
   const [pickingCoordinates, setPickingCoordinates] = useState(false)
-  const [sourceMode, setSourceMode] = useState<'zip' | 'server_path'>('server_path')
+  const [sourceMode, setSourceMode] = useState<'local_folder' | 'zip' | 'server_path'>('local_folder')
+  const [folderFiles, setFolderFiles] = useState<File[]>([])
   const [serverPath, setServerPath] = useState('')
   const [serverPathPreview, setServerPathPreview] = useState<BatchUploadServerPathPreviewResponse | null>(null)
   const [zipFile, setZipFile] = useState<File | null>(null)
@@ -184,6 +186,7 @@ export function BatchUploadPage() {
   const showFlatEncounterControls = discoveryMode === 'auto' || discoveryMode === 'flat'
   const todayIso = new Date().toISOString().slice(0, 10)
   const canUploadZip = Boolean(zipFile && zipPreview?.status === 'valid')
+  const canUploadFolder = folderFiles.length > 0
   const canDiscover = sourceMode === 'server_path' ? serverPathPreview?.path === serverPath.trim() : Boolean(uploadToken)
 
   useEffect(() => {
@@ -257,6 +260,33 @@ export function BatchUploadPage() {
     setDiscoverResponse(null)
     setExecuteResponse(null)
     setSelectedRowIds([])
+  }
+
+  function handleFolderFilesChange(files: FileList | null) {
+    setFolderFiles(files ? Array.from(files) : [])
+    setUploadToken(null)
+    setUploadInfo(null)
+    setDiscoverResponse(null)
+    setExecuteResponse(null)
+    setSelectedRowIds([])
+  }
+
+  async function handlePrepareFolder() {
+    if (folderFiles.length === 0) return
+    beginOperation('upload', 'Preparing folder preview source')
+    setError(null)
+    setDiscoverResponse(null)
+    setExecuteResponse(null)
+    try {
+      const result = await uploadBatchFolder(folderFiles)
+      setUploadToken(result.upload_token)
+      setUploadInfo({ file_count: result.file_count, root_entries: result.root_entries })
+      setSuccessReadout(`Preview source ready: ${result.file_count} file(s) available for review.`)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      endOperation()
+    }
   }
 
   async function handleTestZipStructure() {
@@ -395,9 +425,10 @@ export function BatchUploadPage() {
           <details style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>How to use Batch Upload</summary>
             <ul style={{ margin: '10px 0 0 20px', padding: 0, color: '#405064' }}>
-              <li>Choose the source: use Server folder path when the images are already on this starBoard machine; use Upload zip only when you need to bring files in from another computer.</li>
+              <li>Choose the source: use Local folder to browse a folder on your own computer, or Upload zip when your browser cannot select folders. Server folder path is only for advanced same-machine operation.</li>
               <li>Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.</li>
               <li>Set the target archive, optional ID prefix/suffix, flat encounter date/suffix when shown, and location metadata before previewing.</li>
+              <li>For local-folder sources, click Browse/Choose files, select the top folder from your own computer, then click Prepare folder for preview to upload that folder structure to starBoard.</li>
               <li>For server-folder sources, paste the absolute folder path and click Preview server path to confirm the directory exists and contains importable images.</li>
               <li>For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.</li>
               <li>Preview IDs and metadata to build the review table. This is still read-only: it does not write images, metadata, or IDs into Gallery or Queries.</li>
@@ -527,6 +558,15 @@ export function BatchUploadPage() {
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input
+                aria-label="Use local folder upload"
+                type="radio"
+                checked={sourceMode === 'local_folder'}
+                onChange={() => { setSourceMode('local_folder'); setServerPathPreview(null); invalidateDiscoveredPlan() }}
+              />
+              Local folder
+            </label>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
                 aria-label="Use zip upload"
                 type="radio"
                 checked={sourceMode === 'zip'}
@@ -541,9 +581,41 @@ export function BatchUploadPage() {
                 checked={sourceMode === 'server_path'}
                 onChange={() => { setSourceMode('server_path'); invalidateDiscoveredPlan() }}
               />
-              Server folder path
+              Advanced: server folder path
             </label>
           </div>
+          {sourceMode === 'local_folder' && (
+            <>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label>
+                  <span style={{ position: 'absolute', left: -10000 }}>Source image folder</span>
+                  <input
+                    aria-label="Source image folder"
+                    type="file"
+                    multiple
+                    accept="image/*,.orf"
+                    onChange={(e) => handleFolderFilesChange(e.target.files)}
+                    {...{ webkitdirectory: '', directory: '' }}
+                  />
+                </label>
+                <button onClick={() => void handlePrepareFolder()} disabled={!canUploadFolder || busy !== null} style={{ padding: '8px 12px' }}>
+                  {busy === 'upload' ? 'Preparing preview…' : 'Prepare folder for preview'}
+                </button>
+              </div>
+              {folderFiles.length > 0 && (
+                <div style={{ marginTop: 12, color: '#24354d' }}>
+                  Selected folder files: <b>{folderFiles.length}</b>
+                </div>
+              )}
+              {uploadInfo && uploadToken && (
+                <div style={{ marginTop: 12, color: '#24354d' }}>
+                  <div><b>Upload token:</b> <code>{uploadToken}</code></div>
+                  <div><b>Files ready for preview:</b> {uploadInfo.file_count}</div>
+                  <div><b>Root entries:</b> {uploadInfo.root_entries.join(', ') || 'none'}</div>
+                </div>
+              )}
+            </>
+          )}
           {sourceMode === 'zip' && (
             <>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

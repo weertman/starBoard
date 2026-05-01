@@ -251,6 +251,42 @@ def test_batch_upload_uploads_route_returns_token_and_discover_accepts_uploaded_
     assert body['rows'][0]['original_detected_id'] == 'anchovy'
 
 
+def test_batch_upload_folder_upload_preserves_browser_relative_paths(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    (archive / 'gallery').mkdir(parents=True)
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    upload = client.post(
+        '/api/batch-upload/folder-uploads',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        files=[
+            ('files', ('trip_upload/anchovy/a.jpg', b'a', 'image/jpeg')),
+            ('files', ('trip_upload/anchovy/b.jpg', b'b', 'image/jpeg')),
+        ],
+    )
+
+    assert upload.status_code == 200
+    body = upload.json()
+    assert body['file_count'] == 2
+    assert body['root_entries'] == ['trip_upload']
+
+    discover = client.post(
+        '/api/batch-upload/discover',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={
+            'target_archive': 'gallery',
+            'discovery_mode': 'flat',
+            'id_prefix': '',
+            'id_suffix': '',
+            'import_source': {'type': 'uploaded_bundle', 'upload_token': body['upload_token']},
+        },
+    )
+    assert discover.status_code == 200
+    preview = discover.json()
+    assert preview['rows'][0]['original_detected_id'] == 'anchovy'
+
+
 def test_auto_discovery_supports_single_id_root_with_encounters(tmp_path):
     base = tmp_path / 'ursa_minor'
     (base / '04_21_26_dock').mkdir(parents=True)

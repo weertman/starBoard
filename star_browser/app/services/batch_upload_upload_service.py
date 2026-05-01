@@ -76,3 +76,33 @@ def stage_uploaded_bundle(file: UploadFile) -> BatchUploadUploadResponse:
 
     file_count = sum(1 for p in contents_dir.rglob('*') if p.is_file())
     return BatchUploadUploadResponse(upload_token=token, file_count=file_count, root_entries=root_entries)
+
+
+def _safe_uploaded_relative_path(name: str) -> Path:
+    if not name or os.path.isabs(name):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_relative_path')
+    normalized = Path(name)
+    if '..' in normalized.parts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='path_traversal_not_allowed')
+    return normalized
+
+
+def stage_uploaded_folder(files: list[UploadFile]) -> BatchUploadUploadResponse:
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='files_required')
+
+    token = f'upload_{uuid4().hex[:12]}'
+    contents_dir = _bundle_root(token) / 'contents'
+    contents_dir.mkdir(parents=True, exist_ok=True)
+
+    root_entries: set[str] = set()
+    for file in files:
+        relative_path = _safe_uploaded_relative_path(file.filename or '')
+        if relative_path.parts:
+            root_entries.add(relative_path.parts[0])
+        target = contents_dir / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(file.file.read())
+
+    file_count = sum(1 for p in contents_dir.rglob('*') if p.is_file())
+    return BatchUploadUploadResponse(upload_token=token, file_count=file_count, root_entries=sorted(root_entries))
