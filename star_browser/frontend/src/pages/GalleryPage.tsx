@@ -200,6 +200,41 @@ export function GalleryPage() {
             </section>
 
             <section style={card}>
+              <h2 style={{ marginTop: 0 }}>Images</h2>
+              {selectedImage ? (
+                <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(320px, 2fr) minmax(280px, 1fr)' }}>
+                  <div>
+                    <img src={selectedImage.preview_url} alt={selectedImage.label} style={{ width: '100%', maxHeight: 560, borderRadius: 10, border: '1px solid #d7deea', objectFit: 'contain', background: '#f7f9fc' }} />
+                    <div style={{ marginTop: 8 }}><b>{selectedImage.label}</b>{selectedImage.encounter ? ` — ${selectedImage.encounter}` : ''}</div>
+                    <div style={{ marginTop: 4 }}><a href={selectedImage.fullres_url} target="_blank" rel="noreferrer">Open full image</a></div>
+                  </div>
+                  <div style={{ display: 'grid', gap: 8, maxHeight: 560, overflowY: 'auto' }}>
+                    {filteredImages.map((image, idx) => (
+                      <button
+                        key={image.image_id}
+                        onClick={() => setSelectedIndex(idx)}
+                        style={{
+                          textAlign: 'left',
+                          border: idx === selectedIndex ? '2px solid #2563eb' : '1px solid #d7deea',
+                          background: idx === selectedIndex ? '#eff6ff' : '#fff',
+                          borderRadius: 8,
+                          padding: 8,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{image.label}</div>
+                        <div style={{ color: '#516070', fontSize: 13 }}>{image.encounter ?? 'no encounter'}</div>
+                        <div style={{ color: '#8091a7', fontSize: 12 }}><code>{image.image_id}</code></div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: '#516070' }}>No images match the selected encounter filter.</div>
+              )}
+            </section>
+
+            <section style={card}>
               <h2 style={{ marginTop: 0 }}>Metadata</h2>
               <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Latest metadata</h3>
               <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
@@ -238,41 +273,6 @@ export function GalleryPage() {
                   </div>
                 ))}
               </div>
-            </section>
-
-            <section style={card}>
-              <h2 style={{ marginTop: 0 }}>Images</h2>
-              {selectedImage ? (
-                <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(320px, 2fr) minmax(280px, 1fr)' }}>
-                  <div>
-                    <img src={selectedImage.preview_url} alt={selectedImage.label} style={{ width: '100%', maxHeight: 560, borderRadius: 10, border: '1px solid #d7deea', objectFit: 'contain', background: '#f7f9fc' }} />
-                    <div style={{ marginTop: 8 }}><b>{selectedImage.label}</b>{selectedImage.encounter ? ` — ${selectedImage.encounter}` : ''}</div>
-                    <div style={{ marginTop: 4 }}><a href={selectedImage.fullres_url} target="_blank" rel="noreferrer">Open full image</a></div>
-                  </div>
-                  <div style={{ display: 'grid', gap: 8, maxHeight: 560, overflowY: 'auto' }}>
-                    {filteredImages.map((image, idx) => (
-                      <button
-                        key={image.image_id}
-                        onClick={() => setSelectedIndex(idx)}
-                        style={{
-                          textAlign: 'left',
-                          border: idx === selectedIndex ? '2px solid #2563eb' : '1px solid #d7deea',
-                          background: idx === selectedIndex ? '#eff6ff' : '#fff',
-                          borderRadius: 8,
-                          padding: 8,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ fontWeight: 600 }}>{image.label}</div>
-                        <div style={{ color: '#516070', fontSize: 13 }}>{image.encounter ?? 'no encounter'}</div>
-                        <div style={{ color: '#8091a7', fontSize: 12 }}><code>{image.image_id}</code></div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ color: '#516070' }}>No images match the selected encounter filter.</div>
-              )}
             </section>
           </>
         )}

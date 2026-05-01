@@ -131,7 +131,7 @@ describe('GalleryPage', () => {
     expect(mockedGetIdReviewEntity).toHaveBeenCalledWith('query', 'query_cattle_002')
   })
 
-  it('shows images, metadata rows, and timeline for the selected ID', async () => {
+  it('shows images above metadata rows and timeline for the selected ID', async () => {
     const user = userEvent.setup()
     render(<GalleryPage />)
 
@@ -139,9 +139,11 @@ describe('GalleryPage', () => {
     await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
     await user.click(screen.getByRole('button', { name: 'Load ID' }))
 
-    expect(await screen.findByRole('heading', { name: 'Images' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Metadata' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Timeline' })).toBeInTheDocument()
+    const imagesHeading = await screen.findByRole('heading', { name: 'Images' })
+    const metadataHeading = screen.getByRole('heading', { name: 'Metadata' })
+    const timelineHeading = screen.getByRole('heading', { name: 'Timeline' })
+    expect(imagesHeading.compareDocumentPosition(metadataHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(imagesHeading.compareDocumentPosition(timelineHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByText('Latest metadata')).toBeInTheDocument()
     expect(screen.getByText('All metadata rows')).toBeInTheDocument()
     expect(screen.getByText('Row 1 · gallery_metadata.csv')).toBeInTheDocument()
