@@ -395,11 +395,15 @@ export function BatchUploadPage() {
           <details style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
             <summary style={{ cursor: 'pointer', fontWeight: 700 }}>How to use Batch Upload</summary>
             <ul style={{ margin: '10px 0 0 20px', padding: 0, color: '#405064' }}>
-              <li>Choose a source: use a server folder path for local files already on this machine, or prepare a zip when the files are elsewhere.</li>
-              <li>Pick the target archive, discovery mode, optional ID prefix/suffix, and location metadata before previewing.</li>
-              <li>Preview IDs and metadata before writing anything to the archive.</li>
-              <li>Review the detected IDs, encounters, image counts, target actions, warnings, and selected rows.</li>
-              <li>Submit selected IDs only after the review table looks correct.</li>
+              <li>Choose the source: use Server folder path when the images are already on this starBoard machine; use Upload zip only when you need to bring files in from another computer.</li>
+              <li>Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.</li>
+              <li>Set the target archive, optional ID prefix/suffix, flat encounter date/suffix when shown, and location metadata before previewing.</li>
+              <li>For server-folder sources, paste the absolute folder path and click Preview server path to confirm the directory exists and contains importable images.</li>
+              <li>For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.</li>
+              <li>Preview IDs and metadata to build the review table. This is still read-only: it does not write images, metadata, or IDs into Gallery or Queries.</li>
+              <li>Review every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, warnings, and whether the row is selected.</li>
+              <li>Deselect any row that should not be imported in this batch. If settings change after previewing, preview again before submitting.</li>
+              <li>Submit selected IDs only after the review table looks correct; this final step writes the selected rows into the chosen archive.</li>
             </ul>
           </details>
           <div style={{ margin: '10px 0 14px', padding: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>

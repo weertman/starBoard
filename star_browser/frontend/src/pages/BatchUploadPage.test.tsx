@@ -219,14 +219,16 @@ describe('BatchUploadPage', () => {
 
     const instructionsToggle = screen.getByText('How to use Batch Upload')
     expect(instructionsToggle).toBeVisible()
-    expect(screen.getByText('Choose a source: use a server folder path for local files already on this machine, or prepare a zip when the files are elsewhere.')).not.toBeVisible()
+    expect(screen.getByText('Choose the source: use Server folder path when the images are already on this starBoard machine; use Upload zip only when you need to bring files in from another computer.')).not.toBeVisible()
 
     await user.click(instructionsToggle)
 
-    expect(screen.getByText('Choose a source: use a server folder path for local files already on this machine, or prepare a zip when the files are elsewhere.')).toBeVisible()
-    expect(screen.getByText('Preview IDs and metadata before writing anything to the archive.')).toBeVisible()
-    expect(screen.getByText('Review the detected IDs, encounters, image counts, target actions, warnings, and selected rows.')).toBeVisible()
-    expect(screen.getByText('Submit selected IDs only after the review table looks correct.')).toBeVisible()
+    expect(screen.getByText('Choose the source: use Server folder path when the images are already on this starBoard machine; use Upload zip only when you need to bring files in from another computer.')).toBeVisible()
+    expect(screen.getByText('Use Auto discovery for normal batches. Use Flat for ID / images folders, With Encounters for ID / date / images folders, and Grouped for group / ID / date / images field exports.')).toBeVisible()
+    expect(screen.getByText('For zip sources, click Test zip structure first, then Prepare zip for preview; this catches root-level images or mismatched folder layouts before anything is uploaded.')).toBeVisible()
+    expect(screen.getByText('Preview IDs and metadata to build the review table. This is still read-only: it does not write images, metadata, or IDs into Gallery or Queries.')).toBeVisible()
+    expect(screen.getByText('Review every row: target ID, create-vs-append action, encounter date/suffix, image count, sample filenames, warnings, and whether the row is selected.')).toBeVisible()
+    expect(screen.getByText('Submit selected IDs only after the review table looks correct; this final step writes the selected rows into the chosen archive.')).toBeVisible()
   })
 
   it('shows source structure guidance and discovers from a validated server folder path', async () => {
