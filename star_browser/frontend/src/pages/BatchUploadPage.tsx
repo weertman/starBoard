@@ -356,11 +356,11 @@ export function BatchUploadPage() {
       const preview = existingTargets.slice(0, 10).map((row) => `• ${row.transformed_target_id}`).join('\n')
       const more = existingTargets.length > 10 ? `\n... and ${existingTargets.length - 10} more` : ''
       const ok = window.confirm(
-        `The following IDs already exist and selected rows will append images to them:\n\n${preview}${more}\n\nPush this selected upload?`,
+        `The following IDs already exist and selected rows will append images to them:\n\n${preview}${more}\n\nSubmit these IDs for upload?`,
       )
       if (!ok) return
     }
-    beginOperation('execute', 'Pushing selected upload')
+    beginOperation('execute', 'Submitting selected IDs')
     setError(null)
     try {
       const result = await executeBatchUpload({
@@ -368,7 +368,7 @@ export function BatchUploadPage() {
         accepted_row_ids: selectedRowIds,
       })
       setExecuteResponse(result)
-      setSuccessReadout(`Upload ${result.status}: ${result.summary.accepted_images} accepted image(s), ${result.summary.executed_rows} pushed row(s).`)
+      setSuccessReadout(`Upload ${result.status}: ${result.summary.accepted_images} accepted image(s), ${result.summary.executed_rows} submitted row(s).`)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -621,7 +621,7 @@ export function BatchUploadPage() {
 
         {planStale && (
           <section style={{ ...card, borderColor: '#d7a84a', background: '#fff8e7', color: '#6b4b00' }}>
-            Settings changed. Preview IDs and metadata again before pushing this upload.
+            Settings changed. Preview IDs and metadata again before submitting IDs for upload.
           </section>
         )}
 
@@ -646,7 +646,7 @@ export function BatchUploadPage() {
         {rows.length > 0 && (
           <section style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0 }}>3. Review selected IDs and metadata</h2>
+              <h2 style={{ margin: 0 }}>Review selected IDs and metadata</h2>
               <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   type="checkbox"
@@ -694,20 +694,18 @@ export function BatchUploadPage() {
           </section>
         )}
 
-        {discoverResponse && (
-          <section style={card}>
-            <h2 style={{ marginTop: 0 }}>4. Push upload</h2>
+        <section style={card}>
+            <h2 style={{ marginTop: 0 }}>3. Submit IDs</h2>
             <p style={{ marginTop: 0, color: '#516070' }}>
-              Only this final action writes the selected rows into the archive.
+              Only this final action submits the selected IDs and writes their selected rows into the archive.
             </p>
             <div style={{ color: '#24354d', marginBottom: 12 }}>
               Selected rows: <b>{selectedRows.length}</b> / {rows.length}
             </div>
             <button onClick={() => void handleExecute()} disabled={selectedRows.length === 0 || busy !== null} style={{ padding: '8px 12px' }}>
-              {busy === 'execute' ? 'Pushing…' : 'Push selected upload'}
+              {busy === 'execute' ? 'Submitting…' : 'Submit selected IDs for upload'}
             </button>
           </section>
-        )}
 
         {executeResponse && (
           <section style={card}>

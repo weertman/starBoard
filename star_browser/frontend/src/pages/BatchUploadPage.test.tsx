@@ -201,14 +201,15 @@ describe('BatchUploadPage', () => {
     await user.click(screen.getByRole('button', { name: 'Prepare zip for preview' }))
     await screen.findByText(/Files ready for preview:/)
     await user.click(screen.getByRole('button', { name: 'Preview IDs and metadata' }))
-    await screen.findByRole('heading', { name: '3. Review selected IDs and metadata' })
+    await screen.findByRole('heading', { name: 'Review selected IDs and metadata' })
+    expect(screen.getByRole('heading', { name: '3. Submit IDs' })).toBeInTheDocument()
   }
 
   it('uses preview-first wording and reserves upload wording for the final push', async () => {
     render(<BatchUploadPage />)
 
-    expect(screen.getByRole('heading', { name: '2. Preview IDs and metadata' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview IDs and metadata' })).toBeDisabled()
+    expect(screen.getByRole('heading', { name: '3. Submit IDs' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit selected IDs for upload' })).toBeDisabled()
     expect(screen.queryByRole('heading', { name: '2. Discover IDs' })).not.toBeInTheDocument()
   })
 
@@ -355,7 +356,7 @@ describe('BatchUploadPage', () => {
     render(<BatchUploadPage />)
 
     await stageAndDiscover(user)
-    await user.click(screen.getByRole('button', { name: 'Push selected upload' }))
+    await user.click(screen.getByRole('button', { name: 'Submit selected IDs for upload' }))
 
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('already exist'))
     expect(mockedExecuteBatchUpload).not.toHaveBeenCalled()
@@ -366,12 +367,12 @@ describe('BatchUploadPage', () => {
     render(<BatchUploadPage />)
 
     await stageAndDiscover(user)
-    expect(screen.getByRole('button', { name: 'Push selected upload' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Submit selected IDs for upload' })).toBeEnabled()
 
     await user.type(screen.getByLabelText('ID prefix'), 'new_')
 
-    expect(screen.queryByRole('button', { name: 'Push selected upload' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Settings changed. Preview IDs and metadata again before pushing this upload/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Submit selected IDs for upload' })).toBeDisabled()
+    expect(screen.getByText(/Settings changed. Preview IDs and metadata again before submitting IDs for upload/)).toBeInTheDocument()
   })
 
   it('renders discover warnings and row-level execute results', async () => {
@@ -386,7 +387,7 @@ describe('BatchUploadPage', () => {
     await stageAndDiscover(user)
     expect(screen.getByText('Some files were ignored')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Push selected upload' }))
+    await user.click(screen.getByRole('button', { name: 'Submit selected IDs for upload' }))
 
     await screen.findByText('Row results')
     const results = screen.getByRole('table', { name: 'Batch upload row results' })
