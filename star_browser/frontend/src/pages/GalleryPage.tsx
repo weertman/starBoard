@@ -29,6 +29,7 @@ function InteractiveImageViewer({ image }: { image: ImageDescriptor }) {
   const [view, setView] = useState<ImageViewState>({ scale: 1, x: 0, y: 0, rotation: 0 })
   const rotateKeyDown = useRef(false)
   const dragStart = useRef<{ mode: 'pan' | 'rotate'; x: number; y: number; view: ImageViewState } | null>(null)
+  const viewerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setView({ scale: 1, x: 0, y: 0, rotation: 0 })
@@ -49,14 +50,20 @@ function InteractiveImageViewer({ image }: { image: ImageDescriptor }) {
     }
   }, [])
 
-  function onWheel(e: React.WheelEvent<HTMLDivElement>) {
-    e.preventDefault()
-    const delta = Math.min(0.75, Math.abs(e.deltaY) / 1000)
-    setView((current) => ({
-      ...current,
-      scale: Number(Math.max(0.2, Math.min(8, current.scale + (e.deltaY < 0 ? delta : -delta))).toFixed(2)),
-    }))
-  }
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return undefined
+    function onNativeWheel(e: WheelEvent) {
+      e.preventDefault()
+      const delta = Math.min(0.75, Math.abs(e.deltaY) / 1000)
+      setView((current) => ({
+        ...current,
+        scale: Number(Math.max(0.2, Math.min(8, current.scale + (e.deltaY < 0 ? delta : -delta))).toFixed(2)),
+      }))
+    }
+    viewer.addEventListener('wheel', onNativeWheel, { passive: false })
+    return () => viewer.removeEventListener('wheel', onNativeWheel)
+  }, [])
 
   function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
     if (e.button !== 0) return
@@ -95,8 +102,8 @@ function InteractiveImageViewer({ image }: { image: ImageDescriptor }) {
     <div>
       <div style={{ marginBottom: 8, color: '#516070', fontSize: 13 }}>Wheel to zoom. Drag to pan. Hold R and drag to rotate.</div>
       <div
+        ref={viewerRef}
         aria-label="Interactive image viewer"
-        onWheel={onWheel}
         onMouseDown={onMouseDown}
         style={{ height: 560, overflow: 'hidden', borderRadius: 10, border: '1px solid #d7deea', background: '#f7f9fc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: rotateKeyDown.current ? 'crosshair' : 'grab', userSelect: 'none' }}
       >
