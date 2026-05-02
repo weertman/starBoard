@@ -116,6 +116,8 @@ export function SingleEntryPage() {
   }, [targetMode, targetType])
 
   const grouped = useMemo(() => groupFields(schema), [schema])
+  const hasLocation = Boolean(metadata.location?.trim())
+  const canSubmit = Boolean(targetId.trim() && hasLocation && files.length > 0 && !busy)
 
   function updateMetadata(name: string, value: string) {
     setMetadata((current) => ({ ...current, [name]: value }))
@@ -132,7 +134,7 @@ export function SingleEntryPage() {
   }
 
   async function handleSubmit() {
-    if (!targetId.trim() || files.length === 0) return
+    if (!canSubmit) return
     setBusy(true)
     setError(null)
     setResult(null)
@@ -446,11 +448,12 @@ export function SingleEntryPage() {
 
         <section style={card}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => void handleSubmit()} disabled={busy || !targetId.trim() || files.length === 0} style={{ padding: '8px 12px' }}>
+            <button onClick={() => void handleSubmit()} disabled={!canSubmit} style={{ padding: '8px 12px' }}>
               {busy ? 'Submitting…' : 'Submit entry to archive'}
             </button>
             <span style={{ color: '#516070' }}>{files.length} file(s) selected</span>
           </div>
+          {!hasLocation && <div style={{ marginTop: 8, color: '#7a1c1c' }}>Location is required before upload.</div>}
           {files.length > 0 && (
             <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: '#f8fafc', border: '1px solid #d7deea' }}>
               <h2 style={{ margin: '0 0 6px', fontSize: 16 }}>Review selected image files</h2>

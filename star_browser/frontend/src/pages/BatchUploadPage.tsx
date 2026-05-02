@@ -183,7 +183,8 @@ export function BatchUploadPage() {
   const todayIso = new Date().toISOString().slice(0, 10)
   const canUploadZip = Boolean(zipFile && zipPreview?.status === 'valid')
   const canUploadFolder = folderFiles.length > 0
-  const canDiscover = Boolean(uploadToken)
+  const hasLocation = Boolean(batchLocation.location.trim())
+  const canDiscover = Boolean(uploadToken && hasLocation)
 
   useEffect(() => {
     void (async () => {
@@ -492,6 +493,7 @@ export function BatchUploadPage() {
 
         <section style={card}>
           <h2 style={{ marginTop: 0 }}>Location</h2>
+          <div style={{ color: '#516070', fontSize: 13, marginBottom: 10 }}>Location is required before upload.</div>
           <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
               <label>

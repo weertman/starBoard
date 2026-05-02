@@ -22,6 +22,16 @@ def test_empty_submission_rejected(tmp_path, monkeypatch):
     assert r.status_code in (400, 422)
 
 
+def test_submission_rejects_missing_location(tmp_path, monkeypatch):
+    app, _archive = build_test_app(tmp_path, monkeypatch)
+    client = TestClient(app)
+    payload = {'target_type': 'query', 'target_mode': 'create', 'target_id': 'q1', 'encounter_date': '2026-04-01', 'metadata': {'location': '  '}}
+    files = [('files', ('capture.jpg', _image_bytes(), 'image/jpeg'))]
+    r = client.post('/api/submissions', headers=AUTH, data={'payload': json.dumps(payload)}, files=files)
+    assert r.status_code == 400
+    assert 'location' in r.json()['detail'].lower()
+
+
 def test_valid_gallery_create_submission(tmp_path, monkeypatch):
     app, archive = build_test_app(tmp_path, monkeypatch)
     client = TestClient(app)

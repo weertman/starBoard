@@ -364,6 +364,7 @@ export function MetadataSheet({
 
   function markReady() {
     if (!targetId) { setError('Choose a target ID before marking metadata ready.'); return }
+    if (!values.location?.trim()) { setError('Location is required before upload.'); return }
     onReady({ targetType, targetMode, targetId, encounterDate, encounterSuffix, values, ready: true })
     onClose()
   }

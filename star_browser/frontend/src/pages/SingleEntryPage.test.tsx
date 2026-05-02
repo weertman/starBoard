@@ -254,6 +254,7 @@ describe('SingleEntryPage', () => {
     await user.selectOptions(severity, 'small')
 
     await user.type(screen.getByLabelText('Target ID'), 'q1')
+    await user.selectOptions(screen.getByLabelText('Saved locations'), 'Dock')
     const file = new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' })
     await user.upload(screen.getByLabelText('Upload images from this computer'), file)
     await user.click(screen.getByRole('button', { name: 'Submit entry to archive' }))
@@ -262,6 +263,19 @@ describe('SingleEntryPage', () => {
       expect(mockedSubmitEntry).toHaveBeenCalledTimes(1)
     })
     expect(mockedSubmitEntry.mock.calls[0][0].metadata.short_arm_code).toBe('small(7)')
+  })
+
+  it('requires a location before submitting browser entry upload', async () => {
+    const user = userEvent.setup()
+    render(<SingleEntryPage />)
+
+    await screen.findByRole('heading', { name: 'Location' })
+    await user.type(screen.getByLabelText('Target ID'), 'q1')
+    await user.upload(screen.getByLabelText('Upload images from this computer'), new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' }))
+
+    expect(screen.getByRole('button', { name: 'Submit entry to archive' })).toBeDisabled()
+    expect(screen.getByText('Location is required before upload.')).toBeInTheDocument()
+    expect(mockedSubmitEntry).not.toHaveBeenCalled()
   })
 
   it('submits target info, metadata, and files through the client API', async () => {

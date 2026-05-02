@@ -56,6 +56,7 @@ def test_batch_upload_discover_route():
             'discovery_mode': 'flat',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -80,6 +81,7 @@ def test_batch_upload_preview_marks_existing_targets(tmp_path, monkeypatch):
             'discovery_mode': 'flat',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -104,6 +106,7 @@ def test_batch_upload_execute_route_writes_files_and_csv(tmp_path, monkeypatch):
             'id_prefix': '',
             'id_suffix': '',
             'flat_encounter_date': '2026-04-21',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -150,6 +153,7 @@ def test_batch_upload_execute_converts_olympus_orf_to_jpeg(tmp_path, monkeypatch
             'id_prefix': '',
             'id_suffix': '',
             'flat_encounter_date': '2026-04-21',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -211,6 +215,7 @@ def test_batch_upload_uploads_route_returns_token_and_discover_accepts_uploaded_
             'discovery_mode': 'flat',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -248,6 +253,7 @@ def test_batch_upload_folder_upload_preserves_browser_relative_paths(tmp_path, m
             'discovery_mode': 'flat',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': body['upload_token']},
         },
     )
@@ -267,6 +273,7 @@ def test_auto_discovery_supports_single_id_root_with_encounters():
             'discovery_mode': 'auto',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -309,6 +316,7 @@ def test_uploaded_zip_unwraps_single_container_directory(tmp_path, monkeypatch):
             'discovery_mode': 'flat',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -347,6 +355,7 @@ def test_discover_summary_counts_unique_new_and_existing_ids(tmp_path, monkeypat
             'discovery_mode': 'auto',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
         },
     )
@@ -369,11 +378,31 @@ def test_discover_rejects_missing_sources(tmp_path):
             'discovery_mode': 'flat',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'uploaded_bundle', 'upload_token': 'upload_missing'},
         },
     )
     assert missing_token.status_code == 404
     assert missing_token.json()['detail'] == 'upload_token_not_found'
+
+
+def test_batch_upload_discover_rejects_missing_location():
+    client = TestClient(create_app())
+    token = _upload_folder(client, 'flat', [('anchovy/a.jpg', b'x')])
+    response = client.post(
+        '/api/batch-upload/discover',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={
+            'target_archive': 'gallery',
+            'discovery_mode': 'flat',
+            'id_prefix': '',
+            'id_suffix': '',
+            'batch_location': {'location': '   '},
+            'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
+        },
+    )
+    assert response.status_code == 400
+    assert 'location' in response.json()['detail'].lower()
 
 
 def test_server_path_discover_source_is_not_exposed():
@@ -392,6 +421,7 @@ def test_server_path_discover_source_is_not_exposed():
             'discovery_mode': 'flat',
             'id_prefix': '',
             'id_suffix': '',
+            'batch_location': {'location': 'Dock'},
             'import_source': {'type': 'server_path', 'path': '/tmp'},
         },
     )

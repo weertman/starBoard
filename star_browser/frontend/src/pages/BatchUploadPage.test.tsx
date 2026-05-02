@@ -190,6 +190,7 @@ describe('BatchUploadPage', () => {
   })
 
   async function stageAndDiscover(user: ReturnType<typeof userEvent.setup>) {
+    await user.selectOptions(await screen.findByLabelText('Saved locations'), 'Dock')
     await user.click(screen.getByLabelText('Use zip upload'))
     const zip = makeZipFile(['trip_upload/anchovy/04_21_26/a.jpg', 'trip_upload/anchovy/04_21_26/b.jpg'])
     await user.upload(screen.getByLabelText('Source zip bundle'), zip)
@@ -235,6 +236,7 @@ describe('BatchUploadPage', () => {
     Object.defineProperty(files[1], 'webkitRelativePath', { value: 'trip_upload/anchovy/b.jpg' })
 
     await user.upload(folderInput, files)
+    await user.selectOptions(await screen.findByLabelText('Saved locations'), 'Dock')
     await user.click(screen.getByRole('button', { name: 'Prepare folder for preview' }))
 
     expect(mockedUploadBatchFolder).toHaveBeenCalledWith(files)
@@ -358,7 +360,6 @@ describe('BatchUploadPage', () => {
     const user = userEvent.setup()
     render(<BatchUploadPage />)
 
-    await user.selectOptions(await screen.findByLabelText('Saved locations'), 'Dock')
     await user.type(screen.getByLabelText('Latitude'), '48.5')
     await user.type(screen.getByLabelText('Longitude'), '-123.1')
     await stageAndDiscover(user)
@@ -366,6 +367,22 @@ describe('BatchUploadPage', () => {
     expect(mockedDiscoverBatchUpload).toHaveBeenCalledWith(expect.objectContaining({
       batch_location: { location: 'Dock', latitude: '48.5', longitude: '-123.1' },
     }))
+  })
+
+  it('requires a location before previewing batch upload metadata', async () => {
+    const user = userEvent.setup()
+    render(<BatchUploadPage />)
+
+    await user.click(screen.getByLabelText('Use zip upload'))
+    await user.upload(screen.getByLabelText('Source zip bundle'), makeZipFile(['trip_upload/anchovy/a.jpg']))
+    await user.click(screen.getByRole('button', { name: 'Test zip structure' }))
+    await screen.findByText(/Zip structure looks valid/i)
+    await user.click(screen.getByRole('button', { name: 'Prepare zip for preview' }))
+    await screen.findByText(/Files ready for preview:/)
+
+    expect(screen.getByRole('button', { name: 'Preview IDs and metadata' })).toBeDisabled()
+    expect(screen.getByText('Location is required before upload.')).toBeInTheDocument()
+    expect(mockedDiscoverBatchUpload).not.toHaveBeenCalled()
   })
 
   it('renders batch location entry like Single Entry with saved locations, add-new, and map picking', async () => {

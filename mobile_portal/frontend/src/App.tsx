@@ -145,7 +145,7 @@ export function App() {
   }
 
   async function handleSubmit() {
-    if (!metadataDraft.ready || files.length === 0) return
+    if (!metadataDraft.ready || !metadataDraft.values.location?.trim() || files.length === 0) return
     setSubmitting(true)
     setSubmitError(null)
     setSubmitMessage(null)
@@ -169,8 +169,9 @@ export function App() {
     }
   }
 
-  const computedSubmitDisabled = submitting || !metadataDraft.ready || files.length === 0
-  const metadataSummary = metadataDraft.ready
+  const locationReady = Boolean(metadataDraft.values.location?.trim())
+  const computedSubmitDisabled = submitting || !metadataDraft.ready || !locationReady || files.length === 0
+  const metadataSummary = metadataDraft.ready && locationReady
     ? `Ready for ${metadataDraft.targetType} / ${metadataDraft.targetId || 'missing target'} on ${metadataDraft.encounterDate}`
     : 'Open metadata, fill the required targeting info, then tap Ready.'
   const submitLabel = submitting ? 'Submitting…' : 'Submit to archive'

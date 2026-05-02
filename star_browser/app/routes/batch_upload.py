@@ -17,6 +17,11 @@ from ..services.batch_upload_upload_service import stage_uploaded_bundle, stage_
 router = APIRouter()
 
 
+def _validate_required_batch_location(request: BatchUploadDiscoverRequest) -> None:
+    if not request.batch_location.location.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Location is required before upload')
+
+
 @router.post('/batch-upload/uploads', response_model=BatchUploadUploadResponse)
 def batch_upload_uploads(
     file: UploadFile = File(...),
@@ -38,6 +43,7 @@ def batch_upload_discover(
     request: BatchUploadDiscoverRequest,
     _user_email: str = Depends(require_authenticated_email),
 ):
+    _validate_required_batch_location(request)
     return build_discover_preview(request)
 
 

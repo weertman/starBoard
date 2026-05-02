@@ -69,6 +69,25 @@ def test_submission_rejects_invalid_encounter_suffix(tmp_path, monkeypatch):
     assert response.status_code == 400
 
 
+def test_submission_rejects_missing_location(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+    client = TestClient(create_app())
+    payload = {
+        'target_type': 'query',
+        'target_mode': 'create',
+        'target_id': 'q1',
+        'encounter_date': '2026-04-01',
+        'metadata': {'location': '   '},
+    }
+    files = [('files', ('capture.jpg', _image_bytes(), 'image/jpeg'))]
+
+    response = client.post('/api/submissions', headers=AUTH, data={'payload': json.dumps(payload)}, files=files)
+
+    assert response.status_code == 400
+    assert 'location' in response.json()['detail'].lower()
+
+
 def test_submission_accepts_query_create_and_writes_metadata(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))

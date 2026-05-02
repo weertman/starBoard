@@ -55,6 +55,11 @@ def _validate_encounter_suffix(suffix: str) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='encounter_suffix may contain letters, numbers, hyphen, and underscore only')
 
 
+def _validate_required_location(metadata: dict[str, str]) -> None:
+    if not str(metadata.get('location', '')).strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Location is required before upload')
+
+
 def parse_payload(payload_text: str) -> SubmissionPayload:
     try:
         raw = json.loads(payload_text)
@@ -99,6 +104,7 @@ async def submit(payload_text: str, files: list[UploadFile]) -> dict:
     payload = parse_payload(payload_text)
     _validate_target_mode(payload.target_type, payload.target_mode, payload.target_id)
     _validate_encounter_suffix(payload.encounter_suffix)
+    _validate_required_location(payload.metadata)
     if not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='At least one image file is required')
 
