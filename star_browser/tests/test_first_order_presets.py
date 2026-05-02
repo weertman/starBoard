@@ -103,7 +103,7 @@ def test_first_order_megastar_image_preset_uses_selected_query_image(monkeypatch
     monkeypatch.setattr(
         first_order_service,
         '_rank_megastar_by_query_image',
-        lambda query_image_id, top_k: first_order_service.FirstOrderSearchResponse(
+        lambda query_image_id, top_k, gallery_filters=None: first_order_service.FirstOrderSearchResponse(
             query_id='query_001',
             query_image_id=query_image_id,
             preset='megastar',

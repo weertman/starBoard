@@ -30,6 +30,42 @@ def test_first_order_search_route_returns_ranked_candidate(tmp_path, monkeypatch
     assert body['candidates'][0]['entity_id'] == 'media_anchovy'
 
 
+def test_first_order_gallery_filter_options_and_search_filters_candidates(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    gallery = archive / 'gallery'
+    queries = archive / 'queries'
+    gallery.mkdir(parents=True)
+    queries.mkdir(parents=True)
+    (gallery / 'gallery_metadata.csv').write_text(
+        'gallery_id,location,dorsal_color,sex\n'
+        'media_anchovy,Friday Harbor,orange,female\n'
+        'media_cattle,Cattle Point,purple,male\n',
+        encoding='utf-8-sig',
+    )
+    (queries / 'queries_metadata.csv').write_text('query_id,location,dorsal_color\nquery_001,Friday Harbor,orange\n', encoding='utf-8-sig')
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    headers = {'cf-access-authenticated-user-email': 'field@example.org'}
+
+    options = client.get('/api/first-order/gallery-filters', headers=headers)
+    assert options.status_code == 200
+    body = options.json()
+    by_field = {item['field']: item for item in body['fields']}
+    assert by_field['location']['values'] == ['Cattle Point', 'Friday Harbor']
+    assert by_field['dorsal_color']['values'] == ['orange', 'purple']
+    assert by_field['sex']['values'] == ['female', 'male']
+
+    r = client.post(
+        '/api/first-order/search',
+        headers=headers,
+        json={'query_id': 'query_001', 'top_k': 10, 'preset': 'all', 'gallery_filters': {'location': 'Cattle Point'}},
+    )
+    assert r.status_code == 200
+    result = r.json()
+    assert [candidate['entity_id'] for candidate in result['candidates']] == ['media_cattle']
+
+
 def test_first_order_query_options_match_desktop_selector_order_and_state(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     gallery = archive / 'gallery'

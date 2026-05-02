@@ -15,6 +15,8 @@ from src.search.field_sets import COLOR_FIELDS, ORDINAL_FIELDS, SET_FIELDS, TEXT
 
 from ..models.search_api import (
     FirstOrderCandidate,
+    FirstOrderGalleryFilterField,
+    FirstOrderGalleryFiltersResponse,
     FirstOrderQueryOption,
     FirstOrderQueryOptionsResponse,
     FirstOrderSearchResponse,
@@ -150,7 +152,59 @@ def list_first_order_query_options() -> FirstOrderQueryOptionsResponse:
     )
 
 
-def _rank_megastar_by_query_image(query_image_id: str, top_k: int) -> FirstOrderSearchResponse | None:
+def _gallery_rows_by_id() -> dict[str, dict[str, str]]:
+    rows = read_rows_multi(ap.metadata_csv_paths_for_read('Gallery'))
+    normalized_rows = []
+    for row in rows:
+        gallery_id = normalize_id_value(row.get('gallery_id') or row.get('Gallery ID') or '')
+        if gallery_id:
+            row = dict(row)
+            row['gallery_id'] = gallery_id
+            normalized_rows.append(row)
+    return last_row_per_id(normalized_rows, 'gallery_id')
+
+
+def list_first_order_gallery_filter_options() -> FirstOrderGalleryFiltersResponse:
+    rows_by_id = _gallery_rows_by_id()
+    values_by_field: dict[str, set[str]] = {}
+    for row in rows_by_id.values():
+        for field, raw_value in row.items():
+            if field == 'gallery_id':
+                continue
+            value = (raw_value or '').strip()
+            if not value:
+                continue
+            values_by_field.setdefault(field, set()).add(value)
+    fields = [
+        FirstOrderGalleryFilterField(field=field, label=field, values=sorted(values, key=str.lower)[:500])
+        for field, values in sorted(values_by_field.items(), key=lambda item: item[0].lower())
+    ]
+    return FirstOrderGalleryFiltersResponse(fields=fields)
+
+
+def _active_gallery_filters(gallery_filters: dict[str, str] | None) -> dict[str, str]:
+    return {field: value.strip() for field, value in (gallery_filters or {}).items() if field and value and value.strip()}
+
+
+def _gallery_matches_filters(gallery_id: str, filters: dict[str, str]) -> bool:
+    if not filters:
+        return True
+    row = _gallery_rows_by_id().get(gallery_id, {})
+    for field, wanted in filters.items():
+        actual = (row.get(field) or '').strip().lower()
+        if wanted.lower() not in actual:
+            return False
+    return True
+
+
+def _filter_candidates(candidates: list[FirstOrderCandidate], gallery_filters: dict[str, str] | None) -> list[FirstOrderCandidate]:
+    filters = _active_gallery_filters(gallery_filters)
+    if not filters:
+        return candidates
+    return [candidate for candidate in candidates if _gallery_matches_filters(candidate.entity_id, filters)]
+
+
+def _rank_megastar_by_query_image(query_image_id: str, top_k: int, gallery_filters: dict[str, str] | None = None) -> FirstOrderSearchResponse | None:
     query_image_path = resolve_first_order_media_path(query_image_id)
     if query_image_path is None:
         return None
@@ -168,7 +222,7 @@ def _rank_megastar_by_query_image(query_image_id: str, top_k: int) -> FirstOrder
         return None
     if not lookup or not lookup.is_loaded():
         return None
-    ranked = lookup.rank_gallery_by_query_image(str(query_image_path), top_k=top_k)
+    ranked = lookup.rank_gallery_by_query_image(str(query_image_path), top_k=100000 if _active_gallery_filters(gallery_filters) else top_k)
     if not ranked:
         return None
     candidates: list[FirstOrderCandidate] = []
@@ -184,12 +238,12 @@ def _rank_megastar_by_query_image(query_image_id: str, top_k: int) -> FirstOrder
                 preferred_image_id=preferred_image_id,
             )
         )
-    return FirstOrderSearchResponse(query_id=query_id, query_image_id=query_image_id, preset='megastar', candidates=candidates)
+    return FirstOrderSearchResponse(query_id=query_id, query_image_id=query_image_id, preset='megastar', candidates=_filter_candidates(candidates, gallery_filters)[:top_k])
 
 
-def _rank_megastar(query_id: str, top_k: int, query_image_id: str | None = None) -> FirstOrderSearchResponse:
+def _rank_megastar(query_id: str, top_k: int, query_image_id: str | None = None, gallery_filters: dict[str, str] | None = None) -> FirstOrderSearchResponse:
     if query_image_id:
-        image_response = _rank_megastar_by_query_image(query_image_id, top_k)
+        image_response = _rank_megastar_by_query_image(query_image_id, top_k, gallery_filters=gallery_filters)
         if image_response is not None:
             return image_response
     store = _load_megastar_score_store()
@@ -210,7 +264,7 @@ def _rank_megastar(query_id: str, top_k: int, query_image_id: str | None = None)
                         field_breakdown={'megastar': score},
                     )
                 )
-    return FirstOrderSearchResponse(query_id=query_id, preset='megastar', candidates=candidates)
+    return FirstOrderSearchResponse(query_id=query_id, preset='megastar', candidates=_filter_candidates(candidates, gallery_filters)[:top_k])
 
 
 @lru_cache(maxsize=1)
@@ -251,23 +305,24 @@ def _load_megastar_score_store() -> _MegaStarScoreStore | None:
     return _MegaStarScoreStore(query_ids=query_ids, gallery_ids=gallery_ids, scores=scores)
 
 
-def run_first_order_search(query_id: str, top_k: int = 10, preset: str = 'all', query_image_id: str | None = None) -> FirstOrderSearchResponse:
+def run_first_order_search(query_id: str, top_k: int = 10, preset: str = 'all', query_image_id: str | None = None, gallery_filters: dict[str, str] | None = None) -> FirstOrderSearchResponse:
     if preset == 'megastar':
-        return _rank_megastar(query_id, top_k, query_image_id=query_image_id)
+        return _rank_megastar(query_id, top_k, query_image_id=query_image_id, gallery_filters=gallery_filters)
 
     engine = _get_engine()
     include_fields = _PRESETS.get(preset, _PRESETS['all'])
-    items = engine.rank(query_id, top_k=top_k, include_fields=include_fields)
-    return FirstOrderSearchResponse(
-        query_id=query_id,
-        preset=preset,  # type: ignore[arg-type]
-        candidates=[
-            FirstOrderCandidate(
-                entity_id=item.gallery_id,
-                score=item.score,
-                k_contrib=item.k_contrib,
-                field_breakdown=item.field_breakdown,
-            )
-            for item in items
-        ],
-    )
+    active_filters = _active_gallery_filters(gallery_filters)
+    if active_filters:
+        engine.reset_built()
+    rank_top_k = 100000 if active_filters else top_k
+    items = engine.rank(query_id, top_k=rank_top_k, include_fields=include_fields)
+    candidates = [
+        FirstOrderCandidate(
+            entity_id=item.gallery_id,
+            score=round(item.score, 6),
+            k_contrib=item.k_contrib,
+            field_breakdown={key: round(value, 6) for key, value in item.field_breakdown.items()},
+        )
+        for item in items
+    ]
+    return FirstOrderSearchResponse(query_id=query_id, preset=preset, candidates=_filter_candidates(candidates, gallery_filters)[:top_k])

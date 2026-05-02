@@ -22,11 +22,22 @@ class FirstOrderQueryOptionsResponse(BaseModel):
     queries: list[FirstOrderQueryOption] = Field(default_factory=list)
 
 
+class FirstOrderGalleryFilterField(BaseModel):
+    field: str
+    label: str
+    values: list[str] = Field(default_factory=list)
+
+
+class FirstOrderGalleryFiltersResponse(BaseModel):
+    fields: list[FirstOrderGalleryFilterField] = Field(default_factory=list)
+
+
 class FirstOrderSearchRequest(BaseModel):
     query_id: str
     top_k: int = 10
     preset: Literal['all', 'colors', 'text', 'arms_patterns', 'megastar'] = 'all'
     query_image_id: str | None = None
+    gallery_filters: dict[str, str] = Field(default_factory=dict)
 
 
 class FirstOrderCandidate(BaseModel):

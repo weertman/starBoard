@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
 from ..auth import require_authenticated_email
-from ..models.search_api import FirstOrderMediaResponse, FirstOrderQueryOptionsResponse, FirstOrderSearchRequest, FirstOrderSearchResponse
+from ..models.search_api import FirstOrderGalleryFiltersResponse, FirstOrderMediaResponse, FirstOrderQueryOptionsResponse, FirstOrderSearchRequest, FirstOrderSearchResponse
 from ..services.first_order_media_service import list_first_order_media, resized_preview_response, resolve_first_order_media_path
-from ..services.first_order_service import list_first_order_query_options, run_first_order_search
+from ..services.first_order_service import list_first_order_gallery_filter_options, list_first_order_query_options, run_first_order_search
 
 router = APIRouter()
 
@@ -18,12 +18,25 @@ def first_order_queries(
     return list_first_order_query_options()
 
 
+@router.get('/first-order/gallery-filters', response_model=FirstOrderGalleryFiltersResponse)
+def first_order_gallery_filters(
+    _user_email: str = Depends(require_authenticated_email),
+):
+    return list_first_order_gallery_filter_options()
+
+
 @router.post('/first-order/search', response_model=FirstOrderSearchResponse)
 def first_order_search(
     request: FirstOrderSearchRequest,
     _user_email: str = Depends(require_authenticated_email),
 ):
-    return run_first_order_search(request.query_id, top_k=request.top_k, preset=request.preset, query_image_id=request.query_image_id)
+    return run_first_order_search(
+        request.query_id,
+        top_k=request.top_k,
+        preset=request.preset,
+        query_image_id=request.query_image_id,
+        gallery_filters=request.gallery_filters,
+    )
 
 
 @router.get('/first-order/queries/{query_id}/media', response_model=FirstOrderMediaResponse)

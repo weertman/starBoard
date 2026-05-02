@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  getFirstOrderGalleryFilters,
   getFirstOrderMedia,
   getFirstOrderQueries,
   runFirstOrderSearch,
+  type FirstOrderGalleryFilterField,
   type FirstOrderMediaImage,
   type FirstOrderMediaResponse,
   type FirstOrderPreset,
@@ -227,6 +229,8 @@ export function FirstOrderPage() {
   const [result, setResult] = useState<FirstOrderSearchResponse | null>(null)
   const [queryMedia, setQueryMedia] = useState<FirstOrderMediaResponse | null>(null)
   const [candidateMedia, setCandidateMedia] = useState<Record<string, FirstOrderMediaResponse>>({})
+  const [galleryFilterFields, setGalleryFilterFields] = useState<FirstOrderGalleryFilterField[]>([])
+  const [galleryFilters, setGalleryFilters] = useState<Record<string, string>>({})
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0)
   const [activeQueryImageIndex, setActiveQueryImageIndex] = useState(0)
   const [activeCandidateImageIndexes, setActiveCandidateImageIndexes] = useState<Record<string, number>>({})
@@ -253,6 +257,9 @@ export function FirstOrderPage() {
 
   useEffect(() => {
     void refreshQueries('')
+    getFirstOrderGalleryFilters()
+      .then((next) => setGalleryFilterFields(next.fields))
+      .catch(() => setGalleryFilterFields([]))
     // Initial load only. refreshQueries intentionally reads current state for manual refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -353,7 +360,13 @@ export function FirstOrderPage() {
     setBusy(true)
     setError(null)
     try {
-      const request = { query_id: searchQueryId.trim(), top_k: topK, preset: searchPreset, ...(searchPreset === 'megastar' && activeQueryImage ? { query_image_id: activeQueryImage.image_id } : {}) }
+      const request = {
+        query_id: searchQueryId.trim(),
+        top_k: topK,
+        preset: searchPreset,
+        ...(searchPreset === 'megastar' && activeQueryImage ? { query_image_id: activeQueryImage.image_id } : {}),
+        ...(Object.keys(activeGalleryFilters).length > 0 ? { gallery_filters: activeGalleryFilters } : {}),
+      }
       const next = await runFirstOrderSearch(request)
       setResult(next)
       setActiveCandidateIndex(0)
@@ -387,6 +400,7 @@ export function FirstOrderPage() {
   const activeCandidateImage = activeCandidateMedia?.images[activeCandidateImageIndex] ?? null
   const activeQueryImage = queryMedia?.images[activeQueryImageIndex] ?? null
   const selectedMetadataEntries = Object.entries(selectedOption?.metadata ?? {}).filter(([, value]) => value)
+  const activeGalleryFilters = Object.fromEntries(Object.entries(galleryFilters).filter(([, value]) => value.trim()))
 
   function stepProposal(delta: number) {
     if (!result?.candidates.length) return
@@ -590,6 +604,32 @@ export function FirstOrderPage() {
               )}
             </div>
           </div>
+          <section aria-label="Gallery comparison filters" style={{ marginTop: 12, border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fbfdff', maxHeight: 320, overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <h2 style={{ margin: 0, fontSize: 16 }}>Filter comparison stars</h2>
+              <button type="button" onClick={() => setGalleryFilters({})}>Clear star filters</button>
+            </div>
+            {galleryFilterFields.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
+                {galleryFilterFields.map((field) => (
+                  <label key={field.field} style={{ display: 'grid', gap: 3, fontSize: 13 }}>
+                    {field.label}
+                    <select
+                      aria-label={`Filter gallery by ${field.field}`}
+                      value={galleryFilters[field.field] ?? ''}
+                      onChange={(event) => setGalleryFilters((current) => ({ ...current, [field.field]: event.target.value }))}
+                      style={input}
+                    >
+                      <option value="">Any</option>
+                      {field.values.map((value) => <option key={value} value={value}>{value}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: '#667085', fontSize: 13 }}>No gallery metadata fields loaded.</div>
+            )}
+          </section>
         </section>
 
         {error && <section style={{ ...card, borderColor: '#e29a9a', background: '#fff5f5', color: '#7a1c1c' }}><b>Error:</b> {error}</section>}

@@ -130,11 +130,22 @@ export type FirstOrderQueryOptionsResponse = {
 
 export type FirstOrderPreset = 'all' | 'colors' | 'text' | 'arms_patterns' | 'megastar'
 
+export type FirstOrderGalleryFilterField = {
+  field: string
+  label: string
+  values: string[]
+}
+
+export type FirstOrderGalleryFiltersResponse = {
+  fields: FirstOrderGalleryFilterField[]
+}
+
 export type FirstOrderSearchRequest = {
   query_id: string
   top_k?: number
   preset?: FirstOrderPreset
   query_image_id?: string
+  gallery_filters?: Record<string, string>
 }
 
 export type FirstOrderSearchResponse = {
@@ -344,6 +355,11 @@ export async function getGalleryEntity(entityId: string): Promise<GalleryEntityR
 export async function getFirstOrderQueries(): Promise<FirstOrderQueryOptionsResponse> {
   const res = await fetch('/api/first-order/queries')
   return parseJsonOrThrow<FirstOrderQueryOptionsResponse>(res)
+}
+
+export async function getFirstOrderGalleryFilters(): Promise<FirstOrderGalleryFiltersResponse> {
+  const res = await fetch('/api/first-order/gallery-filters')
+  return parseJsonOrThrow<FirstOrderGalleryFiltersResponse>(res)
 }
 
 export async function getFirstOrderMedia(targetType: 'query' | 'gallery', entityId: string): Promise<FirstOrderMediaResponse> {

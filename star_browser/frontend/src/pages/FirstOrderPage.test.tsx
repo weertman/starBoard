@@ -6,13 +6,15 @@ import { FirstOrderPage } from './FirstOrderPage'
 
 vi.mock('../api/client', () => ({
   getFirstOrderQueries: vi.fn(),
+  getFirstOrderGalleryFilters: vi.fn(),
   getFirstOrderMedia: vi.fn(),
   runFirstOrderSearch: vi.fn(),
 }))
 
-import { getFirstOrderMedia, getFirstOrderQueries, runFirstOrderSearch } from '../api/client'
+import { getFirstOrderGalleryFilters, getFirstOrderMedia, getFirstOrderQueries, runFirstOrderSearch } from '../api/client'
 
 const mockedGetFirstOrderQueries = vi.mocked(getFirstOrderQueries)
+const mockedGetFirstOrderGalleryFilters = vi.mocked(getFirstOrderGalleryFilters)
 const mockedGetFirstOrderMedia = vi.mocked(getFirstOrderMedia)
 const mockedRunFirstOrderSearch = vi.mocked(runFirstOrderSearch)
 
@@ -53,9 +55,15 @@ describe('FirstOrderPage query selector', () => {
 
   beforeEach(() => {
     mockedGetFirstOrderQueries.mockReset()
+    mockedGetFirstOrderGalleryFilters.mockReset()
     mockedGetFirstOrderMedia.mockReset()
     mockedRunFirstOrderSearch.mockReset()
     mockedGetFirstOrderQueries.mockResolvedValue({ queries: queryOptions })
+    mockedGetFirstOrderGalleryFilters.mockResolvedValue({ fields: [
+      { field: 'location', label: 'location', values: ['Cattle Point', 'Eagle Point', 'Friday Harbor'] },
+      { field: 'dorsal_color', label: 'dorsal_color', values: ['orange', 'purple'] },
+      { field: 'sex', label: 'sex', values: ['female', 'male'] },
+    ] })
     mockedGetFirstOrderMedia.mockImplementation(async (targetType, entityId) => ({
       target_type: targetType,
       entity_id: entityId,
@@ -226,6 +234,11 @@ describe('FirstOrderPage query selector', () => {
     await user.click(screen.getByRole('button', { name: 'Next selected query image' }))
     expect(await screen.findByAltText('Selected query query_a image query_a_detail.jpg')).toBeInTheDocument()
     expect(screen.getByText('Selected query image 2 of 2')).toBeInTheDocument()
+    const galleryFilters = screen.getByLabelText('Gallery comparison filters')
+    expect(galleryFilters).toHaveStyle({ maxHeight: '320px', overflow: 'auto' })
+    expect(galleryFilters).toHaveTextContent('location')
+    expect(galleryFilters).toHaveTextContent('dorsal_color')
+    await user.selectOptions(screen.getByLabelText('Filter gallery by location'), 'Cattle Point')
     expect(screen.getByRole('option', { name: 'MegaStar' })).toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar ranking')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar query image')).not.toBeInTheDocument()
@@ -235,7 +248,7 @@ describe('FirstOrderPage query selector', () => {
     await user.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() => {
-      expect(mockedRunFirstOrderSearch).toHaveBeenCalledWith({ query_id: 'query_a', top_k: 10, preset: 'megastar', query_image_id: 'query:query_a:1' })
+      expect(mockedRunFirstOrderSearch).toHaveBeenCalledWith({ query_id: 'query_a', top_k: 10, preset: 'megastar', query_image_id: 'query:query_a:1', gallery_filters: { location: 'Cattle Point' } })
     })
     expect(await screen.findByText('gallery_from_megastar')).toBeInTheDocument()
     expect(await screen.findByAltText('Rank 1 gallery_from_megastar image gallery_from_megastar_detail.jpg')).toBeInTheDocument()
@@ -244,7 +257,7 @@ describe('FirstOrderPage query selector', () => {
 
     await user.click(screen.getByRole('button', { name: 'MegaStar search selected image' }))
     await waitFor(() => {
-      expect(mockedRunFirstOrderSearch).toHaveBeenLastCalledWith({ query_id: 'query_a', top_k: 10, preset: 'megastar', query_image_id: 'query:query_a:1' })
+      expect(mockedRunFirstOrderSearch).toHaveBeenLastCalledWith({ query_id: 'query_a', top_k: 10, preset: 'megastar', query_image_id: 'query:query_a:1', gallery_filters: { location: 'Cattle Point' } })
     })
     expect(await screen.findByText('gallery_from_megastar_button')).toBeInTheDocument()
   })
