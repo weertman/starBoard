@@ -657,7 +657,7 @@ export function FirstOrderPage() {
               )}
             </div>
           </div>
-          <section aria-label="Gallery comparison filters" style={{ marginTop: 12, border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fbfdff', maxHeight: 320, overflow: 'auto' }}>
+          <section aria-label="Gallery comparison filters" style={{ marginTop: 12, border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fbfdff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 8 }}>
               <h2 style={{ margin: 0, fontSize: 16 }}>Filter comparison stars</h2>
               <button type="button" onClick={() => setGalleryFilters({})}>Clear star filters</button>
