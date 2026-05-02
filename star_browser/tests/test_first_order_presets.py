@@ -97,6 +97,36 @@ def test_first_order_search_megastar_preset_uses_precomputed_numeric_scores(monk
     assert response.candidates[0].field_breakdown == {'megastar': 0.91}
 
 
+def test_first_order_search_megastar_preset_applies_gallery_filters_before_top_k(monkeypatch):
+    engine = _DummyEngine()
+    monkeypatch.setattr(first_order_service, '_get_engine', lambda: engine)
+    monkeypatch.setattr(
+        first_order_service,
+        '_load_megastar_score_store',
+        lambda: first_order_service._MegaStarScoreStore(
+            query_ids=('query_001',),
+            gallery_ids=('gallery_low_matching', 'gallery_high_wrong_location'),
+            scores=np.asarray([[0.25, 0.91]], dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(
+        first_order_service,
+        '_gallery_rows_by_id',
+        lambda: {
+            'gallery_low_matching': {'location': 'Cattle Point'},
+            'gallery_high_wrong_location': {'location': 'Friday Harbor'},
+        },
+    )
+
+    response = first_order_service.run_first_order_search(
+        'query_001', top_k=1, preset='megastar', gallery_filters={'location': 'Cattle Point'}
+    )
+
+    assert response.preset == 'megastar'
+    assert engine.calls == []
+    assert [candidate.entity_id for candidate in response.candidates] == ['gallery_low_matching']
+
+
 def test_first_order_megastar_image_preset_uses_selected_query_image(monkeypatch):
     engine = _DummyEngine()
     monkeypatch.setattr(first_order_service, '_get_engine', lambda: engine)

@@ -261,7 +261,7 @@ def _rank_megastar(query_id: str, top_k: int, query_image_id: str | None = None,
     if store is not None and query_id in store.query_ids:
         row_idx = store.query_ids.index(query_id)
         row = np.asarray(store.scores[row_idx], dtype=np.float32).reshape(-1)
-        top_n = min(max(int(top_k), 0), len(store.gallery_ids), row.size)
+        top_n = min(max(100000 if _active_gallery_filters(gallery_filters) else int(top_k), 0), len(store.gallery_ids), row.size)
         if top_n > 0:
             ranked = np.argsort(row)[::-1][:top_n]
             for col_idx in ranked.tolist():

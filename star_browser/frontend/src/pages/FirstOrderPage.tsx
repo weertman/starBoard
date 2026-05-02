@@ -4,6 +4,7 @@ import {
   getFirstOrderGalleryFilters,
   getFirstOrderMedia,
   getFirstOrderQueries,
+  getLocationSites,
   runFirstOrderSearch,
   type FirstOrderGalleryFilterField,
   type FirstOrderMediaImage,
@@ -11,7 +12,9 @@ import {
   type FirstOrderPreset,
   type FirstOrderQueryOption,
   type FirstOrderSearchResponse,
+  type LocationSite,
 } from '../api/client'
+import { LocationSiteMap } from '../components/LocationSiteMap'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -231,6 +234,7 @@ export function FirstOrderPage() {
   const [candidateMedia, setCandidateMedia] = useState<Record<string, FirstOrderMediaResponse>>({})
   const [galleryFilterFields, setGalleryFilterFields] = useState<FirstOrderGalleryFilterField[]>([])
   const [galleryFilters, setGalleryFilters] = useState<Record<string, string>>({})
+  const [knownSites, setKnownSites] = useState<LocationSite[]>([])
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0)
   const [activeQueryImageIndex, setActiveQueryImageIndex] = useState(0)
   const [activeCandidateImageIndexes, setActiveCandidateImageIndexes] = useState<Record<string, number>>({})
@@ -260,6 +264,9 @@ export function FirstOrderPage() {
     getFirstOrderGalleryFilters()
       .then((next) => setGalleryFilterFields(next.fields))
       .catch(() => setGalleryFilterFields([]))
+    getLocationSites()
+      .then((next) => setKnownSites(next.sites))
+      .catch(() => setKnownSites([]))
     // Initial load only. refreshQueries intentionally reads current state for manual refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -401,6 +408,12 @@ export function FirstOrderPage() {
   const activeQueryImage = queryMedia?.images[activeQueryImageIndex] ?? null
   const selectedMetadataEntries = Object.entries(selectedOption?.metadata ?? {}).filter(([, value]) => value)
   const activeGalleryFilters = Object.fromEntries(Object.entries(galleryFilters).filter(([, value]) => value.trim()))
+  const locationGalleryField = galleryFilterFields.find((field) => field.field === 'location')
+  const bodyGalleryFields = galleryFilterFields.filter((field) => field.field !== 'location')
+  const mappedLocationSites = locationGalleryField
+    ? knownSites.filter((site) => locationGalleryField.values.includes(site.name))
+    : []
+  const selectedLocationSite = mappedLocationSites.find((site) => site.name === galleryFilters.location)
 
   function stepProposal(delta: number) {
     if (!result?.candidates.length) return
@@ -610,21 +623,49 @@ export function FirstOrderPage() {
               <button type="button" onClick={() => setGalleryFilters({})}>Clear star filters</button>
             </div>
             {galleryFilterFields.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
-                {galleryFilterFields.map((field) => (
-                  <label key={field.field} style={{ display: 'grid', gap: 3, fontSize: 13 }}>
-                    {field.label}
-                    <select
-                      aria-label={`Filter gallery by ${field.field}`}
-                      value={galleryFilters[field.field] ?? ''}
-                      onChange={(event) => setGalleryFilters((current) => ({ ...current, [field.field]: event.target.value }))}
-                      style={input}
-                    >
-                      <option value="">Any</option>
-                      {field.values.map((value) => <option key={value} value={value}>{value}</option>)}
-                    </select>
-                  </label>
-                ))}
+              <div style={{ display: 'grid', gap: 12 }}>
+                {locationGalleryField ? (
+                  <section aria-label="Map location filter" style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div>
+                        <b>Select comparison location on map</b>
+                        <div style={{ color: '#667085', fontSize: 13 }}>Click a mapped site to filter gallery stars by location.</div>
+                      </div>
+                      {galleryFilters.location ? (
+                        <button type="button" onClick={() => setGalleryFilters((current) => ({ ...current, location: '' }))}>Clear location</button>
+                      ) : null}
+                    </div>
+                    <LocationSiteMap
+                      sites={mappedLocationSites}
+                      selectedLatitude={selectedLocationSite?.latitude}
+                      selectedLongitude={selectedLocationSite?.longitude}
+                      picking={false}
+                      onPick={() => undefined}
+                      onSelectSite={(site) => setGalleryFilters((current) => ({ ...current, location: site.name }))}
+                    />
+                    <div style={{ color: '#516070', fontSize: 13 }}>
+                      Selected location: <b>{galleryFilters.location || 'Any'}</b>
+                    </div>
+                  </section>
+                ) : null}
+                {bodyGalleryFields.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
+                    {bodyGalleryFields.map((field) => (
+                      <label key={field.field} style={{ display: 'grid', gap: 3, fontSize: 13 }}>
+                        {field.label}
+                        <select
+                          aria-label={`Filter gallery by ${field.field}`}
+                          value={galleryFilters[field.field] ?? ''}
+                          onChange={(event) => setGalleryFilters((current) => ({ ...current, [field.field]: event.target.value }))}
+                          style={input}
+                        >
+                          <option value="">Any</option>
+                          {field.values.map((value) => <option key={value} value={value}>{value}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div style={{ color: '#667085', fontSize: 13 }}>No gallery metadata fields loaded.</div>

@@ -2,20 +2,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+vi.mock('../components/LocationSiteMap', () => ({
+  LocationSiteMap: ({ sites, onSelectSite }: { sites: Array<{ name: string }>; onSelectSite?: (site: { name: string }) => void }) => (
+    <div aria-label="Gallery location map">
+      <div>{sites.map((site) => site.name).join(', ')}</div>
+      {sites.map((site) => (
+        <button key={site.name} type="button" aria-label={`Select map location ${site.name}`} onClick={() => onSelectSite?.(site)}>{site.name}</button>
+      ))}
+    </div>
+  ),
+}))
+
 import { FirstOrderPage } from './FirstOrderPage'
 
 vi.mock('../api/client', () => ({
   getFirstOrderQueries: vi.fn(),
   getFirstOrderGalleryFilters: vi.fn(),
   getFirstOrderMedia: vi.fn(),
+  getLocationSites: vi.fn(),
   runFirstOrderSearch: vi.fn(),
 }))
 
-import { getFirstOrderGalleryFilters, getFirstOrderMedia, getFirstOrderQueries, runFirstOrderSearch } from '../api/client'
+import { getFirstOrderGalleryFilters, getFirstOrderMedia, getFirstOrderQueries, getLocationSites, runFirstOrderSearch } from '../api/client'
 
 const mockedGetFirstOrderQueries = vi.mocked(getFirstOrderQueries)
 const mockedGetFirstOrderGalleryFilters = vi.mocked(getFirstOrderGalleryFilters)
 const mockedGetFirstOrderMedia = vi.mocked(getFirstOrderMedia)
+const mockedGetLocationSites = vi.mocked(getLocationSites)
 const mockedRunFirstOrderSearch = vi.mocked(runFirstOrderSearch)
 
 const queryOptions = [
@@ -57,8 +70,14 @@ describe('FirstOrderPage query selector', () => {
     mockedGetFirstOrderQueries.mockReset()
     mockedGetFirstOrderGalleryFilters.mockReset()
     mockedGetFirstOrderMedia.mockReset()
+    mockedGetLocationSites.mockReset()
     mockedRunFirstOrderSearch.mockReset()
     mockedGetFirstOrderQueries.mockResolvedValue({ queries: queryOptions })
+    mockedGetLocationSites.mockResolvedValue({ sites: [
+      { name: 'Cattle Point', latitude: 48.45, longitude: -122.96 },
+      { name: 'Eagle Point', latitude: 48.51, longitude: -123.04 },
+      { name: 'Friday Harbor', latitude: 48.53, longitude: -123.01 },
+    ] })
     mockedGetFirstOrderGalleryFilters.mockResolvedValue({ fields: [
       { field: 'location', label: 'location', values: ['Cattle Point', 'Eagle Point', 'Friday Harbor'] },
       { field: 'arm_color', label: 'Arm color', values: ['orange', 'purple'] },
@@ -237,11 +256,15 @@ describe('FirstOrderPage query selector', () => {
     const galleryFilters = screen.getByLabelText('Gallery comparison filters')
     expect(galleryFilters).toHaveStyle({ maxHeight: '320px', overflow: 'auto' })
     expect(galleryFilters).toHaveTextContent('location')
+    expect(galleryFilters).toHaveTextContent('Select comparison location on map')
+    expect(screen.getByLabelText('Gallery location map')).toHaveTextContent('Cattle Point')
+    expect(screen.queryByLabelText('Filter gallery by location')).not.toBeInTheDocument()
     expect(galleryFilters).toHaveTextContent('Arm color')
     expect(galleryFilters).toHaveTextContent('Arm thickness')
     expect(galleryFilters).not.toHaveTextContent('sex')
     expect(galleryFilters).not.toHaveTextContent('tip_to_tip_size_cm')
-    await user.selectOptions(screen.getByLabelText('Filter gallery by location'), 'Cattle Point')
+    await user.click(screen.getByRole('button', { name: 'Select map location Cattle Point' }))
+    expect(galleryFilters).toHaveTextContent('Selected location: Cattle Point')
     expect(screen.getByRole('option', { name: 'MegaStar' })).toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar ranking')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar query image')).not.toBeInTheDocument()

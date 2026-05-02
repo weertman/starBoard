@@ -41,12 +41,14 @@ export function LocationSiteMap({
   selectedLongitude,
   picking,
   onPick,
+  onSelectSite,
 }: {
   sites: LocationSite[]
   selectedLatitude?: number
   selectedLongitude?: number
   picking: boolean
   onPick: (lat: number, lon: number) => void
+  onSelectSite?: (site: LocationSite) => void
 }) {
   return (
     <div>
@@ -69,8 +71,11 @@ export function LocationSiteMap({
             center={[site.latitude, site.longitude]}
             radius={6}
             pathOptions={{ color: '#0f766e', fillColor: '#14b8a6', fillOpacity: 0.85 }}
+            eventHandlers={onSelectSite ? { click: () => onSelectSite(site) } : undefined}
           >
-            <Popup>{site.name}</Popup>
+            <Popup>
+              <button type="button" onClick={() => onSelectSite?.(site)}>{site.name}</button>
+            </Popup>
           </CircleMarker>
         ))}
         {selectedLatitude != null && selectedLongitude != null && (
