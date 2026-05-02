@@ -261,6 +261,8 @@ describe('FirstOrderPage query selector', () => {
     expect(screen.queryByLabelText('Filter gallery by location')).not.toBeInTheDocument()
     expect(galleryFilters).toHaveTextContent('Arm color')
     expect(galleryFilters).toHaveTextContent('Arm thickness')
+    expect(galleryFilters.textContent?.indexOf('Arm color')).toBeLessThan(galleryFilters.textContent?.indexOf('Select comparison location on map') ?? 0)
+    expect(galleryFilters.textContent?.indexOf('Arm thickness')).toBeLessThan(galleryFilters.textContent?.indexOf('Select comparison location on map') ?? 0)
     expect(galleryFilters).not.toHaveTextContent('sex')
     expect(galleryFilters).not.toHaveTextContent('tip_to_tip_size_cm')
     await user.click(screen.getByRole('button', { name: 'Select map location Cattle Point' }))

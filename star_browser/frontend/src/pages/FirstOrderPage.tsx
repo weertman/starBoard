@@ -624,6 +624,24 @@ export function FirstOrderPage() {
             </div>
             {galleryFilterFields.length > 0 ? (
               <div style={{ display: 'grid', gap: 12 }}>
+                {bodyGalleryFields.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
+                    {bodyGalleryFields.map((field) => (
+                      <label key={field.field} style={{ display: 'grid', gap: 3, fontSize: 13 }}>
+                        {field.label}
+                        <select
+                          aria-label={`Filter gallery by ${field.field}`}
+                          value={galleryFilters[field.field] ?? ''}
+                          onChange={(event) => setGalleryFilters((current) => ({ ...current, [field.field]: event.target.value }))}
+                          style={input}
+                        >
+                          <option value="">Any</option>
+                          {field.values.map((value) => <option key={value} value={value}>{value}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
                 {locationGalleryField ? (
                   <section aria-label="Map location filter" style={{ display: 'grid', gap: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -647,24 +665,6 @@ export function FirstOrderPage() {
                       Selected location: <b>{galleryFilters.location || 'Any'}</b>
                     </div>
                   </section>
-                ) : null}
-                {bodyGalleryFields.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
-                    {bodyGalleryFields.map((field) => (
-                      <label key={field.field} style={{ display: 'grid', gap: 3, fontSize: 13 }}>
-                        {field.label}
-                        <select
-                          aria-label={`Filter gallery by ${field.field}`}
-                          value={galleryFilters[field.field] ?? ''}
-                          onChange={(event) => setGalleryFilters((current) => ({ ...current, [field.field]: event.target.value }))}
-                          style={input}
-                        >
-                          <option value="">Any</option>
-                          {field.values.map((value) => <option key={value} value={value}>{value}</option>)}
-                        </select>
-                      </label>
-                    ))}
-                  </div>
                 ) : null}
               </div>
             ) : (
