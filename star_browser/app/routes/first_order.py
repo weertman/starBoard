@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
 from ..auth import require_authenticated_email
-from ..models.search_api import FirstOrderGalleryFiltersResponse, FirstOrderMediaResponse, FirstOrderQueryOptionsResponse, FirstOrderSearchRequest, FirstOrderSearchResponse
+from ..models.search_api import FirstOrderGalleryFiltersResponse, FirstOrderMatchLabelRequest, FirstOrderMatchLabelResponse, FirstOrderMediaResponse, FirstOrderQueryOptionsResponse, FirstOrderSearchRequest, FirstOrderSearchResponse
 from ..services.first_order_media_service import list_first_order_media, resized_preview_response, resolve_first_order_media_path
-from ..services.first_order_service import list_first_order_gallery_filter_options, list_first_order_query_options, run_first_order_search
+from ..services.first_order_service import list_first_order_gallery_filter_options, list_first_order_query_options, run_first_order_search, save_first_order_match_label
 
 router = APIRouter()
 
@@ -37,6 +37,17 @@ def first_order_search(
         query_image_id=request.query_image_id,
         gallery_filters=request.gallery_filters,
     )
+
+
+@router.post('/first-order/match-labels', response_model=FirstOrderMatchLabelResponse)
+def first_order_match_labels(
+    request: FirstOrderMatchLabelRequest,
+    _user_email: str = Depends(require_authenticated_email),
+):
+    try:
+        return save_first_order_match_label(request.query_id, request.gallery_id, request.verdict, request.notes)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get('/first-order/queries/{query_id}/media', response_model=FirstOrderMediaResponse)

@@ -129,6 +129,7 @@ export type FirstOrderQueryOptionsResponse = {
 }
 
 export type FirstOrderPreset = 'all' | 'colors' | 'text' | 'arms_patterns' | 'megastar'
+export type FirstOrderMatchVerdict = 'yes' | 'maybe' | 'no'
 
 export type FirstOrderGalleryFilterField = {
   field: string
@@ -159,6 +160,22 @@ export type FirstOrderSearchResponse = {
     field_breakdown: Record<string, number>
     preferred_image_id?: string | null
   }>
+}
+
+export type FirstOrderMatchLabelRequest = {
+  query_id: string
+  gallery_id: string
+  verdict: FirstOrderMatchVerdict
+  notes?: string
+}
+
+export type FirstOrderMatchLabelResponse = {
+  query_id: string
+  gallery_id: string
+  verdict: FirstOrderMatchVerdict
+  notes: string
+  updated_utc: string
+  query_state: FirstOrderQueryOption['state']
 }
 
 export type BatchUploadImportSource =
@@ -378,4 +395,13 @@ export async function runFirstOrderSearch(req: FirstOrderSearchRequest): Promise
     body: JSON.stringify(req),
   })
   return parseJsonOrThrow<FirstOrderSearchResponse>(res)
+}
+
+export async function saveFirstOrderMatchLabel(req: FirstOrderMatchLabelRequest): Promise<FirstOrderMatchLabelResponse> {
+  const res = await fetch('/api/first-order/match-labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  return parseJsonOrThrow<FirstOrderMatchLabelResponse>(res)
 }

@@ -71,6 +71,53 @@ def test_first_order_gallery_filter_options_and_search_filters_candidates(tmp_pa
     assert [candidate['entity_id'] for candidate in result['candidates']] == ['media_cattle']
 
 
+def test_first_order_match_label_route_writes_desktop_second_order_label_csv(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    queries = archive / 'queries'
+    queries.mkdir(parents=True)
+    (queries / 'query_001').mkdir()
+    (queries / 'queries_metadata.csv').write_text('query_id,location\nquery_001,Friday Harbor\n', encoding='utf-8-sig')
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    headers = {'cf-access-authenticated-user-email': 'field@example.org'}
+    r = client.post(
+        '/api/first-order/match-labels',
+        headers=headers,
+        json={'query_id': 'query_001', 'gallery_id': 'gallery_001', 'verdict': 'yes', 'notes': 'clear madreporite match'},
+    )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body['query_id'] == 'query_001'
+    assert body['gallery_id'] == 'gallery_001'
+    assert body['verdict'] == 'yes'
+    assert body['notes'] == 'clear madreporite match'
+    assert body['query_state'] == 'matched'
+    assert body['updated_utc'].endswith('Z')
+    labels_path = archive / 'queries' / 'query_001' / '_second_order_labels.csv'
+    lines = labels_path.read_text(encoding='utf-8-sig').splitlines()
+    assert lines[0] == 'query_id,gallery_id,verdict,notes,updated_utc'
+    cells = lines[1].split(',')
+    assert cells[:4] == ['query_001', 'gallery_001', 'yes', 'clear madreporite match']
+    assert cells[4].endswith('Z')
+
+
+def test_first_order_match_label_route_rejects_invalid_verdict(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    (archive / 'queries').mkdir(parents=True)
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    r = client.post(
+        '/api/first-order/match-labels',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={'query_id': 'query_001', 'gallery_id': 'gallery_001', 'verdict': 'unsure'},
+    )
+
+    assert r.status_code == 422
+
+
 def test_first_order_query_options_match_desktop_selector_order_and_state(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     gallery = archive / 'gallery'

@@ -8,7 +8,7 @@ import numpy as np
 
 from src.data import archive_paths as ap
 from src.data.annotation_schema import FIELD_BY_NAME
-from src.data.compare_labels import load_latest_map_for_query
+from src.data.compare_labels import get_label_for_pair, load_latest_map_for_query, save_label_for_pair
 from src.data.csv_io import last_row_per_id, normalize_id_value, read_rows_multi
 from src.data.id_registry import list_ids
 from src.search.engine import FirstOrderSearchEngine
@@ -18,6 +18,7 @@ from ..models.search_api import (
     FirstOrderCandidate,
     FirstOrderGalleryFilterField,
     FirstOrderGalleryFiltersResponse,
+    FirstOrderMatchLabelResponse,
     FirstOrderQueryOption,
     FirstOrderQueryOptionsResponse,
     FirstOrderSearchResponse,
@@ -212,6 +213,28 @@ def _filter_candidates(candidates: list[FirstOrderCandidate], gallery_filters: d
     if not filters:
         return candidates
     return [candidate for candidate in candidates if _gallery_matches_filters(candidate.entity_id, filters)]
+
+
+def save_first_order_match_label(query_id: str, gallery_id: str, verdict: str, notes: str = '') -> FirstOrderMatchLabelResponse:
+    clean_query_id = query_id.strip()
+    clean_gallery_id = gallery_id.strip()
+    clean_verdict = verdict.strip().lower()
+    if not clean_query_id:
+        raise ValueError('query_id_required')
+    if not clean_gallery_id:
+        raise ValueError('gallery_id_required')
+    if clean_verdict not in {'yes', 'maybe', 'no'}:
+        raise ValueError('invalid_verdict')
+    save_label_for_pair(clean_query_id, clean_gallery_id, clean_verdict, notes.strip())
+    row = get_label_for_pair(clean_query_id, clean_gallery_id) or {}
+    return FirstOrderMatchLabelResponse(
+        query_id=clean_query_id,
+        gallery_id=clean_gallery_id,
+        verdict=clean_verdict,  # type: ignore[arg-type]
+        notes=row.get('notes') or '',
+        updated_utc=row.get('updated_utc') or '',
+        query_state=_query_state(clean_query_id),  # type: ignore[arg-type]
+    )
 
 
 def _rank_megastar_by_query_image(query_image_id: str, top_k: int, gallery_filters: dict[str, str] | None = None) -> FirstOrderSearchResponse | None:

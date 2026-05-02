@@ -6,7 +6,9 @@ import {
   getFirstOrderQueries,
   getLocationSites,
   runFirstOrderSearch,
+  saveFirstOrderMatchLabel,
   type FirstOrderGalleryFilterField,
+  type FirstOrderMatchVerdict,
   type FirstOrderMediaImage,
   type FirstOrderMediaResponse,
   type FirstOrderPreset,
@@ -238,6 +240,11 @@ export function FirstOrderPage() {
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0)
   const [activeQueryImageIndex, setActiveQueryImageIndex] = useState(0)
   const [activeCandidateImageIndexes, setActiveCandidateImageIndexes] = useState<Record<string, number>>({})
+  const [matchDecision, setMatchDecision] = useState<FirstOrderMatchVerdict | ''>('')
+  const [matchNotes, setMatchNotes] = useState('')
+  const [savingDecision, setSavingDecision] = useState(false)
+  const [decisionMessage, setDecisionMessage] = useState<string | null>(null)
+  const [decisionError, setDecisionError] = useState<string | null>(null)
 
   async function refreshQueries(preferredQueryId = queryId) {
     setLoadingQueries(true)
@@ -377,6 +384,10 @@ export function FirstOrderPage() {
       const next = await runFirstOrderSearch(request)
       setResult(next)
       setActiveCandidateIndex(0)
+      setMatchDecision('')
+      setMatchNotes('')
+      setDecisionMessage(null)
+      setDecisionError(null)
       setActiveCandidateImageIndexes({})
       setCandidateMedia({})
       void Promise.all(next.candidates.map(async (candidate) => {
@@ -415,6 +426,34 @@ export function FirstOrderPage() {
     ? knownSites.filter((site) => locationGalleryField.values.includes(site.name))
     : []
   const selectedLocationSite = mappedLocationSites.find((site) => site.name === galleryFilters.location)
+
+  useEffect(() => {
+    setMatchDecision('')
+    setMatchNotes('')
+    setDecisionMessage(null)
+    setDecisionError(null)
+  }, [result?.query_id, activeCandidate?.entity_id])
+
+  async function saveActiveMatchDecision() {
+    if (!result || !activeCandidate || !matchDecision) return
+    setSavingDecision(true)
+    setDecisionMessage(null)
+    setDecisionError(null)
+    try {
+      const saved = await saveFirstOrderMatchLabel({
+        query_id: result.query_id,
+        gallery_id: activeCandidate.entity_id,
+        verdict: matchDecision,
+        notes: matchNotes,
+      })
+      setDecisionMessage(`Saved ${saved.verdict} for ${saved.gallery_id}`)
+      await refreshQueries(result.query_id)
+    } catch (err) {
+      setDecisionError(String(err))
+    } finally {
+      setSavingDecision(false)
+    }
+  }
 
   function stepProposal(delta: number) {
     if (!result?.candidates.length) return
@@ -747,6 +786,37 @@ export function FirstOrderPage() {
                             {field}: {value.toFixed(3)}
                           </span>
                         ))}
+                      </div>
+                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'grid', gap: 8 }}>
+                        <fieldset aria-label="Match decision" style={{ border: '1px solid #d7deea', borderRadius: 8, padding: '8px 10px', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <legend style={{ color: '#516070', fontSize: 12, padding: '0 4px' }}>Match decision</legend>
+                          {(['yes', 'maybe', 'no'] as const).map((verdict) => (
+                            <label key={verdict} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+                              <input
+                                type="radio"
+                                name="first-order-match-decision"
+                                checked={matchDecision === verdict}
+                                onChange={() => setMatchDecision(verdict)}
+                              />
+                              {verdict === 'yes' ? 'Yes' : verdict === 'maybe' ? 'Maybe' : 'No'}
+                            </label>
+                          ))}
+                        </fieldset>
+                        <label style={{ display: 'grid', gap: 3, fontSize: 13 }}>
+                          Decision notes
+                          <textarea
+                            aria-label="Decision notes"
+                            value={matchNotes}
+                            onChange={(event) => setMatchNotes(event.target.value)}
+                            rows={2}
+                            style={{ ...input, resize: 'vertical' }}
+                          />
+                        </label>
+                        <button type="button" onClick={() => void saveActiveMatchDecision()} disabled={savingDecision || !matchDecision} style={{ justifySelf: 'start', padding: '8px 12px', fontWeight: 700 }}>
+                          {savingDecision ? 'Saving decision…' : 'Save match decision'}
+                        </button>
+                        {decisionMessage ? <div role="status" style={{ color: '#215621', fontSize: 13 }}>{decisionMessage}</div> : null}
+                        {decisionError ? <div role="alert" style={{ color: '#7a1c1c', fontSize: 13 }}>{decisionError}</div> : null}
                       </div>
                     </div>
                   </section>

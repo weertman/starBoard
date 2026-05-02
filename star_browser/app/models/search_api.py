@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 QueryWorkflowState = Literal['not_attempted', 'pinned', 'attempted', 'matched']
+FirstOrderMatchVerdict = Literal['yes', 'maybe', 'no']
 
 
 class FirstOrderQueryOption(BaseModel):
@@ -38,6 +39,22 @@ class FirstOrderSearchRequest(BaseModel):
     preset: Literal['all', 'colors', 'text', 'arms_patterns', 'megastar'] = 'all'
     query_image_id: str | None = None
     gallery_filters: dict[str, str] = Field(default_factory=dict)
+
+
+class FirstOrderMatchLabelRequest(BaseModel):
+    query_id: str
+    gallery_id: str
+    verdict: FirstOrderMatchVerdict
+    notes: str = ''
+
+
+class FirstOrderMatchLabelResponse(BaseModel):
+    query_id: str
+    gallery_id: str
+    verdict: FirstOrderMatchVerdict
+    notes: str = ''
+    updated_utc: str
+    query_state: QueryWorkflowState
 
 
 class FirstOrderCandidate(BaseModel):

@@ -21,15 +21,17 @@ vi.mock('../api/client', () => ({
   getFirstOrderMedia: vi.fn(),
   getLocationSites: vi.fn(),
   runFirstOrderSearch: vi.fn(),
+  saveFirstOrderMatchLabel: vi.fn(),
 }))
 
-import { getFirstOrderGalleryFilters, getFirstOrderMedia, getFirstOrderQueries, getLocationSites, runFirstOrderSearch } from '../api/client'
+import { getFirstOrderGalleryFilters, getFirstOrderMedia, getFirstOrderQueries, getLocationSites, runFirstOrderSearch, saveFirstOrderMatchLabel } from '../api/client'
 
 const mockedGetFirstOrderQueries = vi.mocked(getFirstOrderQueries)
 const mockedGetFirstOrderGalleryFilters = vi.mocked(getFirstOrderGalleryFilters)
 const mockedGetFirstOrderMedia = vi.mocked(getFirstOrderMedia)
 const mockedGetLocationSites = vi.mocked(getLocationSites)
 const mockedRunFirstOrderSearch = vi.mocked(runFirstOrderSearch)
+const mockedSaveFirstOrderMatchLabel = vi.mocked(saveFirstOrderMatchLabel)
 
 const queryOptions = [
   {
@@ -72,6 +74,7 @@ describe('FirstOrderPage query selector', () => {
     mockedGetFirstOrderMedia.mockReset()
     mockedGetLocationSites.mockReset()
     mockedRunFirstOrderSearch.mockReset()
+    mockedSaveFirstOrderMatchLabel.mockReset()
     mockedGetFirstOrderQueries.mockResolvedValue({ queries: queryOptions })
     mockedGetLocationSites.mockResolvedValue({ sites: [
       { name: 'Cattle Point', latitude: 48.45, longitude: -122.96 },
@@ -99,6 +102,14 @@ describe('FirstOrderPage query selector', () => {
       query_id: 'query_b',
       preset: 'all',
       candidates: [{ entity_id: 'gallery_1', score: 0.9, k_contrib: 2, field_breakdown: { location: 1 } }],
+    })
+    mockedSaveFirstOrderMatchLabel.mockResolvedValue({
+      query_id: 'query_a',
+      gallery_id: 'gallery_visual_1',
+      verdict: 'maybe',
+      notes: 'same individual likely, but arm pattern differs',
+      updated_utc: '2026-01-04T00:00:00Z',
+      query_state: 'attempted',
     })
   })
 
@@ -367,6 +378,20 @@ describe('FirstOrderPage query selector', () => {
     expect(screen.getByText('gallery_visual_1')).toBeInTheDocument()
     expect(screen.getByText(/location: 1\.000/i)).toBeInTheDocument()
     expect(screen.getByText(/megastar: 0\.860/i)).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Match decision' })).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Maybe'))
+    await user.type(screen.getByLabelText('Decision notes'), 'same individual likely, but arm pattern differs')
+    await user.click(screen.getByRole('button', { name: 'Save match decision' }))
+    await waitFor(() => {
+      expect(mockedSaveFirstOrderMatchLabel).toHaveBeenCalledWith({
+        query_id: 'query_a',
+        gallery_id: 'gallery_visual_1',
+        verdict: 'maybe',
+        notes: 'same individual likely, but arm pattern differs',
+      })
+    })
+    expect(await screen.findByText(/Saved maybe for gallery_visual_1/i)).toBeInTheDocument()
+    expect(mockedGetFirstOrderQueries).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'First-order visual lineup' })).not.toBeInTheDocument()
 
