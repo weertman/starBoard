@@ -410,6 +410,7 @@ export function FirstOrderPage() {
   const activeGalleryFilters = Object.fromEntries(Object.entries(galleryFilters).filter(([, value]) => value.trim()))
   const locationGalleryField = galleryFilterFields.find((field) => field.field === 'location')
   const bodyGalleryFields = galleryFilterFields.filter((field) => field.field !== 'location')
+  const selectableGalleryFields = locationGalleryField ? [locationGalleryField, ...bodyGalleryFields] : bodyGalleryFields
   const mappedLocationSites = locationGalleryField
     ? knownSites.filter((site) => locationGalleryField.values.includes(site.name))
     : []
@@ -624,9 +625,9 @@ export function FirstOrderPage() {
             </div>
             {galleryFilterFields.length > 0 ? (
               <div style={{ display: 'grid', gap: 12 }}>
-                {bodyGalleryFields.length > 0 ? (
+                {selectableGalleryFields.length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
-                    {bodyGalleryFields.map((field) => (
+                    {selectableGalleryFields.map((field) => (
                       <label key={field.field} style={{ display: 'grid', gap: 3, fontSize: 13 }}>
                         {field.label}
                         <select
