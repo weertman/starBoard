@@ -61,8 +61,8 @@ describe('FirstOrderPage query selector', () => {
     mockedGetFirstOrderQueries.mockResolvedValue({ queries: queryOptions })
     mockedGetFirstOrderGalleryFilters.mockResolvedValue({ fields: [
       { field: 'location', label: 'location', values: ['Cattle Point', 'Eagle Point', 'Friday Harbor'] },
-      { field: 'dorsal_color', label: 'dorsal_color', values: ['orange', 'purple'] },
-      { field: 'sex', label: 'sex', values: ['female', 'male'] },
+      { field: 'arm_color', label: 'Arm color', values: ['orange', 'purple'] },
+      { field: 'arm_thickness', label: 'Arm thickness', values: ['thick', 'thin'] },
     ] })
     mockedGetFirstOrderMedia.mockImplementation(async (targetType, entityId) => ({
       target_type: targetType,
@@ -237,7 +237,10 @@ describe('FirstOrderPage query selector', () => {
     const galleryFilters = screen.getByLabelText('Gallery comparison filters')
     expect(galleryFilters).toHaveStyle({ maxHeight: '320px', overflow: 'auto' })
     expect(galleryFilters).toHaveTextContent('location')
-    expect(galleryFilters).toHaveTextContent('dorsal_color')
+    expect(galleryFilters).toHaveTextContent('Arm color')
+    expect(galleryFilters).toHaveTextContent('Arm thickness')
+    expect(galleryFilters).not.toHaveTextContent('sex')
+    expect(galleryFilters).not.toHaveTextContent('tip_to_tip_size_cm')
     await user.selectOptions(screen.getByLabelText('Filter gallery by location'), 'Cattle Point')
     expect(screen.getByRole('option', { name: 'MegaStar' })).toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar ranking')).not.toBeInTheDocument()

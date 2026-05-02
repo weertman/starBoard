@@ -37,12 +37,12 @@ def test_first_order_gallery_filter_options_and_search_filters_candidates(tmp_pa
     gallery.mkdir(parents=True)
     queries.mkdir(parents=True)
     (gallery / 'gallery_metadata.csv').write_text(
-        'gallery_id,location,dorsal_color,sex\n'
-        'media_anchovy,Friday Harbor,orange,female\n'
-        'media_cattle,Cattle Point,purple,male\n',
+        'gallery_id,location,arm_color,arm_thickness,short_arm_code,sex,tip_to_tip_size_cm,last_modified_utc\n'
+        'media_anchovy,Friday Harbor,orange,thin,small(7),female,21.4,2026-01-01T00:00:00Z\n'
+        'media_cattle,Cattle Point,purple,thick,,male,39.8,2026-01-02T00:00:00Z\n',
         encoding='utf-8-sig',
     )
-    (queries / 'queries_metadata.csv').write_text('query_id,location,dorsal_color\nquery_001,Friday Harbor,orange\n', encoding='utf-8-sig')
+    (queries / 'queries_metadata.csv').write_text('query_id,location,arm_color\nquery_001,Friday Harbor,orange\n', encoding='utf-8-sig')
     monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
 
     client = TestClient(create_app())
@@ -52,9 +52,14 @@ def test_first_order_gallery_filter_options_and_search_filters_candidates(tmp_pa
     assert options.status_code == 200
     body = options.json()
     by_field = {item['field']: item for item in body['fields']}
+    assert sorted(by_field) == ['arm_color', 'arm_thickness', 'location', 'short_arm_code']
     assert by_field['location']['values'] == ['Cattle Point', 'Friday Harbor']
-    assert by_field['dorsal_color']['values'] == ['orange', 'purple']
-    assert by_field['sex']['values'] == ['female', 'male']
+    assert by_field['arm_color']['values'] == ['orange', 'purple']
+    assert by_field['arm_thickness']['values'] == ['thick', 'thin']
+    assert by_field['short_arm_code']['values'] == ['small(7)']
+    assert 'sex' not in by_field
+    assert 'tip_to_tip_size_cm' not in by_field
+    assert 'last_modified_utc' not in by_field
 
     r = client.post(
         '/api/first-order/search',

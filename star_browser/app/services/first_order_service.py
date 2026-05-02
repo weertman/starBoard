@@ -7,6 +7,7 @@ from functools import lru_cache
 import numpy as np
 
 from src.data import archive_paths as ap
+from src.data.annotation_schema import FIELD_BY_NAME
 from src.data.compare_labels import load_latest_map_for_query
 from src.data.csv_io import last_row_per_id, normalize_id_value, read_rows_multi
 from src.data.id_registry import list_ids
@@ -48,6 +49,8 @@ def _get_engine() -> FirstOrderSearchEngine:
 
 
 QUALITY_FIELDS = ('madreporite_visibility', 'anus_visibility', 'postural_visibility')
+GALLERY_FILTERABLE_FIELDS = ('location', *COLOR_FIELDS, *ORDINAL_FIELDS, *SET_FIELDS)
+GALLERY_FILTERABLE_FIELD_SET = set(GALLERY_FILTERABLE_FIELDS)
 QUALITY_MAX_VALUES = {
     'madreporite_visibility': 3.0,
     'anus_visibility': 3.0,
@@ -168,22 +171,29 @@ def list_first_order_gallery_filter_options() -> FirstOrderGalleryFiltersRespons
     rows_by_id = _gallery_rows_by_id()
     values_by_field: dict[str, set[str]] = {}
     for row in rows_by_id.values():
-        for field, raw_value in row.items():
-            if field == 'gallery_id':
-                continue
-            value = (raw_value or '').strip()
+        for field in GALLERY_FILTERABLE_FIELDS:
+            value = (row.get(field) or '').strip()
             if not value:
                 continue
             values_by_field.setdefault(field, set()).add(value)
     fields = [
-        FirstOrderGalleryFilterField(field=field, label=field, values=sorted(values, key=str.lower)[:500])
-        for field, values in sorted(values_by_field.items(), key=lambda item: item[0].lower())
+        FirstOrderGalleryFilterField(
+            field=field,
+            label=FIELD_BY_NAME.get(field).display_name if field in FIELD_BY_NAME else field,
+            values=sorted(values_by_field[field], key=str.lower)[:500],
+        )
+        for field in GALLERY_FILTERABLE_FIELDS
+        if field in values_by_field
     ]
     return FirstOrderGalleryFiltersResponse(fields=fields)
 
 
 def _active_gallery_filters(gallery_filters: dict[str, str] | None) -> dict[str, str]:
-    return {field: value.strip() for field, value in (gallery_filters or {}).items() if field and value and value.strip()}
+    return {
+        field: value.strip()
+        for field, value in (gallery_filters or {}).items()
+        if field in GALLERY_FILTERABLE_FIELD_SET and value and value.strip()
+    }
 
 
 def _gallery_matches_filters(gallery_id: str, filters: dict[str, str]) -> bool:
