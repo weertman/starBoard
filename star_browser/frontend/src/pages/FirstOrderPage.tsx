@@ -228,7 +228,7 @@ export function FirstOrderPage() {
   const [rankOrder, setRankOrder] = useState<RankOrder>('date_time')
   const [loadingQueries, setLoadingQueries] = useState(false)
   const [topK, setTopK] = useState(10)
-  const [preset, setPreset] = useState<FirstOrderPreset>('all')
+  const [preset, setPreset] = useState<FirstOrderPreset>('megastar')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<FirstOrderSearchResponse | null>(null)

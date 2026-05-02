@@ -145,7 +145,7 @@ describe('FirstOrderPage query selector', () => {
     await user.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() => {
-      expect(mockedRunFirstOrderSearch).toHaveBeenCalledWith({ query_id: 'query_matched', top_k: 10, preset: 'all' })
+      expect(mockedRunFirstOrderSearch).toHaveBeenCalledWith(expect.objectContaining({ query_id: 'query_matched', top_k: 10, preset: 'megastar', query_image_id: expect.any(String) }))
     })
   })
 
@@ -283,11 +283,11 @@ describe('FirstOrderPage query selector', () => {
     await user.click(screen.getByRole('button', { name: 'Select map location Cattle Point' }))
     expect(galleryFilters).toHaveTextContent('Selected location: Cattle Point')
     expect(screen.getByRole('option', { name: 'MegaStar' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Preset')).toHaveValue('megastar')
     expect(screen.queryByLabelText('MegaStar ranking')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('MegaStar query image')).not.toBeInTheDocument()
     expect(screen.queryByText(/MegaStar image lookup/i)).not.toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText('Preset'), 'megastar')
     await user.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() => {
