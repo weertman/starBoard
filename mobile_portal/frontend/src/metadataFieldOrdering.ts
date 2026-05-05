@@ -12,8 +12,14 @@ export function orderedMetadataGroups(fields: SchemaField[]): [string, MetadataF
     groups.get(field.group)!.fields.push(field)
   }
   return Array.from(groups.entries()).sort(([left], [right]) => {
-    if (left === 'location') return -1
-    if (right === 'location') return 1
-    return 0
+    const leftRank = groupRank(left)
+    const rightRank = groupRank(right)
+    return leftRank - rightRank
   })
+}
+
+function groupRank(groupName: string): number {
+  if (groupName === 'location') return 0
+  if (groupName === 'health') return 1
+  return 2
 }
