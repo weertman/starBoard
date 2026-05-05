@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from src.data.archive_paths import metadata_csv_for
+from src.data.csv_io import append_row
 from star_browser.app.main import create_app
 
 
@@ -37,3 +39,24 @@ def test_metadata_schema_returns_projected_fields():
     assert lesion['requires_count'] is True
     assert lesion['allows_plus'] is True
     assert lesion['definition']
+
+
+def test_metadata_schema_location_vocabulary_uses_saved_sites_not_free_text_history(tmp_path, monkeypatch):
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(tmp_path / 'archive'))
+    vocab_path = tmp_path / 'archive' / 'vocabularies' / 'locations.json'
+    vocab_path.parent.mkdir(parents=True)
+    vocab_path.write_text('["Polluted import folder"]', encoding='utf-8')
+    gallery_csv, gallery_header = metadata_csv_for('Gallery')
+    append_row(gallery_csv, gallery_header, {
+        'gallery_id': 'g1',
+        'location': 'Dock',
+        'latitude': '48.546',
+        'longitude': '-123.013',
+    })
+    client = TestClient(create_app())
+
+    response = client.get('/api/schema/metadata', headers=AUTH)
+
+    assert response.status_code == 200
+    location = next(field for field in response.json()['fields'] if field['name'] == 'location')
+    assert location['vocabulary'] == ['Dock']

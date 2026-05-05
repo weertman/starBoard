@@ -305,8 +305,8 @@ export function FirstOrderPage() {
   }, [queryId])
 
   const locationOptions = useMemo(() => {
-    return Array.from(new Set(queryOptions.map((option) => option.last_location?.trim()).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b))
-  }, [queryOptions])
+    return knownSites.map((site) => site.name)
+  }, [knownSites])
 
   const filteredOptions = useMemo(() => {
     const needle = queryFilter.trim().toLowerCase()
@@ -419,12 +419,13 @@ export function FirstOrderPage() {
   const activeQueryImage = queryMedia?.images[activeQueryImageIndex] ?? null
   const selectedMetadataEntries = Object.entries(selectedOption?.metadata ?? {}).filter(([, value]) => value)
   const activeGalleryFilters = Object.fromEntries(Object.entries(galleryFilters).filter(([, value]) => value.trim()))
-  const locationGalleryField = galleryFilterFields.find((field) => field.field === 'location')
+  const savedLocationValues = knownSites.map((site) => site.name)
+  const locationGalleryField = savedLocationValues.length > 0
+    ? { field: 'location', label: 'location', values: savedLocationValues }
+    : undefined
   const bodyGalleryFields = galleryFilterFields.filter((field) => field.field !== 'location')
   const selectableGalleryFields = locationGalleryField ? [locationGalleryField, ...bodyGalleryFields] : bodyGalleryFields
-  const mappedLocationSites = locationGalleryField
-    ? knownSites.filter((site) => locationGalleryField.values.includes(site.name))
-    : []
+  const mappedLocationSites = locationGalleryField ? knownSites : []
   const selectedLocationSite = mappedLocationSites.find((site) => site.name === galleryFilters.location)
 
   useEffect(() => {

@@ -77,12 +77,13 @@ describe('FirstOrderPage query selector', () => {
     mockedSaveFirstOrderMatchLabel.mockReset()
     mockedGetFirstOrderQueries.mockResolvedValue({ queries: queryOptions })
     mockedGetLocationSites.mockResolvedValue({ sites: [
+      { name: 'Batch Saved Only', latitude: 48.4, longitude: -123.2 },
       { name: 'Cattle Point', latitude: 48.45, longitude: -122.96 },
       { name: 'Eagle Point', latitude: 48.51, longitude: -123.04 },
       { name: 'Friday Harbor', latitude: 48.53, longitude: -123.01 },
     ] })
     mockedGetFirstOrderGalleryFilters.mockResolvedValue({ fields: [
-      { field: 'location', label: 'location', values: ['Cattle Point', 'Eagle Point', 'Friday Harbor'] },
+      { field: 'location', label: 'location', values: ['Metadata Only'] },
       { field: 'arm_color', label: 'Arm color', values: ['orange', 'purple'] },
       { field: 'arm_thickness', label: 'Arm thickness', values: ['thick', 'thin'] },
     ] })
@@ -208,6 +209,7 @@ describe('FirstOrderPage query selector', () => {
 
     await user.type(screen.getByLabelText('Observed from'), '2026-01-02')
     await user.type(screen.getByLabelText('Observed through'), '2026-01-03')
+    expect(screen.getAllByRole('option', { name: 'Batch Saved Only' }).length).toBeGreaterThan(0)
     await user.selectOptions(screen.getByLabelText('Last location'), 'Cattle Point')
 
     expect(screen.getByText(/1 of 3 queries shown/i)).toBeInTheDocument()
@@ -272,6 +274,8 @@ describe('FirstOrderPage query selector', () => {
     expect(screen.getByLabelText('Gallery location map')).toHaveTextContent('Cattle Point')
     const locationSelect = screen.getByLabelText('Filter gallery by location')
     expect(locationSelect).toBeInTheDocument()
+    expect(screen.getAllByRole('option', { name: 'Batch Saved Only' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('option', { name: 'Metadata Only' })).not.toBeInTheDocument()
     expect(galleryFilters).toHaveTextContent('Arm color')
     expect(galleryFilters).toHaveTextContent('Arm thickness')
     expect(galleryFilters.textContent?.indexOf('Arm color')).toBeLessThan(galleryFilters.textContent?.indexOf('Select comparison location on map') ?? 0)

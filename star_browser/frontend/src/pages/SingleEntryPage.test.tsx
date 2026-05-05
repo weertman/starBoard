@@ -53,7 +53,7 @@ const schemaResponse = {
       min_value: null,
       max_value: null,
       options: [],
-      vocabulary: ['Dock', 'Pier'],
+      vocabulary: ['Polluted import folder'],
       mobile_widget: 'location',
     },
     {
@@ -208,6 +208,8 @@ describe('SingleEntryPage', () => {
     expect(savedLocations.tagName).toBe('SELECT')
     expect(savedLocations.options[0].textContent).toBe('Add new…')
     expect(savedLocations.options[0].value).toBe('__new__')
+    expect(Array.from(savedLocations.options).map((option) => option.value)).toEqual(['__new__', '', 'Dock', 'Pier'])
+    expect(screen.queryByRole('option', { name: 'Polluted import folder' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add new location' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Location')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Latitude')).toBeInTheDocument()

@@ -1,8 +1,10 @@
 from io import BytesIO
+from datetime import date
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from src.data.field_visits import append_field_visit
 from star_browser.app.main import create_app
 
 
@@ -36,14 +38,20 @@ def test_first_order_gallery_filter_options_and_search_filters_candidates(tmp_pa
     queries = archive / 'queries'
     gallery.mkdir(parents=True)
     queries.mkdir(parents=True)
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
     (gallery / 'gallery_metadata.csv').write_text(
         'gallery_id,location,arm_color,arm_thickness,short_arm_code,sex,tip_to_tip_size_cm,last_modified_utc\n'
         'media_anchovy,Friday Harbor,orange,thin,small(7),female,21.4,2026-01-01T00:00:00Z\n'
         'media_cattle,Cattle Point,purple,thick,,male,39.8,2026-01-02T00:00:00Z\n',
         encoding='utf-8-sig',
     )
+    append_field_visit(
+        visit_date=date(2026, 1, 3),
+        location='Pier',
+        latitude=48.5,
+        longitude=-123.2,
+    )
     (queries / 'queries_metadata.csv').write_text('query_id,location,arm_color\nquery_001,Friday Harbor,orange\n', encoding='utf-8-sig')
-    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
 
     client = TestClient(create_app())
     headers = {'cf-access-authenticated-user-email': 'field@example.org'}
@@ -53,7 +61,7 @@ def test_first_order_gallery_filter_options_and_search_filters_candidates(tmp_pa
     body = options.json()
     by_field = {item['field']: item for item in body['fields']}
     assert sorted(by_field) == ['arm_color', 'arm_thickness', 'location', 'short_arm_code']
-    assert by_field['location']['values'] == ['Cattle Point', 'Friday Harbor']
+    assert by_field['location']['values'] == ['Pier']
     assert by_field['arm_color']['values'] == ['orange', 'purple']
     assert by_field['arm_thickness']['values'] == ['thick', 'thin']
     assert by_field['short_arm_code']['values'] == ['small(7)']

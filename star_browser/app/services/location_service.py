@@ -15,7 +15,7 @@ def _maybe_float(value: str) -> float | None:
         return None
 
 
-def get_location_sites() -> dict:
+def _location_sites() -> list[dict[str, float | str]]:
     sites: dict[str, tuple[float, float]] = {}
 
     for target in ('Gallery', 'Queries'):
@@ -30,9 +30,15 @@ def get_location_sites() -> dict:
         if visit.location and visit.latitude is not None and visit.longitude is not None:
             sites[visit.location] = (visit.latitude, visit.longitude)
 
-    return {
-        'sites': [
-            {'name': name, 'latitude': lat, 'longitude': lon}
-            for name, (lat, lon) in sorted(sites.items())
-        ]
-    }
+    return [
+        {'name': name, 'latitude': lat, 'longitude': lon}
+        for name, (lat, lon) in sorted(sites.items())
+    ]
+
+
+def get_location_site_names() -> list[str]:
+    return [str(site['name']) for site in _location_sites()]
+
+
+def get_location_sites() -> dict:
+    return {'sites': _location_sites()}

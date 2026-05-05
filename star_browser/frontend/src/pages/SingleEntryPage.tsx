@@ -500,8 +500,8 @@ export function SingleEntryPage() {
                             >
                               <option value="__new__">Add new…</option>
                               <option value="">— choose —</option>
-                              {field.vocabulary.map((item) => (
-                                <option key={`saved-location-${item}`} value={item}>{item}</option>
+                              {knownSites.map((site) => (
+                                <option key={`saved-location-${site.name}`} value={site.name}>{site.name}</option>
                               ))}
                             </select>
                           </label>

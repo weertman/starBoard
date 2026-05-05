@@ -24,6 +24,7 @@ from ..models.search_api import (
     FirstOrderSearchResponse,
 )
 from .first_order_media_service import first_order_image_id_for_path, resolve_first_order_media_path
+from .location_service import get_location_site_names
 
 _ENGINE: FirstOrderSearchEngine | None = None
 _PRESETS = {
@@ -173,15 +174,20 @@ def list_first_order_gallery_filter_options() -> FirstOrderGalleryFiltersRespons
     values_by_field: dict[str, set[str]] = {}
     for row in rows_by_id.values():
         for field in GALLERY_FILTERABLE_FIELDS:
+            if field == 'location':
+                continue
             value = (row.get(field) or '').strip()
             if not value:
                 continue
             values_by_field.setdefault(field, set()).add(value)
+    location_names = get_location_site_names()
+    if location_names:
+        values_by_field['location'] = set(location_names)
     fields = [
         FirstOrderGalleryFilterField(
             field=field,
             label=FIELD_BY_NAME.get(field).display_name if field in FIELD_BY_NAME else field,
-            values=sorted(values_by_field[field], key=str.lower)[:500],
+            values=(location_names if field == 'location' else sorted(values_by_field[field], key=str.lower)[:500]),
         )
         for field in GALLERY_FILTERABLE_FIELDS
         if field in values_by_field

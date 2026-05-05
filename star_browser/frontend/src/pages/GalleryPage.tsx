@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { getIdReviewEntity, getIdReviewOptions, type GalleryEntityResponse, type IdReviewOption, type ImageDescriptor } from '../api/client'
+import { getIdReviewEntity, getIdReviewOptions, getLocationSites, type GalleryEntityResponse, type IdReviewOption, type ImageDescriptor, type LocationSite } from '../api/client'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -143,6 +143,7 @@ export function GalleryPage() {
   const [optionError, setOptionError] = useState<string | null>(null)
   const [idSearch, setIdSearch] = useState('')
   const [locationFilter, setLocationFilter] = useState('__all__')
+  const [knownSites, setKnownSites] = useState<LocationSite[]>([])
   const [observedFrom, setObservedFrom] = useState('')
   const [observedTo, setObservedTo] = useState('')
 
@@ -166,9 +167,21 @@ export function GalleryPage() {
     return () => { cancelled = true }
   }, [archiveType])
 
+  useEffect(() => {
+    let cancelled = false
+    void getLocationSites()
+      .then((response) => {
+        if (!cancelled) setKnownSites(response.sites)
+      })
+      .catch(() => {
+        if (!cancelled) setKnownSites([])
+      })
+    return () => { cancelled = true }
+  }, [])
+
   const locations = useMemo(() => {
-    return Array.from(new Set(idOptions.map((option) => option.location).filter(Boolean))).sort()
-  }, [idOptions])
+    return knownSites.map((site) => site.name)
+  }, [knownSites])
 
   const visibleOptions = useMemo(() => {
     const q = idSearch.trim().toLowerCase()
