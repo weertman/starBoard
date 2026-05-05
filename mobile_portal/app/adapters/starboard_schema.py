@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.data.annotation_schema import FIELD_DEFINITIONS, GROUP_BY_NAME, AnnotationType, HEALTH_CODE_DEFINITIONS
+from src.data.location_sites import list_location_site_names
 from src.data.vocabulary_store import get_vocabulary_store
 
 
@@ -45,7 +46,7 @@ def project_schema() -> list[dict]:
         if field.name in COLOR_FIELDS:
             vocabulary = sorted(set(vocab.get_colors(field.name)))
         elif field.name == 'location':
-            vocabulary = sorted(set(vocab.get_locations()))
+            vocabulary = list_location_site_names()
         options = [{'label': opt.label, 'value': opt.value} for opt in field.options]
         if field.annotation_type == AnnotationType.HEALTH_CODE:
             options = [

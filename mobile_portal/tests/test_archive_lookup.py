@@ -13,7 +13,7 @@ def _seed_gallery(archive):
     make_image(archive / 'gallery' / 'feta' / '11_16_25' / 'DSC02126.JPG', color=(10, 20, 30))
     make_image(archive / 'gallery' / 'feta' / '11_17_25' / 'DSC03125.JPG', color=(30, 40, 60))
     csv_path, header = metadata_csv_for('Gallery')
-    append_row(csv_path, header, {'gallery_id': 'feta', 'location': 'dock'})
+    append_row(csv_path, header, {'gallery_id': 'feta', 'location': 'dock', 'latitude': '48.546', 'longitude': '-123.013'})
     append_row(csv_path, header, {'gallery_id': 'anchovy', 'location': 'reef'})
 
 
@@ -69,6 +69,17 @@ def test_lookup_options_returns_locations_and_filtered_ids(tmp_path, monkeypatch
     assert 'dock' in body['locations']
     assert 'feta' in body['ids']
     assert 'anchovy' not in body['ids']
+
+
+def test_lookup_options_locations_use_saved_sites_not_all_metadata_locations(tmp_path, monkeypatch):
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    _seed_gallery(archive)
+    client = TestClient(app)
+
+    r = client.get('/api/archive/options?entity_type=gallery', headers=AUTH)
+
+    assert r.status_code == 200
+    assert r.json()['locations'] == ['dock']
 
 
 def test_lookup_can_filter_by_encounter_date_folder(tmp_path, monkeypatch):

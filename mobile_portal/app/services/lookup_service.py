@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
+from src.data.location_sites import list_location_site_names
+
 from ..config import get_settings
 from ..adapters.archive_paths import entity_exists, latest_metadata_row, list_entity_ids, latest_metadata_map
 from ..adapters.image_manifest_adapter import window_for_entity, list_entity_encounters
@@ -60,7 +62,7 @@ def lookup_options(entity_type: str, location: str = '', limit: int = 200) -> di
     if location_q:
         ids = [entity_id for entity_id in ids if location_q in str(meta.get(entity_id, {}).get('location', '')).lower()]
     ids = ids[:limit]
-    locations = sorted({str(row.get('location', '')).strip() for row in meta.values() if str(row.get('location', '')).strip()})
+    locations = list_location_site_names()
     return {
         'entity_type': entity_type,
         'location': location,
