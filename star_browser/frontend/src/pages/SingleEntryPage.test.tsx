@@ -203,6 +203,7 @@ describe('SingleEntryPage', () => {
 
     const headings = await screen.findAllByRole('heading', { level: 2 })
     expect(headings[0]).toHaveTextContent('Location')
+    expect(headings[1]).toHaveTextContent('Health Coding')
     const savedLocations = screen.getByLabelText('Saved locations') as HTMLSelectElement
     expect(savedLocations.tagName).toBe('SELECT')
     expect(savedLocations.options[0].textContent).toBe('Add new…')

@@ -36,11 +36,8 @@ function groupFields(fields: SchemaField[]) {
     }
     groups.get(field.group)!.fields.push(field)
   }
-  order.sort((a, b) => {
-    if (a === 'location') return -1
-    if (b === 'location') return 1
-    return 0
-  })
+  const priority: Record<string, number> = { location: 0, health: 1 }
+  order.sort((a, b) => (priority[a] ?? 2) - (priority[b] ?? 2))
   return order.map((key) => ({ key, ...groups.get(key)! }))
 }
 
