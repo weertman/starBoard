@@ -22,3 +22,12 @@ def test_metadata_schema_returns_fields(tmp_path, monkeypatch):
     assert len(body['fields']) > 0
     names = {f['name'] for f in body['fields']}
     assert 'location' in names
+    widgets = {f['name']: f['mobile_widget'] for f in body['fields']}
+    assert widgets['health_codes'] == 'health_code'
+    health = next(f for f in body['fields'] if f['name'] == 'health_codes')
+    assert [option['value'] for option in health['options'][:3]] == ['X', 'NA', 'UNK']
+    assert [option['category'] for option in health['options'][:3]] == ['normal', 'feeding', 'status']
+    lesion = next(option for option in health['options'] if option['value'] == 'L')
+    assert lesion['requires_count'] is True
+    assert lesion['allows_plus'] is True
+    assert lesion['definition']

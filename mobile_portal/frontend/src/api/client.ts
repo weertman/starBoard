@@ -21,7 +21,16 @@ export type SchemaField = {
   tooltip: string
   min_value: number | null
   max_value: number | null
-  options: { label: string; value: string | number }[]
+  options: {
+    label: string
+    value: string | number
+    definition?: string
+    category?: string
+    requires_count?: boolean
+    allows_plus?: boolean
+    exclusive?: boolean
+    terminal?: boolean
+  }[]
   vocabulary: string[]
   mobile_widget: string
 }

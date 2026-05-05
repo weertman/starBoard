@@ -21,6 +21,12 @@ class SessionResponse(BaseModel):
 class SchemaFieldOption(BaseModel):
     label: str
     value: Any
+    definition: str | None = None
+    category: str | None = None
+    requires_count: bool = False
+    allows_plus: bool = False
+    exclusive: bool = False
+    terminal: bool = False
 
 
 class SchemaField(BaseModel):

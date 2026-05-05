@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit,
     QPushButton, QLabel, QScrollArea, QFrame, QInputDialog,
     QSizePolicy, QLineEdit, QApplication, QStyledItemDelegate, QStyle,
-    QToolTip, QCompleter,
+    QToolTip, QCompleter, QCheckBox,
 )
 from PySide6.QtGui import QIntValidator, QDoubleValidator, QColor, QPixmap, QPainter, QIcon, QCursor
 
@@ -26,6 +26,8 @@ from src.data.annotation_schema import (
     FieldDefinition, AnnotationType, CategoricalOption,
     ShortArmEntry, parse_short_arm_code, serialize_short_arm_code,
     SHORT_ARM_SEVERITY_OPTIONS,
+    HealthCodeEntry, HealthCodeDefinition, HEALTH_CODE_DEFINITIONS, HEALTH_CODE_BY_CODE,
+    parse_health_codes, serialize_health_codes,
 )
 from src.data.vocabulary_store import get_vocabulary_store
 from src.utils.interaction_logger import get_interaction_logger
@@ -323,6 +325,188 @@ class ShortArmCodeEditor(AnnotationWidget):
         # Parse and add new entries
         entries = parse_short_arm_code(value)
         for entry in entries:
+            self._add_entry(entry)
+
+    def clear(self) -> None:
+        for row in self._rows[:]:
+            self._remove_entry(row)
+
+
+# =============================================================================
+# HEALTH CODE EDITOR
+# =============================================================================
+
+class HealthCodeEntryRow(QWidget):
+    """A single row in the lab health-code editor."""
+    changed = Signal()
+    remove_requested = Signal(object)
+
+    def __init__(self, entry: Optional[HealthCodeEntry] = None, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(4)
+
+        self.code_combo = QComboBox()
+        self.code_combo.setMinimumWidth(250)
+        self.code_combo.addItem("Select health code…", None)
+        for definition in HEALTH_CODE_DEFINITIONS:
+            self.code_combo.addItem(f"{definition.code} — {definition.label}", definition.code)
+        self.code_combo.currentIndexChanged.connect(self._on_code_changed)
+        layout.addWidget(self.code_combo)
+
+        self.count_spin = QSpinBox()
+        self.count_spin.setMinimum(1)
+        self.count_spin.setMaximum(30)
+        self.count_spin.setPrefix("# ")
+        self.count_spin.setFixedWidth(70)
+        self.count_spin.valueChanged.connect(self._emit_changed)
+        layout.addWidget(self.count_spin)
+
+        self.plus_check = QCheckBox("+")
+        self.plus_check.setToolTip("More lesions are assumed to be present")
+        self.plus_check.toggled.connect(self._emit_changed)
+        layout.addWidget(self.plus_check)
+
+        self.definition_label = QLabel("")
+        self.definition_label.setWordWrap(True)
+        layout.addWidget(self.definition_label, 1)
+
+        self.remove_btn = QPushButton("✕")
+        self.remove_btn.setFixedSize(24, 24)
+        self.remove_btn.setToolTip("Remove this health-code entry")
+        self.remove_btn.clicked.connect(lambda: self.remove_requested.emit(self))
+        layout.addWidget(self.remove_btn)
+
+        if entry:
+            idx = self.code_combo.findData(entry.code)
+            if idx >= 0:
+                self.code_combo.setCurrentIndex(idx)
+            if entry.count is not None:
+                self.count_spin.setValue(entry.count)
+            self.plus_check.setChecked(entry.plus)
+        self._sync_controls()
+
+    def _definition(self) -> Optional[HealthCodeDefinition]:
+        code = self.code_combo.currentData()
+        if code is None:
+            return None
+        return HEALTH_CODE_BY_CODE[code]
+
+    def _on_code_changed(self) -> None:
+        self._sync_controls()
+        self._emit_changed()
+
+    def _sync_controls(self) -> None:
+        definition = self._definition()
+        if definition is None:
+            self.count_spin.setVisible(False)
+            self.plus_check.setVisible(False)
+            self.plus_check.setChecked(False)
+            self.definition_label.setText("Choose a health code before this row is saved.")
+            self.definition_label.setToolTip("")
+            return
+        self.count_spin.setVisible(definition.requires_count)
+        self.plus_check.setVisible(definition.allows_plus)
+        self.definition_label.setText(definition.definition)
+        self.definition_label.setToolTip(definition.definition)
+        if not definition.requires_count:
+            self.count_spin.setValue(0)
+        if not definition.allows_plus:
+            self.plus_check.setChecked(False)
+
+    def _emit_changed(self) -> None:
+        self.changed.emit()
+
+    def get_entry(self) -> Optional[HealthCodeEntry]:
+        definition = self._definition()
+        if definition is None:
+            return None
+        count = self.count_spin.value() if definition.requires_count else None
+        return HealthCodeEntry(
+            code=definition.code,
+            count=count,
+            plus=self.plus_check.isChecked() if definition.allows_plus else False,
+        )
+
+
+class HealthCodeEditor(AnnotationWidget):
+    """Composite widget for entering multiple lab health/symptom codes."""
+
+    ROW_HEIGHT = 34
+    MAX_VISIBLE_ROWS = 8
+
+    def __init__(self, field_def: FieldDefinition, parent=None):
+        super().__init__(field_def, parent)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(4)
+
+        self.entries_container = QWidget()
+        self.entries_layout = QVBoxLayout(self.entries_container)
+        self.entries_layout.setContentsMargins(0, 0, 0, 0)
+        self.entries_layout.setSpacing(2)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll.setWidget(self.entries_container)
+        self.scroll.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        main_layout.addWidget(self.scroll)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        self.add_btn = QPushButton("+ Add health code")
+        self.add_btn.clicked.connect(self._add_entry)
+        btn_layout.addWidget(self.add_btn)
+        btn_layout.addStretch()
+        main_layout.addLayout(btn_layout)
+
+        self._rows: List[HealthCodeEntryRow] = []
+        self._update_size()
+
+    def _add_entry(self, entry: Optional[HealthCodeEntry] = None) -> HealthCodeEntryRow:
+        row = HealthCodeEntryRow(entry, self.entries_container)
+        row.changed.connect(self._on_change)
+        row.remove_requested.connect(self._remove_entry)
+        self.entries_layout.addWidget(row)
+        self._rows.append(row)
+        self._update_size()
+        self._on_change()
+        return row
+
+    def _remove_entry(self, row: HealthCodeEntryRow) -> None:
+        if row in self._rows:
+            self._rows.remove(row)
+            row.setParent(None)
+            row.deleteLater()
+            self._update_size()
+            self._on_change()
+
+    def _on_change(self) -> None:
+        self.value_changed.emit()
+
+    def _update_size(self) -> None:
+        num_rows = len(self._rows)
+        if num_rows == 0:
+            self.scroll.setMinimumHeight(0)
+            self.scroll.setMaximumHeight(0)
+        else:
+            display_height = min(num_rows * self.ROW_HEIGHT + 4, self.MAX_VISIBLE_ROWS * self.ROW_HEIGHT)
+            self.scroll.setMinimumHeight(display_height)
+            self.scroll.setMaximumHeight(display_height)
+        self.updateGeometry()
+
+    def get_value(self) -> str:
+        entries = [row.get_entry() for row in self._rows]
+        return serialize_health_codes([entry for entry in entries if entry is not None])
+
+    def set_value(self, value: str) -> None:
+        for row in self._rows[:]:
+            self._remove_entry(row)
+        for entry in parse_health_codes(value):
             self._add_entry(entry)
 
     def clear(self) -> None:
@@ -1030,6 +1214,7 @@ def create_widget_for_field(field_def: FieldDefinition, parent=None) -> Annotati
         AnnotationType.NUMERIC_INT: NumericIntWidget,
         AnnotationType.NUMERIC_FLOAT: NumericFloatWidget,
         AnnotationType.MORPHOMETRIC_CODE: ShortArmCodeEditor,
+        AnnotationType.HEALTH_CODE: HealthCodeEditor,
         AnnotationType.COLOR_CATEGORICAL: ColorCategoricalComboBox,
         AnnotationType.MORPH_CATEGORICAL: MorphCategoricalComboBox,
         AnnotationType.TEXT_HISTORY: TextHistoryComboBox,

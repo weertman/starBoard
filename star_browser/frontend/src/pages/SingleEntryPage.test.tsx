@@ -113,6 +113,23 @@ const schemaResponse = {
       mobile_widget: 'short_arm_code',
     },
     {
+      name: 'health_codes',
+      display_name: 'Health coding',
+      field_type: 'health_code',
+      group: 'health',
+      group_display_name: 'Health Coding',
+      required: false,
+      tooltip: 'Lab symptom/status health codes',
+      min_value: null,
+      max_value: null,
+      options: [
+        { label: 'Lesions', value: 'L', definition: 'Open wounds', requires_count: true, allows_plus: true },
+        { label: 'Bent arms', value: 'BT', definition: 'Bent arms', requires_count: false, allows_plus: false },
+      ],
+      vocabulary: [],
+      mobile_widget: 'health_code',
+    },
+    {
       name: 'health_observation',
       display_name: 'Health observation',
       field_type: 'text_free',
@@ -263,6 +280,36 @@ describe('SingleEntryPage', () => {
       expect(mockedSubmitEntry).toHaveBeenCalledTimes(1)
     })
     expect(mockedSubmitEntry.mock.calls[0][0].metadata.short_arm_code).toBe('small(7)')
+  })
+
+  it('renders health coding like a structured counted multi-code editor', async () => {
+    const user = userEvent.setup()
+    render(<SingleEntryPage />)
+
+    await screen.findByRole('heading', { name: 'Health Coding' })
+    expect(screen.queryByRole('textbox', { name: 'Health coding' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '+ Add health code' }))
+    expect(screen.getByLabelText('Health code 1')).toHaveValue('')
+    await user.selectOptions(screen.getByLabelText('Health code 1'), 'L')
+    await user.click(screen.getByLabelText('Health code 1 count'))
+    await user.keyboard('{Control>}a{/Control}2')
+    await user.click(screen.getByLabelText('Health code 1 plus'))
+
+    await user.click(screen.getByRole('button', { name: '+ Add health code' }))
+    await user.selectOptions(screen.getByLabelText('Health code 2'), 'BT')
+    expect(screen.queryByLabelText('Health code 2 count')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Target ID'), 'q1')
+    await user.selectOptions(screen.getByLabelText('Saved locations'), 'Dock')
+    const file = new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' })
+    await user.upload(screen.getByLabelText('Upload images from this computer'), file)
+    await user.click(screen.getByRole('button', { name: 'Submit entry to archive' }))
+
+    await waitFor(() => {
+      expect(mockedSubmitEntry).toHaveBeenCalledTimes(1)
+    })
+    expect(mockedSubmitEntry.mock.calls[0][0].metadata.health_codes).toBe('L(2)+, BT')
   })
 
   it('requires a location before submitting browser entry upload', async () => {

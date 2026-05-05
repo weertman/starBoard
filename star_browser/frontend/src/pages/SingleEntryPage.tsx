@@ -51,6 +51,43 @@ type ShortArmEntry = {
   severity: string
 }
 
+type HealthCodeEntry = {
+  code: string
+  count?: number
+  plus?: boolean
+}
+
+function healthOption(field: SchemaField, code: string) {
+  return field.options.find((option) => String(option.value) === code)
+}
+
+function parseHealthCodes(value: string, field: SchemaField): HealthCodeEntry[] {
+  if (!value.trim()) return []
+  const knownCodes = field.options.map((option) => String(option.value)).sort((a, b) => b.length - a.length)
+  return value.split(',').map((part) => {
+    const compact = part.trim().toUpperCase().replace(/\s+/g, '')
+    const code = knownCodes.find((candidate) => compact.startsWith(candidate))
+    if (!code) return null
+    const option = healthOption(field, code)
+    const rest = compact.slice(code.length)
+    const countMatch = /^\((\d+)\+?\)/.exec(rest)
+    const count = countMatch && option?.requires_count ? Number(countMatch[1]) : undefined
+    const plus = Boolean(option?.allows_plus && (rest.includes('+)') || rest.endsWith('+')))
+    const entry: HealthCodeEntry = { code, count, plus }
+    return entry
+  }).filter((entry): entry is HealthCodeEntry => Boolean(entry))
+}
+
+function serializeHealthCodes(entries: HealthCodeEntry[], field: SchemaField): string {
+  return entries.filter((entry) => entry.code).map((entry) => {
+    const option = healthOption(field, entry.code)
+    let out = entry.code
+    if (option?.requires_count) out += `(${Math.max(1, entry.count ?? 1)})`
+    if (option?.allows_plus && entry.plus) out += '+'
+    return out
+  }).join(', ')
+}
+
 function parseShortArmCode(value: string): ShortArmEntry[] {
   if (!value.trim()) return []
   return value.split(',').map((part) => {
@@ -76,6 +113,88 @@ function serializeShortArmCode(entries: ShortArmEntry[]): string {
     .sort((a, b) => a.position - b.position)
     .map((entry) => `${entry.severity}(${entry.position})`)
     .join(', ')
+}
+
+function HealthCodeField({ field, value, onChange }: { field: SchemaField; value: string; onChange: (v: string) => void }) {
+  const [entries, setEntries] = useState<HealthCodeEntry[]>(() => parseHealthCodes(value, field))
+
+  useEffect(() => {
+    setEntries(parseHealthCodes(value, field))
+  }, [field, value])
+
+  function update(next: HealthCodeEntry[]) {
+    setEntries(next)
+    onChange(serializeHealthCodes(next, field))
+  }
+
+  function updateEntry(index: number, patch: Partial<HealthCodeEntry>) {
+    update(entries.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {entries.map((entry, index) => {
+        const option = healthOption(field, entry.code)
+        return (
+          <div key={`health-code-${index}`} style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(220px, 1fr) auto auto auto', alignItems: 'end' }}>
+            <label>
+              <div>Health code</div>
+              <select
+                aria-label={`Health code ${index + 1}`}
+                value={entry.code}
+                onChange={(e) => updateEntry(index, { code: e.target.value, count: 1, plus: false })}
+                style={input}
+              >
+                <option value="">Select health code…</option>
+                {field.options.map((candidate) => (
+                  <option key={`${field.name}-${candidate.value}`} value={String(candidate.value)}>{candidate.value} — {candidate.label}</option>
+                ))}
+              </select>
+            </label>
+            {option?.requires_count && (
+              <label>
+                <div>Count</div>
+                <input
+                  aria-label={`Health code ${index + 1} count`}
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={entry.count ?? 1}
+                  onChange={(e) => updateEntry(index, { count: Number(e.target.value || 1) })}
+                  style={{ ...input, width: 86 }}
+                />
+              </label>
+            )}
+            {option?.allows_plus && (
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', paddingBottom: 8 }}>
+                <input
+                  aria-label={`Health code ${index + 1} plus`}
+                  type="checkbox"
+                  checked={Boolean(entry.plus)}
+                  onChange={(e) => updateEntry(index, { plus: e.target.checked })}
+                />
+                +
+              </label>
+            )}
+            <button
+              type="button"
+              aria-label={`Remove health code ${index + 1}`}
+              onClick={() => update(entries.filter((_, i) => i !== index))}
+              style={{ padding: '8px 10px' }}
+            >
+              ✕
+            </button>
+            {option?.definition && <div style={{ gridColumn: '1 / -1', color: '#516070', fontSize: 13 }}>{option.definition}</div>}
+          </div>
+        )
+      })}
+      <div>
+        <button type="button" onClick={() => update([...entries, { code: '', count: 1, plus: false }])} style={{ padding: '8px 12px' }}>
+          + Add health code
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function SingleEntryPage() {
@@ -160,6 +279,10 @@ export function SingleEntryPage() {
     updateMetadata(fieldName, serializeShortArmCode(entries))
   }
 
+  function renderHealthCodeField(field: SchemaField) {
+    return <HealthCodeField field={field} value={metadata[field.name] ?? ''} onChange={(value) => updateMetadata(field.name, value)} />
+  }
+
   function renderShortArmField(field: SchemaField) {
     const entries = parseShortArmCode(metadata[field.name] ?? '')
     const updateEntry = (index: number, patch: Partial<ShortArmEntry>) => {
@@ -225,6 +348,9 @@ export function SingleEntryPage() {
 
     if (field.mobile_widget === 'short_arm_code') {
       return renderShortArmField(field)
+    }
+    if (field.mobile_widget === 'health_code') {
+      return renderHealthCodeField(field)
     }
     if (field.mobile_widget === 'textarea') {
       return <textarea {...commonProps} rows={3} />
@@ -427,7 +553,7 @@ export function SingleEntryPage() {
             ) : (
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
                 {group.fields.map((field) => (
-                  field.mobile_widget === 'short_arm_code' ? (
+                  field.mobile_widget === 'short_arm_code' || field.mobile_widget === 'health_code' ? (
                     <div key={field.name}>
                       <div style={{ marginBottom: 6 }}>{field.display_name}</div>
                       {renderField(field)}

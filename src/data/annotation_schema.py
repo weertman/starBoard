@@ -21,6 +21,7 @@ class AnnotationType(Enum):
     NUMERIC_INT = "numeric_int"
     NUMERIC_FLOAT = "numeric_float"
     MORPHOMETRIC_CODE = "morphometric_code"
+    HEALTH_CODE = "health_code"
     COLOR_CATEGORICAL = "color_categorical"
     MORPH_CATEGORICAL = "morph_categorical"
     TEXT_HISTORY = "text_history"
@@ -120,6 +121,59 @@ SHORT_ARM_SEVERITY_OPTIONS = [
     CategoricalOption("Very tiny short", "very_tiny"),
 ]
 
+
+@dataclass(frozen=True)
+class HealthCodeDefinition:
+    """A selectable lab health/symptom code."""
+    code: str
+    label: str
+    definition: str
+    category: str
+    requires_count: bool = False
+    allows_plus: bool = False
+    exclusive: bool = False
+    terminal: bool = False
+
+
+HEALTH_CODE_DEFINITIONS = [
+    # Least severe / non-symptom statuses first, then mild, minor, major, terminal.
+    HealthCodeDefinition("X", "No symptoms present", "No symptoms present at check.", "normal", exclusive=True),
+    HealthCodeDefinition("NA", "No appetite", "No interest in food on feeding days.", "feeding"),
+    HealthCodeDefinition("UNK", "Unknown / not visible", "Star is not visible.", "status", exclusive=True),
+    HealthCodeDefinition("SPAWN", "Actively spawning", "Individual is actively spawning.", "status"),
+    HealthCodeDefinition("1-MA", "1-MA injection", "1-MA was injected to induce spawning.", "status"),
+    HealthCodeDefinition("WV", "Wavy arms", "Sine-like shape to some or all arms.", "mild"),
+    HealthCodeDefinition("WV-", "Wavy arms minor", "Minor wavy arms, typically one arm or barely wavy.", "mild"),
+    HealthCodeDefinition("DL", "Depressed central disk", "Lumpy central disk, depressed but not completely flat.", "mild"),
+    HealthCodeDefinition("DL-", "Depressed central disk minor", "Minor depressed or lumpy central disk.", "mild"),
+    HealthCodeDefinition("BT", "Bent arms", "Middle ground between bent arm tips and extreme bent arms.", "mild"),
+    HealthCodeDefinition("BT-", "Bent arm", "Arm tips bent at a 90 degree angle relative to arm length.", "mild"),
+    HealthCodeDefinition("TH", "Thin", "Flat overall appearance with very thin arms.", "mild"),
+    HealthCodeDefinition("IN-", "Inflated minor", "Minor inflated/pumping position.", "minor"),
+    HealthCodeDefinition("S-", "Stretched minor", "Minor stretched appearance.", "minor"),
+    HealthCodeDefinition("F-", "Flat minor", "Minor flat appearance.", "minor"),
+    HealthCodeDefinition("DR-", "Droopy minor", "Slightly droopy tissue of the central disk or arms.", "minor"),
+    HealthCodeDefinition("TW-", "Twisty arms minor", "Number of arms with twisted tips; not true curling.", "minor", requires_count=True),
+    HealthCodeDefinition("C-", "Curling arms minor", "Number of arms crossed over another arm.", "minor", requires_count=True),
+    HealthCodeDefinition("Y", "Cyst", "Boil-like cyst near base of arm.", "minor"),
+    HealthCodeDefinition("WV+", "Extra wavy", "Extra wavy, but not extreme wavy.", "minor"),
+    HealthCodeDefinition("BT+", "Spiral/extreme bent arms", "All arms bent like a spiral.", "minor"),
+    HealthCodeDefinition("LOSS", "Dropped arms", "Number of arms completely removed from the body.", "major", requires_count=True),
+    HealthCodeDefinition("S", "Stretched appearance", "Body is extended so the webbing between arms is under tension.", "major"),
+    HealthCodeDefinition("L", "Lesions", "Open wounds; + means more lesions are assumed to be present.", "major", requires_count=True, allows_plus=True),
+    HealthCodeDefinition("F", "Flat appearance", "Depressed entire body, with no or little inflation in central disk or arms.", "major"),
+    HealthCodeDefinition("DR", "Droopy position", "Tissue of the central disk or arms looks sagging.", "major"),
+    HealthCodeDefinition("C", "Curling arms", "Number of arms curled back on the central disk or twisted into a ball.", "major", requires_count=True),
+    HealthCodeDefinition("TW", "Twisty arms", "Number of twisted arms with tube feet visible.", "major", requires_count=True),
+    HealthCodeDefinition("XWV", "Extreme wavy arms", "Extreme sine-like arm shape.", "major"),
+    HealthCodeDefinition("VS", "Viscera in tank", "Viscera present in the bottom of the tank.", "major"),
+    HealthCodeDefinition("IN", "Inflated", "Over-inflated arms with deflated or lumpy central disk.", "major"),
+    HealthCodeDefinition("DEAD", "Dead", "Individual was deemed unsavable and frozen at -80 degrees.", "status", exclusive=True, terminal=True),
+    HealthCodeDefinition("RELEASED", "Released", "Individual was released back into the wild.", "status", exclusive=True, terminal=True),
+]
+
+HEALTH_CODE_BY_CODE = {d.code: d for d in HEALTH_CODE_DEFINITIONS}
+
 # --- Image Sequence Quality Options ---
 MARKER_VISIBILITY_OPTIONS = [
     CategoricalOption("Not visible", 0),
@@ -178,6 +232,15 @@ FIELD_DEFINITIONS: List[FieldDefinition] = [
         annotation_type=AnnotationType.MORPHOMETRIC_CODE,
         group="short_arm",
         tooltip="Arm positions and severity of short arms",
+    ),
+
+    # --- Group 2b: Health Coding ---
+    FieldDefinition(
+        name="health_codes",
+        display_name="Health coding",
+        annotation_type=AnnotationType.HEALTH_CODE,
+        group="health",
+        tooltip="Lab symptom/status health codes; supports multiple non-exclusive entries",
     ),
 
     # --- Group 3a: Stripe Morphology ---
@@ -500,6 +563,12 @@ FIELD_GROUPS: List[FieldGroup] = [
         start_expanded=True,
     ),
     FieldGroup(
+        name="health",
+        display_name="Health Coding",
+        fields=["health_codes"],
+        start_expanded=True,
+    ),
+    FieldGroup(
         name="stripe",
         display_name="Stripe Morphology",
         fields=["stripe_color", "stripe_order", "stripe_prominence", "stripe_extent", "stripe_thickness"],
@@ -673,6 +742,75 @@ def serialize_short_arm_code(entries: List[ShortArmEntry]) -> str:
     # Sort by position for consistent output
     sorted_entries = sorted(entries, key=lambda e: e.position)
     return ", ".join(e.to_string() for e in sorted_entries)
+
+
+@dataclass
+class HealthCodeEntry:
+    """A single selected health/symptom code."""
+    code: str
+    count: Optional[int] = None
+    plus: bool = False
+
+    def to_string(self) -> str:
+        code = self.code.upper().strip()
+        out = code
+        if self.count is not None:
+            out += f"({self.count})"
+        if self.plus:
+            out += "+"
+        return out
+
+
+_HEALTH_CODES_BY_LENGTH = sorted(HEALTH_CODE_BY_CODE, key=len, reverse=True)
+
+
+def _parse_health_code_part(part: str) -> Optional[HealthCodeEntry]:
+    raw = part.strip().strip(".;")
+    if not raw:
+        return None
+    compact = raw.upper().replace(" ", "")
+    for code in _HEALTH_CODES_BY_LENGTH:
+        if not compact.startswith(code):
+            continue
+        rest = compact[len(code):]
+        count: Optional[int] = None
+        plus = False
+        if rest.startswith("("):
+            close = rest.find(")")
+            if close >= 0:
+                inner = rest[1:close]
+                if inner.endswith("+"):
+                    plus = True
+                    inner = inner[:-1]
+                if inner.isdigit():
+                    count = int(inner)
+                rest = rest[close + 1:]
+        if rest.startswith("+"):
+            plus = True
+        definition = HEALTH_CODE_BY_CODE[code]
+        if not definition.requires_count:
+            count = None
+        if not definition.allows_plus:
+            plus = False
+        return HealthCodeEntry(code=code, count=count, plus=plus)
+    return None
+
+
+def parse_health_codes(code_str: str) -> List[HealthCodeEntry]:
+    """Parse comma-separated lab health codes into canonical entries."""
+    if not code_str or not code_str.strip():
+        return []
+    entries: List[HealthCodeEntry] = []
+    for part in code_str.split(","):
+        entry = _parse_health_code_part(part)
+        if entry:
+            entries.append(entry)
+    return entries
+
+
+def serialize_health_codes(entries: List[HealthCodeEntry]) -> str:
+    """Serialize health code entries for CSV storage."""
+    return ", ".join(entry.to_string() for entry in entries if entry.code.strip())
 
 
 # =============================================================================

@@ -29,3 +29,11 @@ def test_metadata_schema_returns_projected_fields():
     widgets = {field['name']: field['mobile_widget'] for field in body['fields']}
     assert widgets['location'] == 'location'
     assert widgets['short_arm_code'] == 'short_arm_code'
+    assert widgets['health_codes'] == 'health_code'
+    health = next(field for field in body['fields'] if field['name'] == 'health_codes')
+    assert [option['value'] for option in health['options'][:3]] == ['X', 'NA', 'UNK']
+    assert [option['category'] for option in health['options'][:3]] == ['normal', 'feeding', 'status']
+    lesion = next(option for option in health['options'] if option['value'] == 'L')
+    assert lesion['requires_count'] is True
+    assert lesion['allows_plus'] is True
+    assert lesion['definition']

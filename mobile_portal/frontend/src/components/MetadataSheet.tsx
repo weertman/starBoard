@@ -26,6 +26,38 @@ const dropdownItemStyle: React.CSSProperties = { padding: '8px 12px', cursor: 'p
 // ---- Short Arm Code editor ----
 const SEVERITIES = ['very_tiny', 'tiny', 'small', 'short'] as const
 type ShortArmEntry = { position: number; severity: string }
+type HealthCodeEntry = { code: string; count?: number; plus?: boolean }
+
+function healthOption(field: SchemaField, code: string) {
+  return field.options.find(option => String(option.value) === code)
+}
+
+function parseHealthCodes(raw: string, field: SchemaField): HealthCodeEntry[] {
+  if (!raw.trim()) return []
+  const knownCodes = field.options.map(option => String(option.value)).sort((a, b) => b.length - a.length)
+  return raw.split(',').map(part => {
+    const compact = part.trim().toUpperCase().replace(/\s+/g, '')
+    const code = knownCodes.find(candidate => compact.startsWith(candidate))
+    if (!code) return null
+    const option = healthOption(field, code)
+    const rest = compact.slice(code.length)
+    const countMatch = /^\((\d+)\+?\)/.exec(rest)
+    const count = countMatch && option?.requires_count ? Number(countMatch[1]) : undefined
+    const plus = Boolean(option?.allows_plus && (rest.includes('+)') || rest.endsWith('+')))
+    const entry: HealthCodeEntry = { code, count, plus }
+    return entry
+  }).filter((entry): entry is HealthCodeEntry => Boolean(entry))
+}
+
+function serializeHealthCodes(entries: HealthCodeEntry[], field: SchemaField): string {
+  return entries.filter(entry => entry.code).map(entry => {
+    const option = healthOption(field, entry.code)
+    let out = entry.code
+    if (option?.requires_count) out += `(${Math.max(1, entry.count ?? 1)})`
+    if (option?.allows_plus && entry.plus) out += '+'
+    return out
+  }).join(', ')
+}
 
 function parseShortArmCode(raw: string): ShortArmEntry[] {
   if (!raw.trim()) return []
@@ -61,6 +93,41 @@ function ShortArmCodeEditor({ value, onChange }: { value: string; onChange: (v: 
         </div>
       ))}
       <button onClick={addEntry} style={{ ...pillStyle, alignSelf: 'start', color: '#2f6fed' }}>+ Add short arm</button>
+    </div>
+  )
+}
+
+function HealthCodeEditor({ field, value, onChange }: { field: SchemaField; value: string; onChange: (v: string) => void }) {
+  const [entries, setEntries] = useState<HealthCodeEntry[]>(() => parseHealthCodes(value, field))
+  useEffect(() => {
+    setEntries(parseHealthCodes(value, field))
+  }, [field, value])
+  function update(next: HealthCodeEntry[]) { setEntries(next); onChange(serializeHealthCodes(next, field)) }
+  function addEntry() { update([...entries, { code: '', count: 1, plus: false }]) }
+  function removeEntry(i: number) { update(entries.filter((_, idx) => idx !== i)) }
+  function setField(i: number, patch: Partial<HealthCodeEntry>) {
+    update(entries.map((entry, idx) => idx === i ? { ...entry, ...patch } : entry))
+  }
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {entries.map((entry, i) => {
+        const option = healthOption(field, entry.code)
+        return (
+          <div key={i} style={{ display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select value={entry.code} onChange={e => setField(i, { code: e.target.value, count: 1, plus: false })} style={{ ...inputStyle, width: 'auto', minWidth: 210 }}>
+                <option value="">Select health code…</option>
+                {field.options.map(opt => <option key={String(opt.value)} value={String(opt.value)}>{opt.value} — {opt.label}</option>)}
+              </select>
+              {option?.requires_count && <input aria-label={`Health code ${i + 1} count`} type="number" min={1} max={30} value={entry.count ?? 1} onChange={e => setField(i, { count: parseInt(e.target.value) || 1 })} style={{ ...inputStyle, width: 70 }} />}
+              {option?.allows_plus && <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}><input aria-label={`Health code ${i + 1} plus`} type="checkbox" checked={Boolean(entry.plus)} onChange={e => setField(i, { plus: e.target.checked })} />+</label>}
+              <button onClick={() => removeEntry(i)} style={{ border: 'none', background: 'none', color: 'crimson', cursor: 'pointer', fontSize: 18, padding: '0 4px' }}>×</button>
+            </div>
+            {option?.definition && <div style={{ fontSize: 12, color: '#666' }}>{option.definition}</div>}
+          </div>
+        )
+      })}
+      <button onClick={addEntry} style={{ ...pillStyle, alignSelf: 'start', color: '#2f6fed' }}>+ Add health code</button>
     </div>
   )
 }
@@ -155,6 +222,9 @@ function renderFieldInput(field: SchemaField, value: string, setValue: (value: s
   // Short arm code: structured editor
   if (field.mobile_widget === 'short_arm_code') {
     return <ShortArmCodeEditor value={value} onChange={setValue} />
+  }
+  if (field.mobile_widget === 'health_code') {
+    return <HealthCodeEditor field={field} value={value} onChange={setValue} />
   }
   // Color fields: searchable dropdown
   if (field.mobile_widget === 'color_select' && field.vocabulary.length > 0) {

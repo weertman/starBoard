@@ -11,6 +11,12 @@ export type LocationSitesResponse = {
 export type SchemaFieldOption = {
   label: string
   value: string | number
+  definition?: string
+  category?: string
+  requires_count?: boolean
+  allows_plus?: boolean
+  exclusive?: boolean
+  terminal?: boolean
 }
 
 export type SchemaField = {

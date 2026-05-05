@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.data.annotation_schema import FIELD_DEFINITIONS, GROUP_BY_NAME, AnnotationType
+from src.data.annotation_schema import FIELD_DEFINITIONS, GROUP_BY_NAME, AnnotationType, HEALTH_CODE_DEFINITIONS
 from src.data.vocabulary_store import get_vocabulary_store
 
 
@@ -18,6 +18,8 @@ def _mobile_widget(field) -> str:
         return 'number'
     if field_type == AnnotationType.MORPHOMETRIC_CODE:
         return 'short_arm_code'
+    if field_type == AnnotationType.HEALTH_CODE:
+        return 'health_code'
     if field_type == AnnotationType.TEXT_FREE:
         return 'textarea'
     if field.name in COLOR_FIELDS:
@@ -41,6 +43,21 @@ def project_schema() -> list[dict]:
             vocabulary = sorted(set(vocab.get_colors(field.name)))
         elif field.name == 'location':
             vocabulary = sorted(set(vocab.get_locations()))
+        options = [{'label': opt.label, 'value': opt.value} for opt in field.options]
+        if field.annotation_type == AnnotationType.HEALTH_CODE:
+            options = [
+                {
+                    'label': definition.label,
+                    'value': definition.code,
+                    'definition': definition.definition,
+                    'category': definition.category,
+                    'requires_count': definition.requires_count,
+                    'allows_plus': definition.allows_plus,
+                    'exclusive': definition.exclusive,
+                    'terminal': definition.terminal,
+                }
+                for definition in HEALTH_CODE_DEFINITIONS
+            ]
         fields.append({
             'name': field.name,
             'display_name': field.display_name,
@@ -51,7 +68,7 @@ def project_schema() -> list[dict]:
             'tooltip': field.tooltip,
             'min_value': field.min_value,
             'max_value': field.max_value,
-            'options': [{'label': opt.label, 'value': opt.value} for opt in field.options],
+            'options': options,
             'vocabulary': vocabulary,
             'mobile_widget': _mobile_widget(field),
         })
