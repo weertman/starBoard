@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getMetadataSchema, getLookupOptions, type SchemaField } from '../api/client'
+import { orderedMetadataGroups } from '../metadataFieldOrdering'
 import 'leaflet/dist/leaflet.css'
 
 export type MetadataDraft = {
@@ -423,14 +424,7 @@ export function MetadataSheet({
     return q ? fields.filter(f => f.display_name.toLowerCase().includes(q) || f.name.toLowerCase().includes(q) || f.group_display_name.toLowerCase().includes(q)) : fields
   }, [fields, search])
 
-  const groupedFields = useMemo(() => {
-    const groups = new Map<string, { displayName: string; fields: SchemaField[] }>()
-    for (const field of filtered) {
-      if (!groups.has(field.group)) groups.set(field.group, { displayName: field.group_display_name, fields: [] })
-      groups.get(field.group)!.fields.push(field)
-    }
-    return Array.from(groups.entries())
-  }, [filtered])
+  const groupedFields = useMemo(() => orderedMetadataGroups(filtered), [filtered])
 
   function markReady() {
     if (!targetId) { setError('Choose a target ID before marking metadata ready.'); return }
