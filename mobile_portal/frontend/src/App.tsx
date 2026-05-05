@@ -4,6 +4,7 @@ import { useLocalImages } from './state/localImages'
 import type { ImageDescriptor, MegaStarCapabilityInfo, MegaStarLookupCandidate, MegaStarLookupResponse } from './api/client'
 import { lookupMegaStar, submitObservation } from './api/client'
 import { initialDraftForMetadataSheet } from './metadataDraftDefaults'
+import { mobileSubmissionReadiness } from './submissionReadiness'
 import { HomeScreen } from './screens/HomeScreen'
 import { ObservationWorkspace } from './screens/ObservationWorkspace'
 import { LookupWorkspace } from './screens/LookupWorkspace'
@@ -169,11 +170,9 @@ export function App() {
     }
   }
 
-  const locationReady = Boolean(metadataDraft.values.location?.trim())
-  const computedSubmitDisabled = submitting || !metadataDraft.ready || !locationReady || files.length === 0
-  const metadataSummary = metadataDraft.ready && locationReady
-    ? `Ready for ${metadataDraft.targetType} / ${metadataDraft.targetId || 'missing target'} on ${metadataDraft.encounterDate}`
-    : 'Open metadata, fill the required targeting info, then tap Ready.'
+  const readiness = mobileSubmissionReadiness({ draft: metadataDraft, fileCount: files.length, submitting })
+  const computedSubmitDisabled = readiness.disabled
+  const metadataSummary = readiness.summary
   const submitLabel = submitting ? 'Submitting…' : 'Submit to archive'
 
   if (loading) return <div style={{ padding: 12 }}>Loading…</div>
