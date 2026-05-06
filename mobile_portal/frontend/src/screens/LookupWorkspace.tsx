@@ -10,6 +10,7 @@ import {
 } from '../api/client'
 import { ArchiveImageStrip } from '../components/ArchiveImageStrip'
 import { ZoomableImagePane } from '../components/ZoomableImagePane'
+import { trackActivity } from '../activity'
 
 const controlStyle = {
   width: '100%',
@@ -123,6 +124,7 @@ export function LookupWorkspace({
     if (!id) return
     setLoading(true)
     setError(null)
+    const startedAt = Date.now()
     try {
       const useEncounter = encounterOverride ?? selectedEncounter
       const data = await lookupEntity(id, nextEntityType, useEncounter)
@@ -136,7 +138,9 @@ export function LookupWorkspace({
       if (nextImage) {
         onSelectArchiveImage(nextImage, data.image_window.items)
       }
+      trackActivity({ event_type: 'mobile.archive_lookup.completed', workflow: 'lookup', entity_type: nextEntityType, entity_id: id, success: true, duration_ms: Date.now() - startedAt, details: { encounter_selected: Boolean(data.selected_encounter || useEncounter), image_count: data.image_window.items.length, metadata_field_count: Object.keys(data.metadata_summary ?? {}).length } })
     } catch (err) {
+      trackActivity({ event_type: 'mobile.archive_lookup.completed', workflow: 'lookup', entity_type: nextEntityType, entity_id: id, success: false, duration_ms: Date.now() - startedAt })
       setError(String(err))
     } finally {
       setLoading(false)
@@ -146,6 +150,7 @@ export function LookupWorkspace({
   async function loadMore() {
     if (!result?.image_window.next_offset) return
     const next = await getEntityImages(result.entity_id, entityType, result.image_window.next_offset, 4, selectedEncounter)
+    trackActivity({ event_type: 'mobile.archive_lookup.more_images_loaded', workflow: 'lookup', entity_type: entityType, entity_id: result.entity_id, details: { loaded_count: next.items.length, next_offset: next.next_offset } })
     const mergedItems = [...result.image_window.items, ...next.items]
     const mergedResult: ArchiveEntityResponse = {
       ...result,

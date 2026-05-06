@@ -1,3 +1,5 @@
+import { activityHeaders } from '../activity'
+
 export type MegaStarCapabilityInfo = {
   enabled: boolean
   state: 'enabled' | 'disabled' | 'unavailable'
@@ -121,7 +123,7 @@ export type MegaStarLookupResponse = {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init)
+  const res = await fetch(path, { ...init, headers: { ...activityHeaders(), ...(init?.headers ?? {}) } })
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text || `Request failed: ${res.status}`)
@@ -140,7 +142,7 @@ export const getLookupOptions = (entityType: 'gallery' | 'query', location = '',
 export async function lookupMegaStar(file: File, maxCandidates = 5): Promise<MegaStarLookupResponse> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`/api/megastar/lookup?max_candidates=${maxCandidates}`, { method: 'POST', body: form })
+  const res = await fetch(`/api/megastar/lookup?max_candidates=${maxCandidates}`, { method: 'POST', headers: activityHeaders(), body: form })
   const text = await res.text()
   let payload: MegaStarLookupResponse | null = null
   try {
@@ -158,7 +160,7 @@ export async function submitObservation(payload: Record<string, unknown>, files:
   const form = new FormData()
   form.append('payload', JSON.stringify(payload))
   for (const file of files) form.append('files', file)
-  const res = await fetch('/api/submissions', { method: 'POST', body: form })
+  const res = await fetch('/api/submissions', { method: 'POST', headers: activityHeaders(), body: form })
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text || `Submit failed: ${res.status}`)

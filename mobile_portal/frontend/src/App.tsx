@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSession } from './state/session'
+import { trackActivity } from './activity'
 import { useLocalImages } from './state/localImages'
 import type { ImageDescriptor, MegaStarCapabilityInfo, MegaStarLookupCandidate, MegaStarLookupResponse } from './api/client'
 import { lookupMegaStar, submitObservation } from './api/client'
@@ -69,6 +70,10 @@ export function App() {
   const megastarEnabled = megastarInfo.enabled
 
   useEffect(() => {
+    trackActivity({ event_type: 'mobile.screen.open', workflow: mode, details: { mode } })
+  }, [mode])
+
+  useEffect(() => {
     if (megastar.sourceKey && megastar.sourceKey !== selectedLocalKey) {
       megastarRequestIdRef.current += 1
       setMegaStar(EMPTY_MEGASTAR_STATE)
@@ -94,14 +99,18 @@ export function App() {
     })
   }
 
-  function compareMegaStarCandidate(candidate: MegaStarLookupCandidate) {
+  function compareMegaStarCandidate(candidate: MegaStarLookupCandidate, options?: { track?: boolean }) {
+    if (options?.track !== false) {
+      trackActivity({ event_type: 'mobile.megastar_candidate.compare', workflow: 'lookup', entity_type: candidate.entity_type, entity_id: candidate.entity_id, details: { rank: candidate.rank, score: candidate.retrieval_score } })
+    }
     const loadedItems = megastar.result?.candidates.map((item) => item.best_match_image) ?? [candidate.best_match_image]
     setArchiveSelection(candidate.best_match_image, loadedItems)
     setMode('observation')
   }
 
   function openMegaStarCandidateInLookup(candidate: MegaStarLookupCandidate) {
-    compareMegaStarCandidate(candidate)
+    trackActivity({ event_type: 'mobile.megastar_candidate.open_lookup', workflow: 'lookup', entity_type: candidate.entity_type, entity_id: candidate.entity_id, details: { rank: candidate.rank, score: candidate.retrieval_score } })
+    compareMegaStarCandidate(candidate, { track: false })
     setLookupOrigin('observation')
     setLookupRequest({
       entityType: candidate.entity_type,
@@ -120,13 +129,17 @@ export function App() {
     const requestId = megastarRequestIdRef.current + 1
     megastarRequestIdRef.current = requestId
     setMegaStar({ sourceKey, loading: true, result: null, error: null })
+    const startedAt = Date.now()
+    trackActivity({ event_type: 'mobile.megastar_lookup.started', workflow: 'lookup', details: { max_candidates: maxCandidates } })
     try {
       const result = await lookupMegaStar(localFile, maxCandidates)
       if (megastarRequestIdRef.current !== requestId) return
       setMegaStar({ sourceKey, loading: false, result, error: null })
+      trackActivity({ event_type: 'mobile.megastar_lookup.completed', workflow: 'lookup', success: true, duration_ms: Date.now() - startedAt, details: { max_candidates: maxCandidates, result_count: result.candidates.length } })
     } catch (err) {
       if (megastarRequestIdRef.current !== requestId) return
       setMegaStar({ sourceKey, loading: false, result: null, error: String(err) })
+      trackActivity({ event_type: 'mobile.megastar_lookup.completed', workflow: 'lookup', success: false, duration_ms: Date.now() - startedAt, details: { max_candidates: maxCandidates } })
     }
   }
 
@@ -150,6 +163,8 @@ export function App() {
     setSubmitting(true)
     setSubmitError(null)
     setSubmitMessage(null)
+    const startedAt = Date.now()
+    trackActivity({ event_type: 'mobile.submission.started', workflow: 'observation', entity_type: metadataDraft.targetType, entity_id: metadataDraft.targetId, details: { target_mode: metadataDraft.targetMode, file_count: files.length } })
     try {
       const result = await submitObservation(
         {
@@ -163,7 +178,9 @@ export function App() {
         files,
       )
       setSubmitMessage(`${result.message}: ${result.entity_type}/${result.entity_id} ${result.encounter_folder}`)
+      trackActivity({ event_type: 'mobile.submission.completed', workflow: 'observation', entity_type: result.entity_type, entity_id: result.entity_id, success: true, duration_ms: Date.now() - startedAt, details: { accepted_images: result.accepted_images, skipped_images: result.skipped_images, target_mode: metadataDraft.targetMode } })
     } catch (err) {
+      trackActivity({ event_type: 'mobile.submission.completed', workflow: 'observation', entity_type: metadataDraft.targetType, entity_id: metadataDraft.targetId, success: false, duration_ms: Date.now() - startedAt, details: { target_mode: metadataDraft.targetMode, file_count: files.length } })
       setSubmitError(String(err))
     } finally {
       setSubmitting(false)

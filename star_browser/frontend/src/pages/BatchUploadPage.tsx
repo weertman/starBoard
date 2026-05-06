@@ -13,6 +13,7 @@ import {
   type LocationSite,
 } from '../api/client'
 import { LocationSiteMap } from '../components/LocationSiteMap'
+import { trackActivity } from '../activity'
 
 type DiscoverMode = 'auto' | 'flat' | 'encounters' | 'grouped'
 type TargetArchive = 'gallery' | 'query'
@@ -228,6 +229,7 @@ export function BatchUploadPage() {
   }
 
   function updateSavedLocation(value: string) {
+    trackActivity({ event_type: 'batch_upload.location.changed', workflow: 'batch_upload', details: { mode: value === '__new__' ? 'new_location' : 'saved_location', has_value: Boolean(value && value !== '__new__') } })
     if (value === '__new__') {
       setShowNewLocationInput(true)
       setBatchLocation((cur) => ({ ...cur, location: '' }))
@@ -250,6 +252,7 @@ export function BatchUploadPage() {
   }
 
   function handleZipFileChange(file: File | null) {
+    trackActivity({ event_type: 'batch_upload.source.selected', workflow: 'batch_upload', details: { source_type: 'zip', has_file: Boolean(file), file_count: file ? 1 : 0 } })
     setZipFile(file)
     setZipPreview(null)
     setUploadToken(null)
@@ -260,6 +263,7 @@ export function BatchUploadPage() {
   }
 
   function handleFolderFilesChange(files: FileList | null) {
+    trackActivity({ event_type: 'batch_upload.source.selected', workflow: 'batch_upload', details: { source_type: 'folder', file_count: files?.length ?? 0 } })
     setFolderFiles(files ? Array.from(files) : [])
     setUploadToken(null)
     setUploadInfo(null)
@@ -274,12 +278,15 @@ export function BatchUploadPage() {
     setError(null)
     setDiscoverResponse(null)
     setExecuteResponse(null)
+    const startedAt = Date.now()
     try {
       const result = await uploadBatchFolder(folderFiles)
       setUploadToken(result.upload_token)
       setUploadInfo({ file_count: result.file_count, root_entries: result.root_entries })
       setSuccessReadout(`Preview source ready: ${result.file_count} file(s) available for review.`)
+      trackActivity({ event_type: 'batch_upload.source_prepared', workflow: 'batch_upload', success: true, duration_ms: Date.now() - startedAt, details: { source_type: 'folder', file_count: result.file_count } })
     } catch (err) {
+      trackActivity({ event_type: 'batch_upload.source_prepared', workflow: 'batch_upload', success: false, duration_ms: Date.now() - startedAt, details: { source_type: 'folder', file_count: folderFiles.length } })
       setError(String(err))
     } finally {
       endOperation()
@@ -295,7 +302,9 @@ export function BatchUploadPage() {
       const result = analyzeZipEntries(names, discoveryMode)
       setZipPreview(result)
       setSuccessReadout(result.status === 'valid' ? 'Zip preflight complete.' : null)
+      trackActivity({ event_type: 'batch_upload.zip_preflight.completed', workflow: 'batch_upload', success: result.status === 'valid', details: { requested_mode: discoveryMode, resolved_mode: result.resolvedMode, importable_images: result.importableImages } })
     } catch (err) {
+      trackActivity({ event_type: 'batch_upload.zip_preflight.completed', workflow: 'batch_upload', success: false, details: { requested_mode: discoveryMode } })
       setZipPreview({
         status: 'invalid',
         resolvedMode: 'empty',
@@ -314,12 +323,15 @@ export function BatchUploadPage() {
     setError(null)
     setDiscoverResponse(null)
     setExecuteResponse(null)
+    const startedAt = Date.now()
     try {
       const result = await uploadBatchZip(zipFile)
       setUploadToken(result.upload_token)
       setUploadInfo({ file_count: result.file_count, root_entries: result.root_entries })
       setSuccessReadout(`Preview source ready: ${result.file_count} file(s) available for review.`)
+      trackActivity({ event_type: 'batch_upload.source_prepared', workflow: 'batch_upload', success: true, duration_ms: Date.now() - startedAt, details: { source_type: 'zip', file_count: result.file_count } })
     } catch (err) {
+      trackActivity({ event_type: 'batch_upload.source_prepared', workflow: 'batch_upload', success: false, duration_ms: Date.now() - startedAt, details: { source_type: 'zip' } })
       setError(String(err))
     } finally {
       endOperation()
@@ -331,6 +343,7 @@ export function BatchUploadPage() {
     beginOperation('discover', 'Previewing IDs and metadata')
     setError(null)
     setExecuteResponse(null)
+    const startedAt = Date.now()
     try {
       const request: BatchUploadDiscoverRequest = {
         target_archive: targetArchive,
@@ -347,7 +360,9 @@ export function BatchUploadPage() {
       setSelectedRowIds(result.rows.map((row) => row.row_id))
       setPlanStale(false)
       setSuccessReadout(`Preview ready: ${result.summary.detected_rows} row(s), ${result.summary.detected_ids} ID(s), ${result.summary.total_images} image(s).`)
+      trackActivity({ event_type: 'batch_upload.preview.completed', workflow: 'batch_upload', success: true, duration_ms: Date.now() - startedAt, details: { target_archive: targetArchive, discovery_mode: discoveryMode, detected_rows: result.summary.detected_rows, detected_ids: result.summary.detected_ids, total_images: result.summary.total_images } })
     } catch (err) {
+      trackActivity({ event_type: 'batch_upload.preview.completed', workflow: 'batch_upload', success: false, duration_ms: Date.now() - startedAt, details: { target_archive: targetArchive, discovery_mode: discoveryMode } })
       setError(String(err))
     } finally {
       endOperation()
@@ -367,6 +382,7 @@ export function BatchUploadPage() {
     }
     beginOperation('execute', 'Submitting selected IDs')
     setError(null)
+    const startedAt = Date.now()
     try {
       const result = await executeBatchUpload({
         plan_id: discoverResponse.plan_id,
@@ -374,7 +390,9 @@ export function BatchUploadPage() {
       })
       setExecuteResponse(result)
       setSuccessReadout(`Upload ${result.status}: ${result.summary.accepted_images} accepted image(s), ${result.summary.executed_rows} submitted row(s).`)
+      trackActivity({ event_type: 'batch_upload.submit.completed', workflow: 'batch_upload', success: true, duration_ms: Date.now() - startedAt, details: { plan_id: discoverResponse.plan_id, selected_rows: selectedRowIds.length, accepted_images: result.summary.accepted_images, executed_rows: result.summary.executed_rows, status: result.status } })
     } catch (err) {
+      trackActivity({ event_type: 'batch_upload.submit.completed', workflow: 'batch_upload', success: false, duration_ms: Date.now() - startedAt, details: { plan_id: discoverResponse.plan_id, selected_rows: selectedRowIds.length } })
       setError(String(err))
     } finally {
       endOperation()

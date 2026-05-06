@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+
+import { trackActivity } from './activity'
 
 import { BatchUploadPage } from './pages/BatchUploadPage'
 import { FirstOrderPage } from './pages/FirstOrderPage'
@@ -23,6 +25,10 @@ function initialTabFromPath(): Tab {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>(initialTabFromPath)
+
+  useEffect(() => {
+    trackActivity({ event_type: 'ui.tab.open', workflow: tab, details: { tab } })
+  }, [tab])
 
   return (
     <div style={{ background: '#f7f9fc', minHeight: '100vh' }}>

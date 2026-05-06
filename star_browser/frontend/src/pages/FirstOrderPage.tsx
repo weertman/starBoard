@@ -7,6 +7,7 @@ import {
   getLocationSites,
   runFirstOrderSearch,
   saveFirstOrderMatchLabel,
+  setFirstOrderFirstImage,
   type FirstOrderGalleryFilterField,
   type FirstOrderMatchVerdict,
   type FirstOrderMediaImage,
@@ -17,6 +18,7 @@ import {
   type LocationSite,
 } from '../api/client'
 import { LocationSiteMap } from '../components/LocationSiteMap'
+import { trackActivity } from '../activity'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -245,6 +247,7 @@ export function FirstOrderPage() {
   const [savingDecision, setSavingDecision] = useState(false)
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null)
   const [decisionError, setDecisionError] = useState<string | null>(null)
+  const [bestImageBusy, setBestImageBusy] = useState(false)
 
   async function refreshQueries(preferredQueryId = queryId) {
     setLoadingQueries(true)
@@ -373,6 +376,7 @@ export function FirstOrderPage() {
     const searchPreset = presetOverride ?? preset
     setBusy(true)
     setError(null)
+    const startedAt = Date.now()
     try {
       const request = {
         query_id: searchQueryId.trim(),
@@ -381,6 +385,7 @@ export function FirstOrderPage() {
         ...(searchPreset === 'megastar' && activeQueryImage ? { query_image_id: activeQueryImage.image_id } : {}),
         ...(Object.keys(activeGalleryFilters).length > 0 ? { gallery_filters: activeGalleryFilters } : {}),
       }
+      trackActivity({ event_type: 'query_matcher.search.started', workflow: 'query_matcher', entity_type: 'query', entity_id: searchQueryId.trim(), query_id: searchQueryId.trim(), details: { preset: searchPreset, top_k: topK, gallery_filter_count: Object.keys(activeGalleryFilters).length, query_image_id: activeQueryImage?.image_id } })
       const next = await runFirstOrderSearch(request)
       setResult(next)
       setActiveCandidateIndex(0)
@@ -390,6 +395,7 @@ export function FirstOrderPage() {
       setDecisionError(null)
       setActiveCandidateImageIndexes({})
       setCandidateMedia({})
+      trackActivity({ event_type: 'query_matcher.search.completed', workflow: 'query_matcher', entity_type: 'query', entity_id: next.query_id, query_id: next.query_id, success: true, duration_ms: Date.now() - startedAt, details: { preset: searchPreset, result_count: next.candidates.length, gallery_filter_count: Object.keys(activeGalleryFilters).length, query_image_id: activeQueryImage?.image_id } })
       void Promise.all(next.candidates.map(async (candidate) => {
         try {
           const media = await getFirstOrderMedia('gallery', candidate.entity_id)
@@ -405,6 +411,7 @@ export function FirstOrderPage() {
         }
       }))
     } catch (err) {
+      trackActivity({ event_type: 'query_matcher.search.completed', workflow: 'query_matcher', entity_type: 'query', entity_id: searchQueryId.trim(), query_id: searchQueryId.trim(), success: false, duration_ms: Date.now() - startedAt, details: { preset: searchPreset, top_k: topK, gallery_filter_count: Object.keys(activeGalleryFilters).length } })
       setError(String(err))
       setResult(null)
     } finally {
@@ -448,8 +455,10 @@ export function FirstOrderPage() {
         notes: matchNotes,
       })
       setDecisionMessage(`Saved ${saved.verdict} for ${saved.gallery_id}`)
+      trackActivity({ event_type: 'query_matcher.match_decision.completed', workflow: 'query_matcher', entity_type: 'gallery', entity_id: saved.gallery_id, query_id: saved.query_id, gallery_id: saved.gallery_id, success: true, details: { verdict: saved.verdict, has_notes: Boolean(matchNotes.trim()) } })
       await refreshQueries(result.query_id)
     } catch (err) {
+      trackActivity({ event_type: 'query_matcher.match_decision.completed', workflow: 'query_matcher', entity_type: 'gallery', entity_id: activeCandidate.entity_id, query_id: result.query_id, gallery_id: activeCandidate.entity_id, success: false, details: { verdict: matchDecision, has_notes: Boolean(matchNotes.trim()) } })
       setDecisionError(String(err))
     } finally {
       setSavingDecision(false)
@@ -458,12 +467,34 @@ export function FirstOrderPage() {
 
   function stepProposal(delta: number) {
     if (!result?.candidates.length) return
-    setActiveCandidateIndex((current) => Math.min(result.candidates.length - 1, Math.max(0, current + delta)))
+    const next = Math.min(result.candidates.length - 1, Math.max(0, activeCandidateIndex + delta))
+    if (next === activeCandidateIndex) return
+    const candidate = result.candidates[next]
+    setActiveCandidateIndex(next)
+    trackActivity({ event_type: 'query_matcher.proposal.changed', workflow: 'query_matcher', entity_type: 'gallery', entity_id: candidate.entity_id, query_id: result.query_id, gallery_id: candidate.entity_id, details: { index: next, total: result.candidates.length } })
   }
 
   function stepQueryImage(delta: number) {
     if (!queryMedia?.images.length) return
     setActiveQueryImageIndex((current) => Math.min(queryMedia.images.length - 1, Math.max(0, current + delta)))
+  }
+
+  async function handleSetQueryFirstImage() {
+    if (!activeQueryImage || !queryId.trim()) return
+    setBestImageBusy(true)
+    setError(null)
+    try {
+      await setFirstOrderFirstImage(activeQueryImage.image_id)
+      const media = await getFirstOrderMedia('query', queryId.trim())
+      setQueryMedia(media)
+      setActiveQueryImageIndex(0)
+      trackActivity({ event_type: 'query_matcher.query_first_image_set', workflow: 'query_matcher', entity_type: 'query', entity_id: queryId.trim(), query_id: queryId.trim(), success: true, details: { image_label: activeQueryImage.label } })
+    } catch (err) {
+      trackActivity({ event_type: 'query_matcher.query_first_image_set', workflow: 'query_matcher', entity_type: 'query', entity_id: queryId.trim(), query_id: queryId.trim(), success: false })
+      setError(String(err))
+    } finally {
+      setBestImageBusy(false)
+    }
   }
 
   function stepCandidateImage(delta: number) {
@@ -649,6 +680,7 @@ export function FirstOrderPage() {
                       <button type="button" onClick={() => stepQueryImage(-1)} disabled={activeQueryImageIndex === 0}>Previous selected query image</button>
                       <b style={{ fontSize: 13, textAlign: 'center' }}>Selected query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
                       <button type="button" onClick={() => stepQueryImage(1)} disabled={activeQueryImageIndex >= (queryMedia?.images.length ?? 0) - 1}>Next selected query image</button>
+                      <button type="button" onClick={() => void handleSetQueryFirstImage()} disabled={bestImageBusy || activeQueryImageIndex === 0}>{bestImageBusy ? 'Setting first image…' : 'Set first image'}</button>
                       <button type="button" onClick={() => void handleSearch('megastar')} disabled={busy || !queryId.trim() || !activeQueryImage} style={{ fontWeight: 700 }}>MegaStar search selected image</button>
                     </div>
                   </div>
@@ -748,6 +780,7 @@ export function FirstOrderPage() {
                           <button type="button" onClick={() => stepQueryImage(-1)} disabled={activeQueryImageIndex === 0}>Previous query image</button>
                           <b>Query image {activeQueryImageIndex + 1} of {queryMedia?.images.length ?? 0}</b>
                           <button type="button" onClick={() => stepQueryImage(1)} disabled={activeQueryImageIndex >= (queryMedia?.images.length ?? 0) - 1}>Next query image</button>
+                          <button type="button" onClick={() => void handleSetQueryFirstImage()} disabled={bestImageBusy || activeQueryImageIndex === 0}>{bestImageBusy ? 'Setting first image…' : 'Set first image'}</button>
                         </div>
                       </>
                     ) : (
