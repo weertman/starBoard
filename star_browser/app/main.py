@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .routes.activity import router as activity_router
 from .routes.batch_upload import router as batch_upload_router
 from .routes.first_order import router as first_order_router
 from .routes.gallery import router as gallery_router
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
     def health():
         return {'status': 'ok', 'service': 'star-browser'}
 
+    app.include_router(activity_router, prefix='/api')
     app.include_router(session_router, prefix='/api')
     app.include_router(gallery_router, prefix='/api')
     app.include_router(batch_upload_router, prefix='/api')

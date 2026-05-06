@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
+
+from src.data.activity_log import request_context, try_record_activity_event
 
 from ..auth import require_authenticated_email
 from ..models.search_api import FirstOrderGalleryFiltersResponse, FirstOrderMatchLabelRequest, FirstOrderMatchLabelResponse, FirstOrderMediaResponse, FirstOrderQueryOptionsResponse, FirstOrderSearchRequest, FirstOrderSearchResponse
@@ -28,26 +30,67 @@ def first_order_gallery_filters(
 @router.post('/first-order/search', response_model=FirstOrderSearchResponse)
 def first_order_search(
     request: FirstOrderSearchRequest,
-    _user_email: str = Depends(require_authenticated_email),
+    http_request: Request,
+    user_email: str = Depends(require_authenticated_email),
 ):
-    return run_first_order_search(
+    result = run_first_order_search(
         request.query_id,
         top_k=request.top_k,
         preset=request.preset,
         query_image_id=request.query_image_id,
         gallery_filters=request.gallery_filters,
     )
+    ctx = request_context(http_request)
+    session_id = ctx.pop('session_id') or ''
+    try_record_activity_event(
+        surface='star_browser',
+        user_email=user_email,
+        session_id=session_id,
+        event_type='query_matcher.search.succeeded',
+        workflow='query_matcher',
+        entity_type='query',
+        entity_id=request.query_id,
+        query_id=request.query_id,
+        success=True,
+        details={
+            'preset': request.preset,
+            'top_k': request.top_k,
+            'query_image_id': request.query_image_id,
+            'gallery_filters': request.gallery_filters or {},
+            'result_count': len(result.candidates),
+        },
+        **ctx,
+    )
+    return result
 
 
 @router.post('/first-order/match-labels', response_model=FirstOrderMatchLabelResponse)
 def first_order_match_labels(
     request: FirstOrderMatchLabelRequest,
-    _user_email: str = Depends(require_authenticated_email),
+    http_request: Request,
+    user_email: str = Depends(require_authenticated_email),
 ):
     try:
-        return save_first_order_match_label(request.query_id, request.gallery_id, request.verdict, request.notes)
+        result = save_first_order_match_label(request.query_id, request.gallery_id, request.verdict, request.notes)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    ctx = request_context(http_request)
+    session_id = ctx.pop('session_id') or ''
+    try_record_activity_event(
+        surface='star_browser',
+        user_email=user_email,
+        session_id=session_id,
+        event_type='query_matcher.match_label.saved',
+        workflow='query_matcher',
+        entity_type='gallery',
+        entity_id=request.gallery_id,
+        query_id=request.query_id,
+        gallery_id=request.gallery_id,
+        success=True,
+        details={'verdict': request.verdict},
+        **ctx,
+    )
+    return result
 
 
 @router.get('/first-order/queries/{query_id}/media', response_model=FirstOrderMediaResponse)

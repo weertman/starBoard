@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+from .routes.activity import router as activity_router
 from .routes.health import router as health_router
 from .routes.session import router as session_router
 from .routes.schema import router as schema_router
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
         allow_methods=['*'],
         allow_headers=['*'],
     )
+    app.include_router(activity_router, prefix='/api')
     app.include_router(health_router, prefix='/api')
     app.include_router(session_router, prefix='/api')
     app.include_router(schema_router, prefix='/api')
