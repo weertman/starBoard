@@ -400,14 +400,18 @@ def execute_merge(plan: MergePlan, dry_run: bool = False) -> MergeReport:
         invalidate_id_cache()
         invalidate_image_cache()
         
-        # Mark new IDs as pending for DL precomputation
+        # Mark new IDs as pending and enqueue MegaStar background work.
         try:
-            from src.dl.registry import DLRegistry
-            registry = DLRegistry.load()
+            from src.dl.megastar_queue import enqueue_identity_update
             for item in plan.items:
-                registry.add_pending_id(plan.target, item.target_id)
+                enqueue_identity_update(
+                    plan.target,
+                    item.target_id,
+                    reason="archive_merge",
+                    source="src.data.archive_merge.execute_merge",
+                )
         except Exception as e:
-            log.debug("Could not mark IDs as pending for DL: %s", e)
+            log.debug("Could not enqueue IDs as pending for DL: %s", e)
     
     report = MergeReport(
         batch_id=batch_id,

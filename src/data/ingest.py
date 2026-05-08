@@ -125,9 +125,9 @@ def place_images(
     if report.errors:
         log.warning("Ingest errors: %s", "; ".join(report.errors))
     
-    # Track new ID as pending for DL precomputation (best-effort)
+    # Track new ID as pending for DL/MegaStar precomputation (best-effort)
     if report.ops:
-        _track_pending_id(target_root, id_str)
+        _track_pending_id(target_root, id_str, [op.dest for op in report.ops])
         # Invalidate caches since new files/IDs may have been added
         invalidate_id_cache()
         invalidate_image_cache()
@@ -136,6 +136,16 @@ def place_images(
         _save_observation_date(target_root, id_str, encounter_dir_name, observation_date)
     
     return report
+
+
+def _target_from_root(target_root: Path) -> Optional[str]:
+    """Return the canonical archive target represented by a target root path."""
+    root_name = target_root.name.lower()
+    if "gallery" in root_name:
+        return "Gallery"
+    if "quer" in root_name:
+        return "Queries"
+    return None
 
 
 def _save_observation_date(
@@ -152,13 +162,8 @@ def _save_observation_date(
     try:
         from .encounter_info import set_encounter_date, _parse_mmddyy, invalidate_encounter_dates_cache
         
-        # Determine target from root path
-        root_name = target_root.name.lower()
-        if "gallery" in root_name:
-            target = "Gallery"
-        elif "quer" in root_name:
-            target = "Queries"
-        else:
+        target = _target_from_root(target_root)
+        if target is None:
             log.debug("Unknown target for observation date: %s", target_root)
             return
         
@@ -174,27 +179,31 @@ def _save_observation_date(
         log.debug("Failed to save observation date: %s", e)
 
 
-def _track_pending_id(target_root: Path, id_str: str):
-    """Track an ID as pending for DL precomputation."""
+def _track_pending_id(target_root: Path, id_str: str, changed_paths: Optional[Sequence[Path]] = None):
+    """Track an ID as pending for DL precomputation and enqueue MegaStar work."""
+    target = _target_from_root(target_root)
+    if target is None:
+        return
     try:
-        from src.dl.registry import DLRegistry
-        registry = DLRegistry.load()
-        
-        # Determine target from root path
-        root_name = target_root.name.lower()
-        if "gallery" in root_name:
-            target = "Gallery"
-        elif "quer" in root_name:
-            target = "Queries"
-        else:
-            return  # Unknown target
-        
-        registry.add_pending_id(target, id_str)
-        log.debug("Tracked pending ID for DL: %s/%s", target, id_str)
+        from src.dl.megastar_queue import enqueue_identity_update
+        enqueue_identity_update(
+            target,
+            id_str,
+            changed_paths=list(changed_paths or []),
+            reason="place_images",
+            source="src.data.ingest.place_images",
+        )
+        log.debug("Enqueued pending ID for MegaStar: %s/%s", target, id_str)
     except ImportError:
-        pass  # DL module not available
+        try:
+            from src.dl.registry import DLRegistry
+            registry = DLRegistry.load()
+            registry.add_pending_id(target, id_str)
+            log.debug("Tracked pending ID for DL: %s/%s", target, id_str)
+        except Exception as e:
+            log.debug("Failed to track pending ID: %s", e)
     except Exception as e:
-        log.debug("Failed to track pending ID: %s", e)
+        log.debug("Failed to enqueue pending ID: %s", e)
 
 def discover_ids_and_images(parent_dir: Path) -> List[Tuple[str, List[Path]]]:
     parent = Path(parent_dir)

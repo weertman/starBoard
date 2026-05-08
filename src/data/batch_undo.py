@@ -22,6 +22,22 @@ from .csv_io import read_rows, append_row
 
 log = logging.getLogger("starBoard.data.batch_undo")
 
+
+def _enqueue_affected_ids_for_megastar(target: str, ids: Set[str], *, reason: str) -> None:
+    if not ids:
+        return
+    try:
+        from src.dl.megastar_queue import enqueue_identity_update
+        for id_str in sorted(ids):
+            enqueue_identity_update(
+                target,
+                id_str,
+                reason=reason,
+                source="src.data.batch_undo",
+            )
+    except Exception as e:
+        log.debug("Could not enqueue batch affected IDs for MegaStar: %s", e)
+
 HISTORY_FILENAME = "_batch_upload_history.csv"
 METADATA_DIR = "_batch_metadata"
 
@@ -508,6 +524,7 @@ def undo_batch(target: str, batch_id: str, permanent: bool = False) -> UndoRepor
     
     log.info("Undo batch %s: %d files removed, %d missing, %d CSV rows removed",
              batch_id, report.files_removed, report.files_missing, report.csv_rows_removed)
+    _enqueue_affected_ids_for_megastar(target, ids_affected, reason="batch_undo")
     
     return report
 
@@ -617,6 +634,7 @@ def redo_batch(target: str, batch_id: str) -> RedoReport:
     
     log.info("Redo batch %s: %d files restored, %d failed, %d CSV rows restored",
              batch_id, report.files_restored, report.files_failed, report.csv_rows_restored)
+    _enqueue_affected_ids_for_megastar(target, ids_affected, reason="batch_redo")
     
     return report
 

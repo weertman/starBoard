@@ -181,14 +181,18 @@ def _remove_silent_batch(query_id: str, batch_id: str) -> None:
                 pass
 
 
-def _mark_gallery_pending_for_dl(gallery_id: str) -> None:
-    """Best-effort mark of a gallery ID as pending for DL precomputation."""
+def _mark_gallery_pending_for_dl(gallery_id: str, *, reason: str = "merge_yes") -> None:
+    """Best-effort mark/enqueue of a gallery ID as pending for DL precomputation."""
     try:
-        from src.dl.registry import DLRegistry
-        registry = DLRegistry.load()
-        registry.add_pending_id("Gallery", gallery_id)
+        from src.dl.megastar_queue import enqueue_identity_update
+        enqueue_identity_update(
+            "Gallery",
+            gallery_id,
+            reason=reason,
+            source="src.data.merge_yes",
+        )
     except Exception as e:
-        log.debug("Could not mark gallery pending for DL (%s): %s", gallery_id, e)
+        log.debug("Could not enqueue gallery pending for DL (%s): %s", gallery_id, e)
 
 
 # ---------------------------- discovery helpers ----------------------------
@@ -435,7 +439,7 @@ def merge_yeses_for_gallery(gallery_id: str, *, dry_run: bool = False) -> MergeR
         invalidate_id_cache()
         # Encounter directories changed under Gallery -> invalidate image listing cache.
         invalidate_image_cache()
-        _mark_gallery_pending_for_dl(gallery_id)
+        _mark_gallery_pending_for_dl(gallery_id, reason="merge_yes")
 
     return MergeReport(
         batch_id=batch_id,
@@ -544,7 +548,7 @@ def revert_merge_batch_for_gallery(gallery_id: str, batch_id: str) -> MergeRepor
     invalidate_id_cache()
     # Encounter directories changed under Gallery -> invalidate image listing cache.
     invalidate_image_cache()
-    _mark_gallery_pending_for_dl(gallery_id)
+    _mark_gallery_pending_for_dl(gallery_id, reason="merge_yes_revert")
 
     return MergeReport(
         batch_id=batch_id,
