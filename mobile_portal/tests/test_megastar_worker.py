@@ -18,7 +18,8 @@ def test_megastar_worker_health():
     assert body['service'] == 'starboard-megastar-worker'
 
 
-def test_megastar_worker_status_disabled_by_default(monkeypatch):
+def test_megastar_worker_status_disabled_by_default(monkeypatch, tmp_path):
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(tmp_path / 'archive'))
     monkeypatch.delenv('STARBOARD_MEGASTAR_WORKER_ENABLED', raising=False)
     client = TestClient(create_app())
     r = client.get('/status')
@@ -27,6 +28,8 @@ def test_megastar_worker_status_disabled_by_default(monkeypatch):
     assert body['enabled'] is False
     assert body['state'] == 'disabled'
     assert body['reason'] == 'feature_flag_disabled'
+    assert body['megastar_queue']['queued'] == 0
+    assert 'db_path' in body['megastar_queue']
 
 
 def test_megastar_worker_lookup_disabled_by_default():

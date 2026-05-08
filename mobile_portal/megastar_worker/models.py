@@ -15,3 +15,4 @@ class WorkerStatusResponse(BaseModel):
     state: Literal['enabled', 'disabled', 'unavailable']
     reason: str | None = None
     model_key: str | None = None
+    megastar_queue: dict | None = None
