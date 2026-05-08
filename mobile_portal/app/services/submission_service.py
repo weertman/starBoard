@@ -68,7 +68,7 @@ async def submit(payload_text: str, files: list[UploadFile]) -> dict:
         if len(content) > settings.max_upload_mb * 1024 * 1024:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'File exceeds max upload size: {upload.filename}')
         uploads.append(UploadImage(filename=upload.filename or 'upload.jpg', content=content))
-    encounter_folder, written_paths = ingest_images(payload.target_type, payload.target_id, payload.encounter_date, payload.encounter_suffix, uploads)
+    encounter_folder, written_paths, skipped_images = ingest_images(payload.target_type, payload.target_id, payload.encounter_date, payload.encounter_suffix, uploads)
     write_metadata_row(payload.target_type, payload.target_id, payload.metadata)
     return {
         'status': 'accepted',
@@ -76,7 +76,7 @@ async def submit(payload_text: str, files: list[UploadFile]) -> dict:
         'entity_id': payload.target_id,
         'encounter_folder': encounter_folder,
         'accepted_images': len(written_paths),
-        'skipped_images': 0,
+        'skipped_images': skipped_images,
         'archive_paths_written': written_paths,
         'message': 'Submission incorporated into archive',
     }

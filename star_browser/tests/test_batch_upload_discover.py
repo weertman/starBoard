@@ -131,6 +131,51 @@ def test_batch_upload_execute_route_writes_files_and_csv(tmp_path, monkeypatch):
     assert 'anchovy' in csv_path.read_text(encoding='utf-8-sig')
 
 
+def test_batch_upload_execute_repeat_skips_duplicate_images(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    (archive / 'gallery').mkdir(parents=True)
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    client = TestClient(create_app())
+    token = _upload_folder(client, 'flat', [('anchovy/a.jpg', b'x')])
+    discover = client.post(
+        '/api/batch-upload/discover',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={
+            'target_archive': 'gallery',
+            'discovery_mode': 'flat',
+            'id_prefix': '',
+            'id_suffix': '',
+            'flat_encounter_date': '2026-04-21',
+            'batch_location': {'location': 'Dock'},
+            'import_source': {'type': 'uploaded_bundle', 'upload_token': token},
+        },
+    )
+    assert discover.status_code == 200
+    plan = discover.json()
+    row_id = plan['rows'][0]['row_id']
+
+    first = client.post(
+        '/api/batch-upload/execute',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={'plan_id': plan['plan_id'], 'accepted_row_ids': [row_id]},
+    )
+    second = client.post(
+        '/api/batch-upload/execute',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+        json={'plan_id': plan['plan_id'], 'accepted_row_ids': [row_id]},
+    )
+
+    assert first.status_code == 200
+    assert first.json()['summary']['accepted_images'] == 1
+    assert second.status_code == 200
+    assert second.json()['summary']['accepted_images'] == 0
+    assert second.json()['summary']['skipped_images'] == 1
+    assert second.json()['rows'][0]['archive_paths_written'] == []
+    encounter_files = sorted((archive / 'gallery' / 'anchovy' / '04_21_26').glob('*.jpg'))
+    assert [p.name for p in encounter_files] == ['a.jpg']
+
+
 def test_batch_upload_execute_converts_olympus_orf_to_jpeg(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     (archive / 'gallery').mkdir(parents=True)

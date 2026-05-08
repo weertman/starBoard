@@ -72,6 +72,52 @@ def test_valid_gallery_append_submission(tmp_path, monkeypatch):
     assert (archive / 'gallery' / 'anchovy' / '04_01_26').exists()
 
 
+def test_resubmitting_same_mobile_observation_skips_duplicate_images_but_allows_metadata_update(tmp_path, monkeypatch):
+    from src.data.archive_paths import metadata_csv_for
+
+    app, archive = build_test_app(tmp_path, monkeypatch)
+    client = TestClient(app)
+    image = _image_bytes()
+    first_payload = {
+        'target_type': 'query',
+        'target_mode': 'create',
+        'target_id': 'q1',
+        'encounter_date': '2026-04-01',
+        'metadata': {'location': 'dock'},
+    }
+    second_payload = {
+        **first_payload,
+        'target_mode': 'append',
+        'metadata': {'location': 'lab'},
+    }
+
+    first = client.post(
+        '/api/submissions',
+        headers=AUTH,
+        data={'payload': json.dumps(first_payload)},
+        files=[('files', ('capture.jpg', image, 'image/jpeg'))],
+    )
+    second = client.post(
+        '/api/submissions',
+        headers=AUTH,
+        data={'payload': json.dumps(second_payload)},
+        files=[('files', ('capture.jpg', image, 'image/jpeg'))],
+    )
+
+    assert first.status_code == 200
+    assert first.json()['accepted_images'] == 1
+    assert second.status_code == 200
+    assert second.json()['accepted_images'] == 0
+    assert second.json()['skipped_images'] == 1
+    assert second.json()['archive_paths_written'] == []
+    assert (archive / 'queries' / 'q1' / '04_01_26' / 'capture.jpg').exists()
+    assert not (archive / 'queries' / 'q1' / '04_01_26' / 'capture (1).jpg').exists()
+    csv_path, _header = metadata_csv_for('Queries')
+    text = csv_path.read_text()
+    assert 'dock' in text
+    assert 'lab' in text
+
+
 def test_olympus_orf_submission_converts_to_jpeg_even_with_octet_stream_content_type(tmp_path, monkeypatch):
     app, archive = build_test_app(tmp_path, monkeypatch)
 

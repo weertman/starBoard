@@ -52,6 +52,22 @@ def test_place_images_does_not_enqueue_when_no_file_ops(tmp_path, monkeypatch):
     assert registry.pending_ids.queries == []
 
 
+def test_place_images_skips_duplicate_image_bytes_in_same_encounter(tmp_path, monkeypatch):
+    monkeypatch.setenv("STARBOARD_ARCHIVE_DIR", str(tmp_path / "archive"))
+    source_a = tmp_path / "source-a.jpg"
+    source_b = tmp_path / "source-b.jpg"
+    source_a.write_bytes(b"same-image")
+    source_b.write_bytes(b"same-image")
+    target_root = tmp_path / "archive" / "queries"
+
+    first = place_images(target_root, "q-001", "04_29_26", [source_a])
+    second = place_images(target_root, "q-001", "04_29_26", [source_b])
+
+    assert len(first.ops) == 1
+    assert second.ops == []
+    assert sorted(p.name for p in (target_root / "q-001" / "04_29_26").glob("*.jpg")) == ["source-a.jpg"]
+
+
 def test_place_images_enqueues_converted_raw_final_jpeg_path(tmp_path, monkeypatch):
     monkeypatch.setenv("STARBOARD_ARCHIVE_DIR", str(tmp_path / "archive"))
     raw_file = tmp_path / "P1010001.ORF"

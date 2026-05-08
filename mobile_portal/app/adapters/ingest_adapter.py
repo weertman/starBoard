@@ -15,7 +15,7 @@ class UploadImage:
     content: bytes
 
 
-def ingest_images(entity_type: str, entity_id: str, encounter_date: date, encounter_suffix: str, files: list[UploadImage]) -> tuple[str, list[str]]:
+def ingest_images(entity_type: str, entity_id: str, encounter_date: date, encounter_suffix: str, files: list[UploadImage]) -> tuple[str, list[str], int]:
     canonical = 'Gallery' if entity_type == 'gallery' else 'Queries'
     encounter_name = ensure_encounter_name(encounter_date.year, encounter_date.month, encounter_date.day, encounter_suffix or '')
     target_root = root_for(canonical)
@@ -29,4 +29,5 @@ def ingest_images(entity_type: str, entity_id: str, encounter_date: date, encoun
             path.write_bytes(upload.content)
             tmp_paths.append(path)
         report = place_images(target_root, entity_id, encounter_name, tmp_paths, move=False, observation_date=encounter_date)
-    return encounter_name, [str(op.dest) for op in report.ops]
+    written_paths = [str(op.dest) for op in report.ops]
+    return encounter_name, written_paths, max(0, len(files) - len(written_paths))

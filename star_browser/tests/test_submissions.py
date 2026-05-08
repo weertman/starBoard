@@ -115,6 +115,46 @@ def test_submission_accepts_query_create_and_writes_metadata(tmp_path, monkeypat
     assert '12' in metadata_text
 
 
+def test_resubmitting_same_single_entry_skips_duplicate_images_but_allows_metadata_update(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+    client = TestClient(create_app())
+    payload = {
+        'target_type': 'query',
+        'target_mode': 'create',
+        'target_id': 'q1',
+        'encounter_date': '2026-04-01',
+        'metadata': {'location': 'dock', 'health_observation': 'first'},
+    }
+    image = _image_bytes()
+
+    first = client.post(
+        '/api/submissions',
+        headers=AUTH,
+        data={'payload': json.dumps(payload)},
+        files=[('files', ('capture.jpg', image, 'image/jpeg'))],
+    )
+    payload['metadata']['health_observation'] = 'second'
+    second = client.post(
+        '/api/submissions',
+        headers=AUTH,
+        data={'payload': json.dumps(payload)},
+        files=[('files', ('capture.jpg', image, 'image/jpeg'))],
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()['accepted_images'] == 1
+    assert second.json()['accepted_images'] == 0
+    assert second.json()['skipped_images'] == 1
+    assert second.json()['archive_paths_written'] == []
+    encounter_files = sorted((archive / 'queries' / 'q1' / '04_01_26').glob('*.jpg'))
+    assert [p.name for p in encounter_files] == ['capture.jpg']
+    metadata_text = (archive / 'queries' / 'queries_metadata.csv').read_text(encoding='utf-8-sig')
+    assert 'first' in metadata_text
+    assert 'second' in metadata_text
+
+
 def test_submission_accepts_gallery_append(tmp_path, monkeypatch):
     from src.data.archive_paths import metadata_csv_for
     from src.data.csv_io import append_row

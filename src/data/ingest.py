@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 import shutil
 import logging
+import hashlib
 
 from .validators import validate_mmddyy_string
 from .id_registry import invalidate_id_cache
@@ -55,6 +56,38 @@ def _ensure_unique_path(dest: Path) -> Path:
             return candidate
         n += 1
 
+
+def _file_digest(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _has_duplicate_archive_image(src: Path, dest_dir: Path) -> bool:
+    """Return True when dest_dir already contains the same image bytes."""
+    if not dest_dir.exists():
+        return False
+    try:
+        src_size = src.stat().st_size
+        src_digest: Optional[str] = None
+        for existing in dest_dir.iterdir():
+            if not existing.is_file() or not is_importable_image(existing):
+                continue
+            try:
+                if existing.stat().st_size != src_size:
+                    continue
+                if src_digest is None:
+                    src_digest = _file_digest(src)
+                if _file_digest(existing) == src_digest:
+                    return True
+            except OSError:
+                continue
+    except OSError:
+        return False
+    return False
+
 def place_images(
     target_root: Path,
     id_str: str,
@@ -98,6 +131,9 @@ def place_images(
             continue
 
         dest_name = f"{f.stem}.jpg" if is_raw_image(f) else f.name
+        if not is_raw_image(f) and _has_duplicate_archive_image(f, dest_dir):
+            log.debug("Skipping duplicate archive image for %s/%s: %s", id_str, encounter_dir_name, f)
+            continue
         dest_path = dest_dir / dest_name
         final_dest = _ensure_unique_path(dest_path)
         renamed = (final_dest.name != dest_path.name)
