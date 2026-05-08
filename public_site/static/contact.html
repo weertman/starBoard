@@ -7,24 +7,45 @@
     <title>Contact | starBoard</title>
     <link rel="stylesheet" href="/static/site.css" />
   </head>
-  <body>
-    <main class="shell narrow" aria-labelledby="page-title">
-      <nav class="top-nav" aria-label="Public site navigation">
-        <a href="/">starBoard</a>
-        <a href="/lab">Lab info</a>
+  <body class="preprint-home preprint-subpage">
+    <main class="shell narrow preprint-shell" aria-labelledby="page-title">
+      <nav class="site-nav manuscript-nav" aria-label="Public site navigation">
+        <a class="brand manuscript-brand" href="/" aria-label="starBoard home">
+          <span class="brand-mark" aria-hidden="true">✶</span>
+          <span>starBoard</span>
+        </a>
+        <div class="nav-links">
+          <a href="/">Home</a>
+          <a href="/lab">Lab info</a>
+        </div>
       </nav>
-      <section class="hero page-hero">
+
+      <section class="hero page-hero manuscript-abstract contact-hero">
         <p class="eyebrow">Contact</p>
-        <h1 id="page-title">Get in touch</h1>
-        <p class="lede">
-          starBoard is currently in active development. For project questions,
-          collaboration, or access to the working tools, contact Willem Weertman.
-        </p>
-        <div class="contact-card">
+        <h1 id="page-title">Contact</h1>
+        <p class="lede">Project questions, collaboration, or tool access.</p>
+        <p class="access-note">Mobile and browser portal access is limited to approved collaborators. If Cloudflare Access does not accept your email, contact Willem to have it verified.</p>
+        <p class="manuscript-authors">Correspondence for the starBoard public site and collaborator tools</p>
+        <div class="contact-card manuscript-contact">
           <p class="contact-name">Willem Weertman</p>
+          <p class="contact-role">Researcher, UWFHL Sea Star Lab</p>
+          <p class="contact-role">Graduate student, UW Psychology · Neural Systems and Behavior</p>
           <a class="contact-link" href="mailto:wlweert@gmail.com">wlweert@gmail.com</a>
+          <p class="contact-name">Jason Hodin</p>
+          <p class="contact-role">Senior Research Scientist, UWFHL Sea Star Lab</p>
+          <a class="contact-link" href="mailto:larvador@uw.edu">larvador@uw.edu</a>
         </div>
       </section>
+
+      <footer class="site-footer manuscript-footer" aria-label="starBoard public site footer">
+        <p>starBoard · Sunflower sea star photo records and re-identification review.</p>
+        <nav aria-label="Footer links">
+          <a href="/">Home</a>
+          <a href="/lab">Lab info</a>
+          <a href="https://github.com/weertman/starBoard" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://together.uw.edu/campaign/seastars" target="_blank" rel="noopener noreferrer">Donate</a>
+        </nav>
+      </footer>
     </main>
   </body>
 </html>
