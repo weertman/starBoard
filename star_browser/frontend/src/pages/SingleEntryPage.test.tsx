@@ -15,13 +15,15 @@ vi.mock('../components/LocationSiteMap', () => ({
 import { SingleEntryPage } from './SingleEntryPage'
 
 vi.mock('../api/client', () => ({
+  getIdReviewOptions: vi.fn(),
   getLocationSites: vi.fn(),
   getMetadataSchema: vi.fn(),
   submitEntry: vi.fn(),
 }))
 
-import { getLocationSites, getMetadataSchema, submitEntry } from '../api/client'
+import { getIdReviewOptions, getLocationSites, getMetadataSchema, submitEntry } from '../api/client'
 
+const mockedGetIdReviewOptions = vi.mocked(getIdReviewOptions)
 const mockedGetLocationSites = vi.mocked(getLocationSites)
 const mockedGetMetadataSchema = vi.mocked(getMetadataSchema)
 const mockedSubmitEntry = vi.mocked(submitEntry)
@@ -152,6 +154,18 @@ describe('SingleEntryPage', () => {
   })
 
   beforeEach(() => {
+    mockedGetIdReviewOptions.mockReset()
+    mockedGetIdReviewOptions.mockImplementation(async (archiveType) => ({
+      archive_type: archiveType,
+      options: archiveType === 'query'
+        ? [
+          { entity_id: 'query_append_001', label: 'query_append_001 — Dock — 2026-04-01', location: 'Dock', last_observation_date: '2026-04-01', metadata: { location: 'Dock' } },
+          { entity_id: 'query_append_002', label: 'query_append_002 — Pier — 2026-04-02', location: 'Pier', last_observation_date: '2026-04-02', metadata: { location: 'Pier' } },
+        ]
+        : [
+          { entity_id: 'gallery_star_001', label: 'gallery_star_001 — Dock — 2026-04-03', location: 'Dock', last_observation_date: '2026-04-03', metadata: { location: 'Dock' } },
+        ],
+    }))
     mockedGetLocationSites.mockReset()
     mockedGetMetadataSchema.mockReset()
     mockedSubmitEntry.mockReset()
@@ -254,6 +268,33 @@ describe('SingleEntryPage', () => {
     expect(screen.getByText('2 file(s) selected from this computer.')).toBeInTheDocument()
     expect(screen.getByText('capture-a.jpg')).toBeInTheDocument()
     expect(screen.getByText('capture-b.jpg')).toBeInTheDocument()
+  })
+
+  it('uses a searchable existing-ID combo box when appending to an existing target', async () => {
+    const user = userEvent.setup()
+    render(<SingleEntryPage />)
+
+    await screen.findByRole('heading', { name: 'Location' })
+    await user.selectOptions(screen.getByLabelText('Mode'), 'append')
+    expect(mockedGetIdReviewOptions).toHaveBeenCalledWith('query')
+
+    const targetId = screen.getByLabelText('Target ID')
+    await user.click(targetId)
+    expect(screen.getByRole('listbox', { name: 'Existing target IDs' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'query_append_001 — Dock — 2026-04-01' })).toBeInTheDocument()
+
+    await user.type(targetId, 'pier')
+    expect(screen.queryByRole('option', { name: 'query_append_001 — Dock — 2026-04-01' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: 'query_append_002 — Pier — 2026-04-02' }))
+
+    expect(targetId).toHaveValue('query_append_002')
+    await user.selectOptions(screen.getByLabelText('Saved locations'), 'Dock')
+    await user.upload(screen.getByLabelText('Upload images from this computer'), new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' }))
+    await user.click(screen.getByRole('button', { name: 'Submit entry to archive' }))
+
+    await waitFor(() => expect(mockedSubmitEntry).toHaveBeenCalledTimes(1))
+    expect(mockedSubmitEntry.mock.calls[0][0].target_mode).toBe('append')
+    expect(mockedSubmitEntry.mock.calls[0][0].target_id).toBe('query_append_002')
   })
 
   it('renders short arm coding like the desktop app and serializes entries', async () => {

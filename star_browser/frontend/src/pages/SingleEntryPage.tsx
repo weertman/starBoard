@@ -1,14 +1,17 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 
 import {
+  getIdReviewOptions,
   getLocationSites,
   getMetadataSchema,
   submitEntry,
   type LocationSite,
   type SchemaField,
   type SubmissionResponse,
+  type IdReviewOption,
 } from '../api/client'
 import { LocationSiteMap } from '../components/LocationSiteMap'
+import { trackActivity } from '../activity'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -203,6 +206,9 @@ export function SingleEntryPage() {
   const [targetType, setTargetType] = useState<'gallery' | 'query'>('query')
   const [targetMode, setTargetMode] = useState<'create' | 'append'>('create')
   const [targetId, setTargetId] = useState('')
+  const [targetOptions, setTargetOptions] = useState<IdReviewOption[]>([])
+  const [targetOptionsBusy, setTargetOptionsBusy] = useState(false)
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false)
   const [encounterDate, setEncounterDate] = useState(new Date().toISOString().slice(0, 10))
   const [encounterSuffix, setEncounterSuffix] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -231,7 +237,35 @@ export function SingleEntryPage() {
     }
   }, [targetMode, targetType])
 
+  useEffect(() => {
+    let cancelled = false
+    if (targetMode !== 'append') {
+      setTargetOptions([])
+      setTargetPickerOpen(false)
+      return () => { cancelled = true }
+    }
+    setTargetOptionsBusy(true)
+    void getIdReviewOptions(targetType)
+      .then((response) => {
+        if (!cancelled) setTargetOptions(response.options)
+      })
+      .catch(() => {
+        if (!cancelled) setTargetOptions([])
+      })
+      .finally(() => {
+        if (!cancelled) setTargetOptionsBusy(false)
+      })
+    return () => { cancelled = true }
+  }, [targetMode, targetType])
+
   const grouped = useMemo(() => groupFields(schema), [schema])
+  const visibleTargetOptions = useMemo(() => {
+    const q = targetId.trim().toLowerCase()
+    return targetOptions.filter((option) => {
+      if (!q) return true
+      return [option.entity_id, option.label, option.location, option.last_observation_date, ...Object.values(option.metadata ?? {})].join(' ').toLowerCase().includes(q)
+    }).slice(0, 30)
+  }, [targetId, targetOptions])
   const hasLocation = Boolean(metadata.location?.trim())
   const canSubmit = Boolean(targetId.trim() && hasLocation && files.length > 0 && !busy)
 
@@ -240,6 +274,7 @@ export function SingleEntryPage() {
   }
 
   function updateSavedLocation(value: string) {
+    trackActivity({ event_type: 'single_entry.location.changed', workflow: 'single_entry', details: { mode: value === '__new__' ? 'new_location' : 'saved_location', has_value: Boolean(value && value !== '__new__') } })
     if (value === '__new__') {
       setShowNewLocationInput(true)
       setMetadata((current) => ({ ...current, location: '' }))
@@ -254,6 +289,8 @@ export function SingleEntryPage() {
     setBusy(true)
     setError(null)
     setResult(null)
+    const startedAt = Date.now()
+    trackActivity({ event_type: 'single_entry.submit.started', workflow: 'single_entry', entity_type: targetType, entity_id: targetId.trim(), details: { target_mode: targetMode, file_count: files.length, has_location: hasLocation } })
     try {
       const response = await submitEntry({
         target_type: targetType,
@@ -265,7 +302,9 @@ export function SingleEntryPage() {
         files,
       })
       setResult(response)
+      trackActivity({ event_type: 'single_entry.submit.completed', workflow: 'single_entry', entity_type: response.entity_type, entity_id: response.entity_id, success: true, duration_ms: Date.now() - startedAt, details: { accepted_images: response.accepted_images, skipped_images: response.skipped_images, target_mode: targetMode } })
     } catch (err) {
+      trackActivity({ event_type: 'single_entry.submit.completed', workflow: 'single_entry', entity_type: targetType, entity_id: targetId.trim(), success: false, duration_ms: Date.now() - startedAt, details: { target_mode: targetMode, file_count: files.length } })
       setError(String(err))
     } finally {
       setBusy(false)
@@ -461,10 +500,38 @@ export function SingleEntryPage() {
                 <option value="append">Append to existing {targetType}</option>
               </select>
             </label>
-            <label>
-              <div>Target ID</div>
-              <input aria-label="Target ID" value={targetId} onChange={(e) => setTargetId(e.target.value)} style={input} />
-            </label>
+            <div>
+              <div style={{ marginBottom: 6 }}>Target ID</div>
+              <input
+                aria-label="Target ID"
+                value={targetId}
+                onChange={(e) => { setTargetId(e.target.value); if (targetMode === 'append') setTargetPickerOpen(true) }}
+                onFocus={() => { if (targetMode === 'append') setTargetPickerOpen(true) }}
+                style={input}
+              />
+              {targetMode === 'append' && targetPickerOpen && (
+                <div role="listbox" aria-label="Existing target IDs" style={{ marginTop: 6, maxHeight: 220, overflowY: 'auto', border: '1px solid #d7deea', borderRadius: 8, padding: 6, background: '#f8fafc', display: 'grid', gap: 4 }}>
+                  {targetOptionsBusy ? (
+                    <div style={{ color: '#516070', padding: 6 }}>Loading existing IDs…</div>
+                  ) : visibleTargetOptions.length === 0 ? (
+                    <div style={{ color: '#516070', padding: 6 }}>No existing IDs match.</div>
+                  ) : visibleTargetOptions.map((option) => (
+                    <button
+                      key={option.entity_id}
+                      type="button"
+                      role="option"
+                      aria-label={option.label}
+                      aria-selected={targetId === option.entity_id}
+                      onClick={() => { setTargetId(option.entity_id); setTargetPickerOpen(false) }}
+                      style={{ textAlign: 'left', border: targetId === option.entity_id ? '2px solid #2563eb' : '1px solid #d7deea', borderRadius: 8, background: targetId === option.entity_id ? '#eff6ff' : '#fff', padding: 8, cursor: 'pointer' }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{option.entity_id}</div>
+                      <div style={{ color: '#516070', fontSize: 13 }}>{option.location || 'No location'}{option.last_observation_date ? ` · ${option.last_observation_date}` : ''}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <label>
               <div>Encounter date</div>
               <input aria-label="Encounter date" type="date" value={encounterDate} onChange={(e) => setEncounterDate(e.target.value)} style={input} />
