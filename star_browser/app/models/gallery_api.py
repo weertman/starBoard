@@ -52,3 +52,18 @@ class GalleryEntityResponse(BaseModel):
     timeline: list[TimelineEvent] = Field(default_factory=list)
     encounters: list[EncounterOption] = Field(default_factory=list)
     images: list[ImageDescriptor] = Field(default_factory=list)
+
+
+class IdReviewRenameRequest(BaseModel):
+    new_entity_id: str
+
+
+class IdReviewMetadataUpdateRequest(BaseModel):
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+
+class SetBestImageResponse(BaseModel):
+    archive_type: str
+    entity_id: str
+    image_id: str
+    label: str

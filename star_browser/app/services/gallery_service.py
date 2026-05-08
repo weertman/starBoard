@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from ..adapters.gallery_adapter import list_id_review_options, load_id_review_entity
-from ..models.gallery_api import GalleryEntityResponse, IdReviewOptionsResponse
+from ..adapters.gallery_adapter import list_id_review_options, load_id_review_entity, rename_id_review_entity, set_id_review_best_image, update_id_review_metadata
+from ..models.gallery_api import GalleryEntityResponse, IdReviewOptionsResponse, SetBestImageResponse
 
 
 class GalleryNotFoundError(Exception):
+    pass
+
+
+class IdReviewEditError(Exception):
     pass
 
 
@@ -29,3 +33,24 @@ def get_id_review_entity(archive_type: str, entity_id: str) -> GalleryEntityResp
         encounters=encounters,
         images=images,
     )
+
+
+def rename_id_review_entity_and_load(archive_type: str, entity_id: str, new_entity_id: str) -> GalleryEntityResponse:
+    ok, errors, resolved_id = rename_id_review_entity(archive_type, entity_id, new_entity_id)
+    if not ok:
+        raise IdReviewEditError('; '.join(errors) or 'rename_failed')
+    return get_id_review_entity(archive_type, resolved_id)
+
+
+def update_id_review_metadata_and_load(archive_type: str, entity_id: str, metadata: dict[str, str]) -> GalleryEntityResponse:
+    ok, error = update_id_review_metadata(archive_type, entity_id, metadata)
+    if not ok:
+        raise IdReviewEditError(error or 'metadata_update_failed')
+    return get_id_review_entity(archive_type, entity_id)
+
+
+def set_id_review_first_image(image_id: str) -> SetBestImageResponse:
+    ok, error, archive_type, entity_id, label = set_id_review_best_image(image_id)
+    if not ok:
+        raise GalleryNotFoundError(error or image_id)
+    return SetBestImageResponse(archive_type=archive_type, entity_id=entity_id, image_id=image_id, label=label)

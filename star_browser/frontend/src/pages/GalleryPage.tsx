@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
-import { getIdReviewEntity, getIdReviewOptions, getLocationSites, type GalleryEntityResponse, type IdReviewOption, type ImageDescriptor, type LocationSite } from '../api/client'
+import { getIdReviewEntity, getIdReviewOptions, getLocationSites, getMetadataSchema, renameIdReviewEntity, setIdReviewFirstImage, updateIdReviewMetadata, type GalleryEntityResponse, type IdReviewOption, type ImageDescriptor, type LocationSite, type SchemaField } from '../api/client'
+import { trackActivity } from '../activity'
 
 const card: React.CSSProperties = {
   background: '#fff',
@@ -23,6 +24,214 @@ type ImageViewState = {
   x: number
   y: number
   rotation: number
+}
+
+function groupFields(fields: SchemaField[]) {
+  const order: string[] = []
+  const groups = new Map<string, { title: string; fields: SchemaField[] }>()
+  for (const field of fields) {
+    if (!groups.has(field.group)) {
+      order.push(field.group)
+      groups.set(field.group, { title: field.group_display_name, fields: [] })
+    }
+    groups.get(field.group)!.fields.push(field)
+  }
+  const priority: Record<string, number> = { location: 0, health: 1 }
+  order.sort((a, b) => (priority[a] ?? 2) - (priority[b] ?? 2))
+  return order.map((key) => ({ key, ...groups.get(key)! }))
+}
+
+const SHORT_ARM_SEVERITIES = ['very_tiny', 'tiny', 'small', 'short']
+
+type ShortArmEntry = {
+  position: number
+  severity: string
+}
+
+type HealthCodeEntry = {
+  code: string
+  count?: number
+  plus?: boolean
+}
+
+function healthOption(field: SchemaField, code: string) {
+  return field.options.find((option) => String(option.value) === code)
+}
+
+function parseHealthCodes(value: string, field: SchemaField): HealthCodeEntry[] {
+  if (!value.trim()) return []
+  const knownCodes = field.options.map((option) => String(option.value)).sort((a, b) => b.length - a.length)
+  return value.split(',').map((part) => {
+    const compact = part.trim().toUpperCase().replace(/\s+/g, '')
+    const code = knownCodes.find((candidate) => compact.startsWith(candidate))
+    if (!code) return null
+    const option = healthOption(field, code)
+    const rest = compact.slice(code.length)
+    const countMatch = /^\((\d+)\+?\)/.exec(rest)
+    const count = countMatch && option?.requires_count ? Number(countMatch[1]) : undefined
+    const plus = Boolean(option?.allows_plus && (rest.includes('+)') || rest.endsWith('+')))
+    return { code, count, plus }
+  }).filter((entry): entry is HealthCodeEntry => Boolean(entry))
+}
+
+function serializeHealthCodes(entries: HealthCodeEntry[], field: SchemaField): string {
+  return entries.filter((entry) => entry.code).map((entry) => {
+    const option = healthOption(field, entry.code)
+    let out = entry.code
+    if (option?.requires_count) out += `(${Math.max(1, entry.count ?? 1)})`
+    if (option?.allows_plus && entry.plus) out += '+'
+    return out
+  }).join(', ')
+}
+
+function parseShortArmCode(value: string): ShortArmEntry[] {
+  if (!value.trim()) return []
+  return value.split(',').map((part) => {
+    const trimmed = part.trim()
+    const modern = /^(very_tiny|tiny|small|short)\((\d+)\)$/i.exec(trimmed)
+    if (modern) return { severity: modern[1].toLowerCase(), position: Number(modern[2]) }
+    const legacy = /^\(?(\d+)\)?(\*{0,3})(?:\(r\))?$/.exec(trimmed)
+    if (!legacy) return null
+    let severity = 'short'
+    if (legacy[2].length >= 2) severity = 'tiny'
+    if (legacy[2].length === 1) severity = 'small'
+    if (trimmed.startsWith('(') && trimmed.endsWith(')')) severity = 'tiny'
+    return { severity, position: Number(legacy[1]) }
+  }).filter((entry): entry is ShortArmEntry => Boolean(entry))
+}
+
+function serializeShortArmCode(entries: ShortArmEntry[]): string {
+  return [...entries].sort((a, b) => a.position - b.position).map((entry) => `${entry.severity}(${entry.position})`).join(', ')
+}
+
+function HealthCodeField({ field, value, onChange }: { field: SchemaField; value: string; onChange: (v: string) => void }) {
+  const [entries, setEntries] = useState<HealthCodeEntry[]>(() => parseHealthCodes(value, field))
+
+  useEffect(() => {
+    setEntries(parseHealthCodes(value, field))
+  }, [field, value])
+
+  function update(next: HealthCodeEntry[]) {
+    setEntries(next)
+    onChange(serializeHealthCodes(next, field))
+  }
+
+  function updateEntry(index: number, patch: Partial<HealthCodeEntry>) {
+    update(entries.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {entries.map((entry, index) => {
+        const option = healthOption(field, entry.code)
+        return (
+          <div key={`id-review-health-code-${index}`} style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(220px, 1fr) auto auto auto', alignItems: 'end' }}>
+            <label>
+              <div>Health code</div>
+              <select aria-label={`Health code ${index + 1}`} value={entry.code} onChange={(e) => updateEntry(index, { code: e.target.value, count: 1, plus: false })} style={input}>
+                <option value="">Select health code…</option>
+                {field.options.map((candidate) => (
+                  <option key={`${field.name}-${candidate.value}`} value={String(candidate.value)}>{candidate.value} — {candidate.label}</option>
+                ))}
+              </select>
+            </label>
+            {option?.requires_count && (
+              <label>
+                <div>Count</div>
+                <input aria-label={`Health code ${index + 1} count`} type="number" min={1} max={30} value={entry.count ?? 1} onChange={(e) => updateEntry(index, { count: Number(e.target.value || 1) })} style={{ ...input, width: 86 }} />
+              </label>
+            )}
+            {option?.allows_plus && (
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', paddingBottom: 8 }}>
+                <input aria-label={`Health code ${index + 1} plus`} type="checkbox" checked={Boolean(entry.plus)} onChange={(e) => updateEntry(index, { plus: e.target.checked })} />
+                +
+              </label>
+            )}
+            <button type="button" aria-label={`Remove health code ${index + 1}`} onClick={() => update(entries.filter((_, i) => i !== index))} style={{ padding: '8px 10px' }}>✕</button>
+            {option?.definition && <div style={{ gridColumn: '1 / -1', color: '#516070', fontSize: 13 }}>{option.definition}</div>}
+          </div>
+        )
+      })}
+      <div>
+        <button type="button" onClick={() => update([...entries, { code: '', count: 1, plus: false }])} style={{ padding: '8px 12px' }}>+ Add health code</button>
+      </div>
+    </div>
+  )
+}
+
+function renderMetadataField(field: SchemaField, value: string, onChange: (v: string) => void) {
+  const commonProps = {
+    id: `id-review-metadata-${field.name}`,
+    'aria-label': field.display_name,
+    title: field.tooltip,
+    style: input,
+    value,
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value),
+  }
+
+  if (field.mobile_widget === 'short_arm_code') {
+    const entries = parseShortArmCode(value)
+    const updateEntries = (next: ShortArmEntry[]) => onChange(serializeShortArmCode(next))
+    const updateEntry = (index: number, patch: Partial<ShortArmEntry>) => {
+      updateEntries(entries.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
+    }
+    return (
+      <div style={{ display: 'grid', gap: 8 }}>
+        {entries.map((entry, index) => (
+          <div key={`id-review-short-arm-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
+            <label>
+              <div>Arm position</div>
+              <input aria-label={`Short arm ${index + 1} position`} type="number" min={1} max={25} value={entry.position} onChange={(e) => updateEntry(index, { position: Number(e.target.value || 1) })} style={{ ...input, width: 90 }} />
+            </label>
+            <label>
+              <div>Severity</div>
+              <select aria-label={`Short arm ${index + 1} severity`} value={entry.severity} onChange={(e) => updateEntry(index, { severity: e.target.value })} style={{ ...input, width: 130 }}>
+                {SHORT_ARM_SEVERITIES.map((severity) => <option key={severity} value={severity}>{severity}</option>)}
+              </select>
+            </label>
+            <button type="button" aria-label={`Remove short arm ${index + 1}`} onClick={() => updateEntries(entries.filter((_, i) => i !== index))} style={{ padding: '8px 10px' }}>✕</button>
+          </div>
+        ))}
+        <div>
+          <button type="button" onClick={() => updateEntries([...entries, { position: 1, severity: 'very_tiny' }])} style={{ padding: '8px 12px' }}>+ Add short arm</button>
+        </div>
+      </div>
+    )
+  }
+  if (field.mobile_widget === 'health_code') {
+    return <HealthCodeField field={field} value={value} onChange={onChange} />
+  }
+  if (field.mobile_widget === 'textarea') {
+    return <textarea {...commonProps} rows={3} />
+  }
+  if ((field.mobile_widget === 'select' || field.mobile_widget === 'color_select') && (field.options.length > 0 || field.vocabulary.length > 0)) {
+    const options = field.options.length > 0
+      ? field.options.map((option) => ({ label: option.label, value: String(option.value) }))
+      : field.vocabulary.map((item) => ({ label: item, value: item }))
+    return (
+      <select {...commonProps}>
+        <option value="">—</option>
+        {options.map((option) => (
+          <option key={`${field.name}-${option.value}`} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    )
+  }
+  if (field.mobile_widget === 'location' && field.vocabulary.length > 0) {
+    const listId = `id-review-${field.name}-options`
+    return (
+      <>
+        <input {...commonProps} list={listId} />
+        <datalist id={listId}>
+          {field.vocabulary.map((item) => <option key={`${listId}-${item}`} value={item} />)}
+        </datalist>
+      </>
+    )
+  }
+  if (field.mobile_widget === 'number') {
+    return <input {...commonProps} type="number" min={field.min_value ?? undefined} max={field.max_value ?? undefined} />
+  }
+  return <input {...commonProps} />
 }
 
 function InteractiveImageViewer({ image }: { image: ImageDescriptor }) {
@@ -146,6 +355,13 @@ export function GalleryPage() {
   const [knownSites, setKnownSites] = useState<LocationSite[]>([])
   const [observedFrom, setObservedFrom] = useState('')
   const [observedTo, setObservedTo] = useState('')
+  const [renameDraft, setRenameDraft] = useState('')
+  const [metadataDraft, setMetadataDraft] = useState<Record<string, string>>({})
+  const [metadataSchema, setMetadataSchema] = useState<SchemaField[]>([])
+  const [showNewLocationInput, setShowNewLocationInput] = useState(false)
+  const [editBusy, setEditBusy] = useState(false)
+  const [editMessage, setEditMessage] = useState<string | null>(null)
+  const [bestImageBusy, setBestImageBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -169,12 +385,18 @@ export function GalleryPage() {
 
   useEffect(() => {
     let cancelled = false
-    void getLocationSites()
-      .then((response) => {
-        if (!cancelled) setKnownSites(response.sites)
+    void Promise.all([getLocationSites(), getMetadataSchema()])
+      .then(([locationResponse, schemaResponse]) => {
+        if (!cancelled) {
+          setKnownSites(locationResponse.sites)
+          setMetadataSchema(schemaResponse.fields)
+        }
       })
       .catch(() => {
-        if (!cancelled) setKnownSites([])
+        if (!cancelled) {
+          setKnownSites([])
+          setMetadataSchema([])
+        }
       })
     return () => { cancelled = true }
   }, [])
@@ -208,17 +430,43 @@ export function GalleryPage() {
   }, [result, encounterFilter])
 
   const selectedImage = filteredImages[selectedIndex] ?? null
+  const schemaFieldNames = useMemo(() => new Set(metadataSchema.map((field) => field.name)), [metadataSchema])
+  const groupedMetadataSchema = useMemo(() => groupFields(metadataSchema), [metadataSchema])
+  const editableMetadataFields = useMemo(() => {
+    const keys = new Set<string>()
+    if (metadataSchema.length > 0) {
+      metadataSchema.forEach((field) => keys.add(field.name))
+    }
+    if (result) {
+      Object.keys(result.metadata_summary ?? {}).forEach((key) => keys.add(key))
+      ;(result.metadata_rows ?? []).forEach((row) => Object.keys(row.values ?? {}).forEach((key) => keys.add(key)))
+    }
+    return Array.from(keys).sort((a, b) => a.localeCompare(b))
+  }, [metadataSchema, result])
+  const extraMetadataFields = useMemo(() => {
+    return editableMetadataFields.filter((key) => !schemaFieldNames.has(key))
+  }, [editableMetadataFields, schemaFieldNames])
+
+  function applyLoadedResult(next: GalleryEntityResponse) {
+    setResult(next)
+    setRenameDraft(next.entity_id)
+    setMetadataDraft({ ...(next.metadata_summary ?? {}) })
+    setEditMessage(null)
+  }
 
   async function handleLoad() {
     if (!entityId.trim()) return
     setBusy(true)
     setError(null)
+    const startedAt = Date.now()
     try {
       const next = await getIdReviewEntity(archiveType, entityId.trim())
-      setResult(next)
+      applyLoadedResult(next)
       setEncounterFilter('__all__')
       setSelectedIndex(0)
+      trackActivity({ event_type: 'id_review.entity.loaded', workflow: 'id_review', entity_type: archiveType, entity_id: next.entity_id, success: true, duration_ms: Date.now() - startedAt, details: { image_count: next.images.length, metadata_rows: next.metadata_rows.length } })
     } catch (err) {
+      trackActivity({ event_type: 'id_review.entity.loaded', workflow: 'id_review', entity_type: archiveType, entity_id: entityId.trim(), success: false, duration_ms: Date.now() - startedAt })
       setError(String(err))
       setResult(null)
     } finally {
@@ -227,8 +475,80 @@ export function GalleryPage() {
   }
 
   function onChangeEncounterFilter(value: string) {
+    trackActivity({ event_type: 'id_review.encounter_filter.changed', workflow: 'id_review', entity_type: archiveType, entity_id: result?.entity_id, details: { filter: value === '__all__' ? 'all' : 'encounter' } })
     setEncounterFilter(value)
     setSelectedIndex(0)
+  }
+
+  async function handleRename() {
+    if (!result || !renameDraft.trim() || renameDraft.trim() === result.entity_id) return
+    setEditBusy(true)
+    setError(null)
+    try {
+      const next = await renameIdReviewEntity(archiveType, result.entity_id, renameDraft.trim())
+      applyLoadedResult(next)
+      setEntityId(next.entity_id)
+      setEditMessage(`Renamed ID to ${next.entity_id}.`)
+      trackActivity({ event_type: 'id_review.rename.completed', workflow: 'id_review', entity_type: archiveType, entity_id: next.entity_id, success: true, details: { previous_entity_id: result.entity_id } })
+      void getIdReviewOptions(archiveType).then((response) => setIdOptions(response.options)).catch(() => undefined)
+    } catch (err) {
+      trackActivity({ event_type: 'id_review.rename.completed', workflow: 'id_review', entity_type: archiveType, entity_id: result.entity_id, success: false })
+      setError(String(err))
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
+  async function handleMetadataSave() {
+    if (!result) return
+    setEditBusy(true)
+    setError(null)
+    try {
+      const next = await updateIdReviewMetadata(archiveType, result.entity_id, metadataDraft)
+      applyLoadedResult(next)
+      setEditMessage('Metadata saved.')
+      trackActivity({ event_type: 'id_review.metadata_save.completed', workflow: 'id_review', entity_type: archiveType, entity_id: result.entity_id, success: true, details: { field_count: Object.keys(metadataDraft).length } })
+      void getIdReviewOptions(archiveType).then((response) => setIdOptions(response.options)).catch(() => undefined)
+    } catch (err) {
+      trackActivity({ event_type: 'id_review.metadata_save.completed', workflow: 'id_review', entity_type: archiveType, entity_id: result.entity_id, success: false, details: { field_count: Object.keys(metadataDraft).length } })
+      setError(String(err))
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
+  async function handleSetFirstImage() {
+    if (!result || !selectedImage) return
+    setBestImageBusy(true)
+    setError(null)
+    try {
+      await setIdReviewFirstImage(selectedImage.image_id)
+      const next = await getIdReviewEntity(archiveType, result.entity_id)
+      applyLoadedResult(next)
+      setEncounterFilter('__all__')
+      setSelectedIndex(0)
+      setEditMessage(`Set first image to ${selectedImage.label}.`)
+      trackActivity({ event_type: 'id_review.first_image_set', workflow: 'id_review', entity_type: archiveType, entity_id: result.entity_id, success: true, details: { image_label: selectedImage.label } })
+    } catch (err) {
+      trackActivity({ event_type: 'id_review.first_image_set', workflow: 'id_review', entity_type: archiveType, entity_id: result.entity_id, success: false })
+      setError(String(err))
+    } finally {
+      setBestImageBusy(false)
+    }
+  }
+
+  function updateMetadataDraft(key: string, value: string) {
+    setMetadataDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  function updateSavedLocation(value: string) {
+    if (value === '__new__') {
+      setShowNewLocationInput(true)
+      setMetadataDraft((current) => ({ ...current, location: '' }))
+      return
+    }
+    setShowNewLocationInput(false)
+    setMetadataDraft((current) => ({ ...current, location: value }))
   }
 
   return (
@@ -322,6 +642,16 @@ export function GalleryPage() {
                   </select>
                 </label>
               </div>
+              <div style={{ marginTop: 14, display: 'grid', gap: 10, gridTemplateColumns: 'minmax(260px, 1fr) auto', alignItems: 'end' }}>
+                <label>
+                  <div style={{ marginBottom: 6 }}>Rename selected ID</div>
+                  <input aria-label="Rename selected ID" value={renameDraft} onChange={(e) => setRenameDraft(e.target.value)} style={input} />
+                </label>
+                <button type="button" disabled={editBusy || !renameDraft.trim() || renameDraft.trim() === result.entity_id} onClick={() => void handleRename()} style={{ padding: '8px 12px' }}>
+                  Save ID name
+                </button>
+              </div>
+              {editMessage && <div style={{ marginTop: 8, color: '#0b6b2b' }}>{editMessage}</div>}
             </section>
 
             <section style={card}>
@@ -330,6 +660,12 @@ export function GalleryPage() {
                 <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(320px, 2fr) minmax(280px, 1fr)' }}>
                   <div>
                     <InteractiveImageViewer image={selectedImage} />
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => void handleSetFirstImage()} disabled={bestImageBusy || selectedImage.image_id === result.images[0]?.image_id} style={{ padding: '8px 12px' }}>
+                        {bestImageBusy ? 'Setting first image…' : 'Set first image'}
+                      </button>
+                      <span style={{ color: '#516070', fontSize: 13 }}>The first image is what users see first for this ID.</span>
+                    </div>
                   </div>
                   <div style={{ display: 'grid', gap: 8, maxHeight: 560, overflowY: 'auto' }}>
                     {filteredImages.map((image, idx) => (
@@ -367,6 +703,92 @@ export function GalleryPage() {
                   <div key={k}><b>{k}:</b> {v}</div>
                 ))}
               </div>
+              <h3 style={{ margin: '16px 0 8px', fontSize: 16 }}>Edit metadata</h3>
+              {editableMetadataFields.length === 0 ? (
+                <div style={{ color: '#516070' }}>No editable metadata fields available.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {groupedMetadataSchema.map((group) => (
+                    <section key={group.key} style={{ border: '1px solid #e1e7f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
+                      <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>{group.title}</h3>
+                      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                        {group.fields.map((field) => {
+                          if (field.name === 'location') {
+                            return (
+                              <Fragment key="id-review-location-controls">
+                                <label>
+                                  <div style={{ marginBottom: 6 }}>Saved locations</div>
+                                  <select
+                                    aria-label="Saved locations"
+                                    style={input}
+                                    value={showNewLocationInput ? '__new__' : (metadataDraft.location ?? '')}
+                                    onChange={(e) => updateSavedLocation(e.target.value)}
+                                  >
+                                    <option value="__new__">Add new…</option>
+                                    <option value="">— choose —</option>
+                                    {knownSites.map((site) => (
+                                      <option key={`id-review-saved-location-${site.name}`} value={site.name}>{site.name}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <div style={{ display: 'flex', alignItems: 'end' }}>
+                                  <button type="button" onClick={() => setShowNewLocationInput(true)} style={{ padding: '8px 12px' }}>Add new location</button>
+                                </div>
+                                {showNewLocationInput && (
+                                  <label style={{ gridColumn: '1 / -1' }}>
+                                    <div style={{ marginBottom: 6 }}>{field.display_name}</div>
+                                    {renderMetadataField(field, metadataDraft[field.name] ?? '', (value) => updateMetadataDraft(field.name, value))}
+                                  </label>
+                                )}
+                              </Fragment>
+                            )
+                          }
+                          if (field.mobile_widget === 'short_arm_code' || field.mobile_widget === 'health_code') {
+                            return (
+                              <div key={field.name}>
+                                <div style={{ marginBottom: 6 }}>{field.display_name}</div>
+                                {renderMetadataField(field, metadataDraft[field.name] ?? '', (value) => updateMetadataDraft(field.name, value))}
+                              </div>
+                            )
+                          }
+                          return (
+                            <label key={field.name}>
+                              <div style={{ marginBottom: 6 }}>{field.display_name}</div>
+                              {renderMetadataField(field, metadataDraft[field.name] ?? '', (value) => updateMetadataDraft(field.name, value))}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                  {extraMetadataFields.length > 0 && (
+                    <section style={{ border: '1px solid #e1e7f0', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
+                      <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Other metadata</h3>
+                      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                        {extraMetadataFields.map((key) => (
+                          <label key={key}>
+                            <div style={{ marginBottom: 6 }}>{key}</div>
+                            <input aria-label={`Metadata field ${key}`} value={metadataDraft[key] ?? ''} onChange={(e) => updateMetadataDraft(key, e.target.value)} style={input} />
+                          </label>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {metadataSchema.length === 0 && extraMetadataFields.length === 0 && (
+                    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                      {editableMetadataFields.map((key) => (
+                        <label key={key}>
+                          <div style={{ marginBottom: 6 }}>{key}</div>
+                          <input aria-label={`Metadata field ${key}`} value={metadataDraft[key] ?? ''} onChange={(e) => updateMetadataDraft(key, e.target.value)} style={input} />
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <button type="button" disabled={editBusy} onClick={() => void handleMetadataSave()} style={{ padding: '8px 12px' }}>Save metadata</button>
+                  </div>
+                </div>
+              )}
               <h3 style={{ margin: '16px 0 8px', fontSize: 16 }}>All metadata rows</h3>
               <div style={{ display: 'grid', gap: 10 }}>
                 {(result.metadata_rows ?? []).length === 0 ? (

@@ -4,11 +4,13 @@ import csv
 from pathlib import Path
 
 from src.data import archive_paths as ap
-from src.data.csv_io import last_row_per_id, read_rows_multi
+from src.data.csv_io import last_row_per_id, normalize_id_value, read_rows_multi
 from src.data.encounter_info import get_encounter_date, list_encounters_for_id
 from src.data.id_registry import invalidate_id_cache, list_ids
-from src.data.image_index import list_image_files
+from src.data.best_photo import reorder_files_with_best, save_best_for_id
+from src.data.image_index import invalidate_image_cache, list_image_files
 from src.data.observation_dates import last_observation_for_all
+from src.data.rename_id import rename_id
 
 from ..models.gallery_api import EncounterOption, IdReviewOption, ImageDescriptor, MetadataRow, TimelineEvent
 
@@ -19,6 +21,57 @@ def _target_name(archive_type: str) -> str:
 
 def _id_column(archive_type: str) -> str:
     return 'gallery_id' if archive_type == 'gallery' else 'query_id'
+
+
+def _rewrite_matching_csv_rows(path: Path, match: callable, update: callable) -> int:
+    if not path.exists():
+        return 0
+    with path.open(newline='', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        fieldnames = list(reader.fieldnames or [])
+        rows = list(reader)
+    updated = 0
+    for row in rows:
+        if match(row):
+            before = dict(row)
+            update(row, fieldnames)
+            if row != before:
+                updated += 1
+    if updated == 0:
+        return 0
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    with tmp.open('w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    tmp.replace(path)
+    return updated
+
+
+def _rewrite_encounter_dates_id(target: str, old_id: str, new_id: str) -> int:
+    path = ap.archive_root() / 'encounter_dates.csv'
+    def matches(row: dict[str, str]) -> bool:
+        row_target = (row.get('target') or row.get('archive_type') or '').strip()
+        row_id = normalize_id_value(row.get('id') or row.get('entity_id') or row.get('gallery_id') or row.get('query_id') or '')
+        return row_target == target and row_id == old_id
+    def update(row: dict[str, str], _fieldnames: list[str]) -> None:
+        if 'id' in row:
+            row['id'] = new_id
+        elif 'entity_id' in row:
+            row['entity_id'] = new_id
+        elif target == 'Gallery' and 'gallery_id' in row:
+            row['gallery_id'] = new_id
+        elif target == 'Queries' and 'query_id' in row:
+            row['query_id'] = new_id
+    return _rewrite_matching_csv_rows(path, matches, update)
+
+
+def _enqueue_megastar_update(target: str, entity_id: str) -> None:
+    try:
+        from src.dl.megastar_queue import enqueue_identity_update
+        enqueue_identity_update(target, entity_id, reason='id_review_edit', source='star_browser.id_review')
+    except Exception:
+        pass
 
 
 def _metadata_summary_for_id(archive_type: str, entity_id: str) -> dict[str, str]:
@@ -81,7 +134,8 @@ def _image_files_for_id(archive_type: str, entity_id: str) -> list[Path]:
         d = get_encounter_date(target, entity_id, encounter)
         return (1 if d else 0, d.isoformat() if d else '', path.name)
 
-    return sorted(list_image_files(target, entity_id), key=sort_key, reverse=True)
+    files = sorted(list_image_files(target, entity_id), key=sort_key, reverse=True)
+    return reorder_files_with_best(target, entity_id, list(files))
 
 
 def _image_descriptors_for_id(archive_type: str, entity_id: str) -> list[ImageDescriptor]:
@@ -193,6 +247,22 @@ def resolve_id_review_image_path(image_id: str) -> Path | None:
     return files[idx]
 
 
+def set_id_review_best_image(image_id: str) -> tuple[bool, str, str, str, str]:
+    parts = image_id.split(':')
+    if len(parts) != 3 or parts[0] not in {'gallery', 'query'}:
+        return False, 'id_review_image_not_found', '', '', ''
+    archive_type = parts[0]
+    entity_id = parts[1]
+    path = resolve_id_review_image_path(image_id)
+    if path is None:
+        return False, 'id_review_image_not_found', archive_type, entity_id, ''
+    target = _target_name(archive_type)
+    save_best_for_id(target, entity_id, path)
+    invalidate_image_cache()
+    _enqueue_megastar_update(target, entity_id)
+    return True, '', archive_type, entity_id, path.name
+
+
 def load_gallery_entity(entity_id: str) -> tuple[dict[str, str], list[MetadataRow], list[TimelineEvent], list[EncounterOption], list[ImageDescriptor]]:
     return load_id_review_entity('gallery', entity_id)
 
@@ -209,3 +279,45 @@ def load_id_review_entity(archive_type: str, entity_id: str) -> tuple[dict[str, 
         encounters,
         images,
     )
+
+
+def rename_id_review_entity(archive_type: str, old_id: str, new_id: str) -> tuple[bool, list[str], str]:
+    if archive_type not in {'gallery', 'query'}:
+        return False, ['archive_type_not_found'], old_id
+    target = _target_name(archive_type)
+    old_id = normalize_id_value(old_id)
+    new_id = normalize_id_value(new_id)
+    report = rename_id(target, old_id, new_id)
+    if not report.success:
+        return False, report.errors, old_id
+    _rewrite_encounter_dates_id(target, old_id, new_id)
+    invalidate_id_cache()
+    invalidate_image_cache()
+    _enqueue_megastar_update(target, new_id)
+    return True, [], new_id
+
+
+def update_id_review_metadata(archive_type: str, entity_id: str, metadata: dict[str, str]) -> tuple[bool, str]:
+    if archive_type not in {'gallery', 'query'}:
+        return False, 'archive_type_not_found'
+    target = _target_name(archive_type)
+    id_col = _id_column(archive_type)
+    entity_id = normalize_id_value(entity_id)
+    csv_path, _header = ap.metadata_csv_for(target)
+    clean = {str(k).strip(): str(v).strip() for k, v in metadata.items() if str(k).strip() and str(k).strip() != id_col}
+
+    def matches(row: dict[str, str]) -> bool:
+        return normalize_id_value(row.get(id_col, '')) == entity_id
+
+    def update(row: dict[str, str], fieldnames: list[str]) -> None:
+        for key, value in clean.items():
+            if key not in fieldnames:
+                fieldnames.append(key)
+            row[key] = value
+
+    updated = _rewrite_matching_csv_rows(csv_path, matches, update)
+    if updated == 0:
+        return False, 'metadata_row_not_found'
+    invalidate_id_cache()
+    _enqueue_megastar_update(target, entity_id)
+    return True, ''

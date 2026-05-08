@@ -7,12 +7,22 @@ import { GalleryPage } from './GalleryPage'
 vi.mock('../api/client', () => ({
   getIdReviewEntity: vi.fn(),
   getIdReviewOptions: vi.fn(),
+  getLocationSites: vi.fn(),
+  getMetadataSchema: vi.fn(),
+  renameIdReviewEntity: vi.fn(),
+  setIdReviewFirstImage: vi.fn(),
+  updateIdReviewMetadata: vi.fn(),
 }))
 
-import { getIdReviewEntity, getIdReviewOptions } from '../api/client'
+import { getIdReviewEntity, getIdReviewOptions, getLocationSites, getMetadataSchema, renameIdReviewEntity, setIdReviewFirstImage, updateIdReviewMetadata } from '../api/client'
 
 const mockedGetIdReviewEntity = vi.mocked(getIdReviewEntity)
 const mockedGetIdReviewOptions = vi.mocked(getIdReviewOptions)
+const mockedGetLocationSites = vi.mocked(getLocationSites)
+const mockedGetMetadataSchema = vi.mocked(getMetadataSchema)
+const mockedRenameIdReviewEntity = vi.mocked(renameIdReviewEntity)
+const mockedSetIdReviewFirstImage = vi.mocked(setIdReviewFirstImage)
+const mockedUpdateIdReviewMetadata = vi.mocked(updateIdReviewMetadata)
 
 const galleryResponse = {
   archive_type: 'gallery' as const,
@@ -63,6 +73,98 @@ const queryOptionsResponse = {
   ],
 }
 
+const schemaResponse = {
+  fields: [
+    {
+      name: 'location',
+      display_name: 'Location',
+      field_type: 'text_history',
+      group: 'location',
+      group_display_name: 'Location',
+      required: false,
+      tooltip: 'Written description of the star location',
+      min_value: null,
+      max_value: null,
+      options: [],
+      vocabulary: ['Polluted import folder'],
+      mobile_widget: 'location',
+    },
+    {
+      name: 'latitude',
+      display_name: 'Latitude',
+      field_type: 'numeric_float',
+      group: 'location',
+      group_display_name: 'Location',
+      required: false,
+      tooltip: 'Latitude in decimal degrees',
+      min_value: -90,
+      max_value: 90,
+      options: [],
+      vocabulary: [],
+      mobile_widget: 'number',
+    },
+    {
+      name: 'stripe_color',
+      display_name: 'Stripe color',
+      field_type: 'color_categorical',
+      group: 'stripe',
+      group_display_name: 'Stripe Morphology',
+      required: false,
+      tooltip: 'General color of arm stripes',
+      min_value: null,
+      max_value: null,
+      options: [],
+      vocabulary: ['Red', 'Orange'],
+      mobile_widget: 'color_select',
+    },
+    {
+      name: 'sex',
+      display_name: 'Sex',
+      field_type: 'morph_categorical',
+      group: 'biology',
+      group_display_name: 'Biology',
+      required: false,
+      tooltip: 'Sex when known',
+      min_value: null,
+      max_value: null,
+      options: [{ label: 'Female', value: 'female' }, { label: 'Male', value: 'male' }],
+      vocabulary: [],
+      mobile_widget: 'select',
+    },
+    {
+      name: 'short_arm_code',
+      display_name: 'Short arm coding',
+      field_type: 'morphometric_code',
+      group: 'short_arm',
+      group_display_name: 'Short Arm Coding',
+      required: false,
+      tooltip: 'Arm positions and severity of short arms',
+      min_value: null,
+      max_value: null,
+      options: [],
+      vocabulary: [],
+      mobile_widget: 'short_arm_code',
+    },
+    {
+      name: 'health_codes',
+      display_name: 'Health coding',
+      field_type: 'health_code',
+      group: 'health',
+      group_display_name: 'Health Coding',
+      required: false,
+      tooltip: 'Lab symptom/status health codes',
+      min_value: null,
+      max_value: null,
+      options: [
+        { label: 'Lesions', value: 'L', definition: 'Open wounds', requires_count: true, allows_plus: true },
+        { label: 'Bent arms', value: 'BT', definition: 'Bent arms', requires_count: false, allows_plus: false },
+      ],
+      vocabulary: [],
+      mobile_widget: 'health_code',
+    },
+  ],
+}
+
 describe('GalleryPage', () => {
   afterEach(() => {
     cleanup()
@@ -73,6 +175,16 @@ describe('GalleryPage', () => {
     mockedGetIdReviewEntity.mockResolvedValue(galleryResponse)
     mockedGetIdReviewOptions.mockReset()
     mockedGetIdReviewOptions.mockResolvedValue(queryOptionsResponse)
+    mockedGetLocationSites.mockReset()
+    mockedGetLocationSites.mockResolvedValue({ sites: [{ name: 'Friday Harbor', latitude: 48.5, longitude: -123.0 }, { name: 'Cattle Point', latitude: 48.4, longitude: -122.9 }] })
+    mockedGetMetadataSchema.mockReset()
+    mockedGetMetadataSchema.mockResolvedValue(schemaResponse)
+    mockedRenameIdReviewEntity.mockReset()
+    mockedRenameIdReviewEntity.mockResolvedValue({ ...galleryResponse, entity_id: 'entity_renamed' })
+    mockedSetIdReviewFirstImage.mockReset()
+    mockedSetIdReviewFirstImage.mockResolvedValue({ archive_type: 'query', entity_id: 'entity_001', image_id: 'img_a2', label: 'Image A2' })
+    mockedUpdateIdReviewMetadata.mockReset()
+    mockedUpdateIdReviewMetadata.mockResolvedValue({ ...galleryResponse, metadata_summary: { location: 'Shrine Juneau', sex: 'female' }, metadata_rows: [{ row_index: 1, source: 'gallery_metadata.csv', values: { location: 'Shrine Juneau', sex: 'female' } }] })
   })
 
   it('is labeled ID Review and lets users choose query or gallery IDs', async () => {
@@ -152,6 +264,72 @@ describe('GalleryPage', () => {
     expect(screen.getByText('2026-04-01')).toBeInTheDocument()
     expect(screen.getByText('2 images')).toBeInTheDocument()
     expect(screen.getByText('Image A1, Image A2')).toBeInTheDocument()
+  })
+
+  it('saves selected ID renames and reloads the renamed archive entity', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+    await screen.findByRole('heading', { name: 'entity_001' })
+
+    await user.clear(screen.getByLabelText('Rename selected ID'))
+    await user.type(screen.getByLabelText('Rename selected ID'), 'entity_renamed')
+    await user.click(screen.getByRole('button', { name: 'Save ID name' }))
+
+    expect(mockedRenameIdReviewEntity).toHaveBeenCalledWith('query', 'entity_001', 'entity_renamed')
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'entity_renamed' })).toBeInTheDocument())
+  })
+
+  it('lets users edit latest metadata fields for the selected ID', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+    await screen.findByRole('heading', { name: 'Metadata' })
+
+    await user.click(screen.getByRole('button', { name: 'Add new location' }))
+    await user.clear(screen.getByLabelText('Location'))
+    await user.type(screen.getByLabelText('Location'), 'Shrine Juneau')
+    await user.click(screen.getByRole('button', { name: 'Save metadata' }))
+
+    expect(mockedUpdateIdReviewMetadata).toHaveBeenCalledWith('query', 'entity_001', expect.objectContaining({ location: 'Shrine Juneau' }))
+    await waitFor(() => expect(screen.getAllByText('Shrine Juneau').length).toBeGreaterThan(0))
+  })
+
+  it('shows the full schema for ID Review metadata edits and uses combo boxes where appropriate', async () => {
+    const user = userEvent.setup()
+    render(<GalleryPage />)
+
+    await screen.findByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' })
+    await user.click(screen.getByRole('option', { name: 'query_friday_001 — Friday Harbor — 2026-04-01' }))
+    await user.click(screen.getByRole('button', { name: 'Load ID' }))
+    await screen.findByRole('heading', { name: 'Edit metadata' })
+
+    expect(screen.getByRole('heading', { name: 'Location' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Health Coding' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Stripe Morphology' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Stripe color')).toHaveValue('')
+    await user.click(screen.getByRole('button', { name: '+ Add short arm' }))
+    await user.selectOptions(screen.getByLabelText('Short arm 1 severity'), 'small')
+    await user.click(screen.getByRole('button', { name: '+ Add health code' }))
+    await user.selectOptions(screen.getByLabelText('Health code 1'), 'L')
+    await user.selectOptions(screen.getByLabelText('Stripe color'), 'Orange')
+    await user.selectOptions(screen.getByLabelText('Sex'), 'male')
+    await user.selectOptions(screen.getByLabelText('Saved locations'), 'Cattle Point')
+    await user.click(screen.getByRole('button', { name: 'Save metadata' }))
+
+    expect(mockedUpdateIdReviewMetadata).toHaveBeenCalledWith('query', 'entity_001', expect.objectContaining({
+      health_codes: 'L(1)',
+      location: 'Cattle Point',
+      sex: 'male',
+      short_arm_code: 'small(1)',
+      stripe_color: 'Orange',
+    }))
   })
 
   it('lets users zoom, pan, rotate, and reset the selected ID image', async () => {
