@@ -225,6 +225,46 @@ def test_batch_upload_uploads_route_returns_token_and_discover_accepts_uploaded_
     assert body['rows'][0]['original_detected_id'] == 'anchovy'
 
 
+def test_batch_upload_chunked_zip_upload_route_accepts_split_zip(tmp_path, monkeypatch):
+    archive = tmp_path / 'archive'
+    (archive / 'gallery').mkdir(parents=True)
+    monkeypatch.setenv('STARBOARD_ARCHIVE_DIR', str(archive))
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, 'w') as zf:
+        zf.writestr('anchovy/a.jpg', b'x')
+        zf.writestr('urchin/b.jpg', b'y')
+    data = payload.getvalue()
+
+    client = TestClient(create_app())
+    start = client.post(
+        '/api/batch-upload/uploads/chunked',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+    )
+    assert start.status_code == 200
+    token = start.json()['upload_token']
+
+    split = len(data) // 2
+    for offset, chunk in [(0, data[:split]), (split, data[split:])]:
+        response = client.post(
+            f'/api/batch-upload/uploads/chunked/{token}/chunks',
+            headers={'cf-access-authenticated-user-email': 'field@example.org'},
+            data={'offset': str(offset), 'total_size': str(len(data)), 'filename': 'bundle.zip'},
+            files={'chunk': ('bundle.zip', chunk, 'application/octet-stream')},
+        )
+        assert response.status_code == 200
+
+    finalize = client.post(
+        f'/api/batch-upload/uploads/chunked/{token}/finalize',
+        headers={'cf-access-authenticated-user-email': 'field@example.org'},
+    )
+    assert finalize.status_code == 200
+    body = finalize.json()
+    assert body['upload_token'] == token
+    assert body['file_count'] == 2
+    assert body['root_entries'] == ['anchovy', 'urchin']
+
+
 def test_batch_upload_folder_upload_preserves_browser_relative_paths(tmp_path, monkeypatch):
     archive = tmp_path / 'archive'
     (archive / 'gallery').mkdir(parents=True)

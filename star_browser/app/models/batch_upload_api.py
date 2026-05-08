@@ -113,3 +113,7 @@ class BatchUploadUploadResponse(BaseModel):
     upload_token: str
     file_count: int
     root_entries: list[str] = Field(default_factory=list)
+
+
+class BatchUploadChunkedUploadStartResponse(BaseModel):
+    upload_token: str

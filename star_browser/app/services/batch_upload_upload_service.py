@@ -57,6 +57,18 @@ def _safe_extract_zip(zip_path: Path, dest_dir: Path) -> list[str]:
     return sorted(root_entries)
 
 
+def _extract_staged_zip(token: str) -> BatchUploadUploadResponse:
+    bundle_root = _bundle_root(token)
+    zip_path = bundle_root / 'upload' / 'bundle.zip'
+    contents_dir = bundle_root / 'contents'
+    if not zip_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='upload_token_not_found')
+    contents_dir.mkdir(parents=True, exist_ok=True)
+    root_entries = _safe_extract_zip(zip_path, contents_dir)
+    file_count = sum(1 for p in contents_dir.rglob('*') if p.is_file())
+    return BatchUploadUploadResponse(upload_token=token, file_count=file_count, root_entries=root_entries)
+
+
 def stage_uploaded_bundle(file: UploadFile) -> BatchUploadUploadResponse:
     filename = file.filename or ''
     if not filename.lower().endswith('.zip'):
@@ -65,17 +77,55 @@ def stage_uploaded_bundle(file: UploadFile) -> BatchUploadUploadResponse:
     token = f'upload_{uuid4().hex[:12]}'
     bundle_root = _bundle_root(token)
     upload_dir = bundle_root / 'upload'
-    contents_dir = bundle_root / 'contents'
     upload_dir.mkdir(parents=True, exist_ok=True)
-    contents_dir.mkdir(parents=True, exist_ok=True)
 
     zip_path = upload_dir / 'bundle.zip'
-    data = file.file.read()
-    zip_path.write_bytes(data)
-    root_entries = _safe_extract_zip(zip_path, contents_dir)
+    zip_path.write_bytes(file.file.read())
+    return _extract_staged_zip(token)
 
-    file_count = sum(1 for p in contents_dir.rglob('*') if p.is_file())
-    return BatchUploadUploadResponse(upload_token=token, file_count=file_count, root_entries=root_entries)
+
+def start_chunked_uploaded_bundle() -> dict[str, str]:
+    token = f'upload_{uuid4().hex[:12]}'
+    upload_dir = _bundle_root(token) / 'upload'
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return {'upload_token': token}
+
+
+def _validate_upload_token(token: str) -> None:
+    if not token.startswith('upload_') or '/' in token or '..' in token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_upload_token')
+
+
+def append_uploaded_zip_chunk(token: str, offset: int, total_size: int, filename: str, chunk: UploadFile) -> None:
+    _validate_upload_token(token)
+    if offset < 0 or total_size <= 0 or offset > total_size:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_chunk_offset')
+    if not filename.lower().endswith('.zip'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='zip_required')
+    upload_dir = _bundle_root(token) / 'upload'
+    if not upload_dir.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='upload_token_not_found')
+
+    zip_path = upload_dir / 'bundle.zip'
+    data = chunk.file.read()
+    if offset + len(data) > total_size:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='chunk_exceeds_total_size')
+    mode = 'r+b' if zip_path.exists() else 'wb'
+    with open(zip_path, mode) as dst:
+        size = dst.seek(0, os.SEEK_END)
+        if size != offset:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='chunk_offset_mismatch')
+        dst.write(data)
+
+
+def finalize_chunked_uploaded_bundle(token: str) -> BatchUploadUploadResponse:
+    _validate_upload_token(token)
+    zip_path = _bundle_root(token) / 'upload' / 'bundle.zip'
+    if not zip_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='upload_token_not_found')
+    if not zipfile.is_zipfile(zip_path):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='invalid_zip')
+    return _extract_staged_zip(token)
 
 
 def _safe_uploaded_relative_path(name: str) -> Path:
