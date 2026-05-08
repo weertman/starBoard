@@ -22,9 +22,10 @@ vi.mock('../api/client', () => ({
   getLocationSites: vi.fn(),
   runFirstOrderSearch: vi.fn(),
   saveFirstOrderMatchLabel: vi.fn(),
+  setFirstOrderFirstImage: vi.fn(),
 }))
 
-import { getFirstOrderGalleryFilters, getFirstOrderMedia, getFirstOrderQueries, getLocationSites, runFirstOrderSearch, saveFirstOrderMatchLabel } from '../api/client'
+import { getFirstOrderGalleryFilters, getFirstOrderMedia, getFirstOrderQueries, getLocationSites, runFirstOrderSearch, saveFirstOrderMatchLabel, setFirstOrderFirstImage } from '../api/client'
 
 const mockedGetFirstOrderQueries = vi.mocked(getFirstOrderQueries)
 const mockedGetFirstOrderGalleryFilters = vi.mocked(getFirstOrderGalleryFilters)
@@ -32,6 +33,7 @@ const mockedGetFirstOrderMedia = vi.mocked(getFirstOrderMedia)
 const mockedGetLocationSites = vi.mocked(getLocationSites)
 const mockedRunFirstOrderSearch = vi.mocked(runFirstOrderSearch)
 const mockedSaveFirstOrderMatchLabel = vi.mocked(saveFirstOrderMatchLabel)
+const mockedSetFirstOrderFirstImage = vi.mocked(setFirstOrderFirstImage)
 
 const queryOptions = [
   {
@@ -75,6 +77,8 @@ describe('FirstOrderPage query selector', () => {
     mockedGetLocationSites.mockReset()
     mockedRunFirstOrderSearch.mockReset()
     mockedSaveFirstOrderMatchLabel.mockReset()
+    mockedSetFirstOrderFirstImage.mockReset()
+    mockedSetFirstOrderFirstImage.mockResolvedValue({ target_type: 'query', entity_id: 'query_a', image_id: 'query:query_a:1', label: 'query_a_detail.jpg' })
     mockedGetFirstOrderQueries.mockResolvedValue({ queries: queryOptions })
     mockedGetLocationSites.mockResolvedValue({ sites: [
       { name: 'Batch Saved Only', latitude: 48.4, longitude: -123.2 },

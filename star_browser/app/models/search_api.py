@@ -85,3 +85,10 @@ class FirstOrderMediaResponse(BaseModel):
     target_type: Literal['query', 'gallery']
     entity_id: str
     images: list[FirstOrderMediaImage] = Field(default_factory=list)
+
+
+class FirstOrderSetBestImageResponse(BaseModel):
+    target_type: Literal['query', 'gallery']
+    entity_id: str
+    image_id: str
+    label: str

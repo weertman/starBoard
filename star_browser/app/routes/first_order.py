@@ -6,8 +6,8 @@ from fastapi.responses import FileResponse
 from src.data.activity_log import request_context, try_record_activity_event
 
 from ..auth import require_authenticated_email
-from ..models.search_api import FirstOrderGalleryFiltersResponse, FirstOrderMatchLabelRequest, FirstOrderMatchLabelResponse, FirstOrderMediaResponse, FirstOrderQueryOptionsResponse, FirstOrderSearchRequest, FirstOrderSearchResponse
-from ..services.first_order_media_service import list_first_order_media, resized_preview_response, resolve_first_order_media_path
+from ..models.search_api import FirstOrderGalleryFiltersResponse, FirstOrderMatchLabelRequest, FirstOrderMatchLabelResponse, FirstOrderMediaResponse, FirstOrderQueryOptionsResponse, FirstOrderSearchRequest, FirstOrderSearchResponse, FirstOrderSetBestImageResponse
+from ..services.first_order_media_service import list_first_order_media, resized_preview_response, resolve_first_order_media_path, set_first_order_best_image
 from ..services.first_order_service import list_first_order_gallery_filter_options, list_first_order_query_options, run_first_order_search, save_first_order_match_label
 
 router = APIRouter()
@@ -129,3 +129,11 @@ def first_order_media_full(
     if path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='first_order_image_not_found')
     return FileResponse(path)
+
+
+@router.post('/first-order/media/{image_id}/set-first', response_model=FirstOrderSetBestImageResponse)
+def first_order_media_set_first(
+    image_id: str,
+    _user_email: str = Depends(require_authenticated_email),
+):
+    return set_first_order_best_image(image_id)

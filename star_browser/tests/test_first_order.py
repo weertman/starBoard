@@ -1,5 +1,6 @@
 from io import BytesIO
 from datetime import date
+from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -227,6 +228,20 @@ def test_first_order_media_routes_return_best_first_descriptors_and_resized_prev
     assert preview.headers['content-type'].startswith('image/')
     assert full.headers['content-type'].startswith('image/')
     assert len(preview.content) < len(full.content)
+
+    image_id = query_body['images'][1]['image_id']
+    set_first = client.post(f"/api/first-order/media/{quote(image_id, safe='')}/set-first", headers=headers)
+    assert set_first.status_code == 200
+    set_body = set_first.json()
+    assert set_body['target_type'] == 'query'
+    assert set_body['entity_id'] == 'query_001'
+    assert set_body['label'] == 'query_first.jpg'
+
+    refreshed = client.get('/api/first-order/queries/query_001/media', headers=headers)
+    assert refreshed.status_code == 200
+    refreshed_body = refreshed.json()
+    assert [image['label'] for image in refreshed_body['images']] == ['query_first.jpg', 'query_best.jpg']
+    assert refreshed_body['images'][0]['is_best'] is True
 
 
 def test_first_order_preview_is_large_enough_for_query_matcher_comparison(tmp_path, monkeypatch):

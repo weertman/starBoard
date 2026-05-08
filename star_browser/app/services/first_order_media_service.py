@@ -8,10 +8,10 @@ from PIL import Image
 from fastapi import HTTPException, status
 from fastapi.responses import Response
 
-from src.data.best_photo import find_best_index, reorder_files_with_best
-from src.data.image_index import list_image_files
+from src.data.best_photo import find_best_index, reorder_files_with_best, save_best_for_id
+from src.data.image_index import invalidate_image_cache, list_image_files
 
-from ..models.search_api import FirstOrderMediaImage, FirstOrderMediaResponse
+from ..models.search_api import FirstOrderMediaImage, FirstOrderMediaResponse, FirstOrderSetBestImageResponse
 
 TargetType = Literal['query', 'gallery']
 
@@ -105,6 +105,18 @@ def first_order_image_id_for_path(target_type: TargetType, entity_id: str, image
         if path.stem == wanted.stem:
             return _image_id(target_type, entity_id, idx)
     return None
+
+
+def set_first_order_best_image(image_id: str) -> FirstOrderSetBestImageResponse:
+    path = resolve_first_order_media_path(image_id)
+    parts = image_id.split(':')
+    if path is None or len(parts) != 3 or parts[0] not in {'query', 'gallery'}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='first_order_image_not_found')
+    target_type: TargetType = 'query' if parts[0] == 'query' else 'gallery'
+    entity_id = parts[1]
+    save_best_for_id(_canonical_target(target_type), entity_id, path)
+    invalidate_image_cache()
+    return FirstOrderSetBestImageResponse(target_type=target_type, entity_id=entity_id, image_id=image_id, label=path.name)
 
 
 def resized_preview_response(path: Path, *, long_edge: int = 1400) -> Response:
